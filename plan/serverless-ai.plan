@@ -1,0 +1,147 @@
+# PLAN: Fully Browser-Based Serverless AI (No API, No Backend)
+
+## Concept
+The AI model runs inside the visitor's browser on their own GPU or CPU.
+No server, no API key, no per-request cost. The "server" is a static website.
+
+    Static website (HTML/JS) -> downloads model weights once -> browser cache
+            |
+    WebGPU (GPU) or WASM (CPU fallback) runs the model locally
+            |
+    Chat UI + history saved in IndexedDB
+
+Hosting: GitHub Pages / Cloudflare Pages / Netlify (free).
+Privacy bonus: user prompts never leave the device.
+
+Honest limit: browser models are small (about 0.5B to 4B parameters).
+They will not match full-size Claude, DeepSeek, Qwen or Kimi, but they are
+good for focused tasks.
+
+
+## PHASE 0: Goal and limits (Week 1)
+[ ] Pick the use case: general chat / study helper / code explainer / document Q&A
+[ ] Write 20-30 test prompts to re-run after every change
+[ ] Set targets: first-load size, tokens per second, minimum supported device
+
+
+## PHASE 1: Choose the runtime (Week 1)
+[ ] WebLLM (MLC)      - fastest chat on WebGPU, OpenAI-style JS interface, streaming
+[ ] Transformers.js   - many task types (chat, classify, embeddings, speech)
+[ ] wllama            - llama.cpp in WASM, CPU-only fallback for any device
+[ ] Decision: WebLLM as primary, wllama as fallback
+
+
+## PHASE 2: Choose the model (Week 1-2)
+[ ] Start with a 4-bit quantized model around 1B to 3B (Qwen small instruct,
+    Llama small, Phi, Gemma small). Check each license.
+[ ] Size guide: ~1B = about 0.5-1 GB download, ~3B = about 2 GB
+[ ] Compare 2-3 candidates on the test prompts, then choose
+[ ] Add a model picker (Small / Medium) so weak devices still work
+[ ] Use the model IDs from the library's current model list (they change often)
+
+
+## PHASE 3: Build the website (Week 2-3)
+[ ] Loading screen with download progress bar
+[ ] Chat UI: streaming tokens, stop button, copy button, markdown + code blocks
+[ ] Run the model in a Web Worker so the page never freezes
+[ ] Device check: detect WebGPU and memory, auto-pick model or fallback
+[ ] Chat history in IndexedDB
+[ ] Dark mode, mobile-friendly layout
+
+
+## PHASE 4: Solve the "first load" problem (Week 3-4)
+[ ] Model is cached after first download, so later visits load in seconds
+[ ] Make it a PWA (service worker) so it works offline
+[ ] Show a clear warning: "Downloads ~X MB once. Wi-Fi recommended."
+[ ] Support resuming interrupted downloads
+[ ] Consider a very small default model for a fast first impression
+
+
+## PHASE 5: Make it smarter without a server (Week 4-6)
+[ ] In-browser RAG: embed documents with Transformers.js, store vectors in
+    IndexedDB, retrieve relevant chunks before answering
+[ ] System prompts / modes (tutor, coder, summarizer)
+[ ] JS tools: calculator, unit converter, local notes search
+[ ] Optional: LoRA fine-tune offline (laptop or free Colab), convert and ship
+    as a custom MLC model build
+
+
+## PHASE 6: Security (Week 6)
+[ ] NEVER render model output as raw HTML. Use textContent, or sanitize with
+    DOMPurify. Otherwise you create an XSS hole.
+[ ] Strict Content-Security-Policy header / meta tag
+[ ] Pin library versions and use Subresource Integrity (SRI)
+[ ] Host model files yourself or from a trusted source; verify file hashes
+    (supply-chain protection against tampered weights)
+[ ] Prompt injection still applies with RAG/tools: never let the model
+    trigger dangerous actions automatically
+[ ] Keep all data local; add a "Clear all data" button
+[ ] Mini threat model: XSS, malicious uploaded documents, poisoned model
+    files, malicious third-party scripts
+
+
+## PHASE 7: Test and launch (Week 7-8)
+[ ] Test on: low-end phone, mid laptop, high-end laptop
+[ ] Test in: Chrome, Edge, Safari, Firefox (WebGPU support varies)
+[ ] Measure: load time, tokens per second, memory use
+[ ] Re-run the 20-30 test prompts on the final build
+[ ] Deploy to GitHub Pages or Cloudflare Pages
+[ ] Soft launch to a few users, collect feedback, iterate
+
+
+## KNOWN LIMITS
+- WebGPU works best in recent Chrome and Edge; Safari/Firefox vary by version
+- Low-RAM phones may crash on models above ~1B
+- Quality is below large cloud models; match the task to the model size
+
+
+## STARTER STACK (all free)
+Runtime  : WebLLM + wllama fallback
+Model    : ~1B-3B, 4-bit quantized
+Frontend : Plain HTML/JS, or React + Vite
+Storage  : IndexedDB
+Hosting  : GitHub Pages / Cloudflare Pages
+Offline  : Service worker (PWA)
+
+
+## MINIMAL SKELETON (index.html)
+
+<!doctype html>
+<html>
+<body>
+  <div id="log"></div>
+  <input id="q" placeholder="Ask something"><button id="go">Send</button>
+  <script type="module">
+    import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+
+    const log = document.getElementById("log");
+    const modelId = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC";
+
+    const engine = await webllm.CreateMLCEngine(modelId, {
+      initProgressCallback: (p) => { log.textContent = p.text; }
+    });
+
+    document.getElementById("go").onclick = async () => {
+      const q = document.getElementById("q").value;
+      const stream = await engine.chat.completions.create({
+        messages: [{ role: "user", content: q }],
+        stream: true
+      });
+      log.textContent = "";
+      for await (const chunk of stream) {
+        log.textContent += chunk.choices[0]?.delta?.content || "";
+      }
+    };
+  </script>
+</body>
+</html>
+
+Note: verify the model ID against the library's current model list.
+
+
+## LATER UPGRADES
+- Multi-model routing (tiny model for easy questions, bigger for hard ones)
+- Voice input/output with in-browser speech models
+- Image understanding with small vision models
+- Shared prompt/persona library
+- Distillation: train a small model to imitate a larger one, then ship it

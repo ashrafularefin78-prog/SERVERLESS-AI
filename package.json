@@ -1,0 +1,23 @@
+{
+  "name": "localmind",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A private, serverless AI chat that runs a small language model entirely in your browser.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@mlc-ai/web-llm": "0.2.89",
+    "@wllama/wllama": "3.13.0",
+    "dompurify": "3.4.18",
+    "highlight.js": "11.12.0",
+    "marked": "18.2.1"
+  },
+  "devDependencies": {
+    "vite": "8.3.8"
+  }
+}
