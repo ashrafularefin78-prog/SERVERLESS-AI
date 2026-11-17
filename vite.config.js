@@ -42,7 +42,7 @@ export default defineConfig({
           await writeFile(
             file,
             source.replace(
-              'const VERSION = "localmind-v1";',
+              /const VERSION = "localmind-[^"]*";/,
               `const VERSION = "localmind-${stamp}";`,
             ),
           );
