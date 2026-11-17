@@ -1,7 +1,7 @@
 import wasmUrl from "@wllama/wllama/esm/wasm/wllama.wasm?url";
+import { demoChatReply } from "../chat/replies.js";
 import { DEMO_MODE } from "../config.js";
 import { parseMemoryCommand } from "../memory.js";
-import { analyzeIntent } from "../understand.js";
 import { CPU_MODEL, isCpuModel, modelByKey, resolveGpuModel } from "./catalog.js";
 import { formatCount } from "./device.js";
 
@@ -413,10 +413,16 @@ function sleep(milliseconds) {
 async function* generateDemo(messages, signal, demo = null) {
   const lastUser = [...messages].reverse().find((message) => message.role === "user");
   const prompt = lastUser?.content?.trim() || "your message";
+  const commandReply = memoryCommandReply(prompt, demo?.memoryOutcome);
   const reply =
-    state.modelKey === "demo" && demo && typeof demo.buildDemoReply === "function"
+    commandReply ??
+    (state.modelKey === "demo" && demo && typeof demo.buildDemoReply === "function"
       ? demo.buildDemoReply({ prompt, messages, systemPrompt: messages[0]?.content || "" })
-      : buildDemoReply(prompt, demo?.memoryOutcome);
+      : demoChatReply({
+          prompt,
+          messages,
+          memory: demo?.memory || [],
+        }));
   const chunks = reply.match(/\S+\s*/g) || [reply];
 
   for (const chunk of chunks) {
@@ -428,16 +434,23 @@ async function* generateDemo(messages, signal, demo = null) {
   yield { usage: { completion_tokens: chunks.length, total_tokens: chunks.length } };
 }
 
-function buildDemoReply(prompt, memoryOutcome = null) {
+function memoryCommandReply(prompt, memoryOutcome = null) {
   const command = parseMemoryCommand(prompt);
-  if (command?.type === "add") {
+  if (!command) return null;
+
+  if (command.type === "add") {
+    const name = command.text.match(/^The user's name is ([A-Za-z][A-Za-z' -]{0,39})\.$/);
+    if (name && memoryOutcome?.added) {
+      return `Nice to meet you, ${escapeMarkdown(name[1])}. I'll remember your name on this device.`;
+    }
     if (memoryOutcome?.added) {
-      return `Got it, I'll remember that ${escapeMarkdown(command.text)}\n\nIt's saved on this device only, and I'll carry it into our later chats. You can view or remove it under Settings, Memory.`;
+      return `Got it, I'll remember that ${escapeMarkdown(command.text)}\n\nIt stays on this device and will follow you into later chats. You can view or remove it under Settings, Memory.`;
     }
     if (memoryOutcome?.duplicate) return "I already have that note, so nothing new was saved. Settings, Memory shows what I know.";
     if (memoryOutcome?.full) return "My memory is full, so I couldn't save that. Forget an old note first, then ask me again.";
   }
-  if (command?.type === "forget" || command?.type === "forget-all") {
+
+  if (command.type === "forget" || command.type === "forget-all") {
     if (memoryOutcome?.removed) {
       return command.type === "forget-all"
         ? "Done, I've forgotten everything I had noted about you."
@@ -446,45 +459,6 @@ function buildDemoReply(prompt, memoryOutcome = null) {
     return "I looked, but no note matched that, so there was nothing to forget.";
   }
 
-  const short = prompt.length > 120 ? `${prompt.slice(0, 117)}...` : prompt;
-  if (analyzeIntent(prompt).vague) {
-    return "I want to get this right instead of guessing. Can you paste the code or the exact error, and tell me what you expected to happen?";
-  }
-  const smallTalk = smallTalkReply(prompt);
-  if (smallTalk) return smallTalk;
-  return `I'm the **built-in assistant**. I run on local rules inside this tab, so I can chat, remember notes, help you think something through, and scaffold code - but I can't generate a full open-ended answer to this one.
-
-You asked: _${escapeMarkdown(short)}_
-
-**What I can do right now, fully offline:**
-
-1. Chat naturally and remember facts you give me ("remember ...", "forget ...").
-2. Detect the language and task in a coding question and scaffold a solution.
-3. Keep every message private on this device - nothing is uploaded.
-
-If you want to go further on this one, give me the exact goal, any constraints, and a small example, and I'll lay out the structure and the steps to get there.`;
-}
-
-function smallTalkReply(prompt) {
-  const text = prompt.toLowerCase();
-  if (/^(hi|hiya|hello|hey|yo|howdy|good (morning|afternoon|evening))\b/.test(text)) {
-    return "Hey! Good to see you. What's on your mind today?";
-  }
-  if (/\bhow are you\b|\bhow's it going\b|\bhow are things\b/.test(text)) {
-    return "Doing well, thanks for asking! Mostly I enjoy a good problem or a bit of chat. How about you?";
-  }
-  if (/\b(rough|bad|terrible|awful|hard|stressful)\s+(day|week|morning|night)\b|\bi'm (sad|stressed|anxious|exhausted|tired|upset)\b|\bi am (sad|stressed|anxious|exhausted|tired|upset)\b/.test(text)) {
-    return "That sounds genuinely draining, I'm sorry. Do you want to vent about it, or would a distraction help more right now?";
-  }
-  if (/\b(i'm (happy|excited|thrilled)|i am (happy|excited|thrilled)|great day|good news)\b/.test(text)) {
-    return "That's lovely to hear! Tell me what happened, I want the details.";
-  }
-  if (/^(thanks|thank you|thx|cheers|ty)\b/.test(text)) {
-    return "Anytime! Glad I could help.";
-  }
-  if (/^(bye|goodbye|see you|good night|gn)\b/.test(text)) {
-    return "See you later! I'll be right here whenever you want to pick things back up.";
-  }
   return null;
 }
 

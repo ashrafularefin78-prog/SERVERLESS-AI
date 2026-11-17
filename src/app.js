@@ -1122,6 +1122,7 @@ async function runGeneration(assistantId) {
       signal: state.streamSignal,
       demo: {
         buildDemoReply: state.settings.mode === "coder" ? demoCodingReply : null,
+        memory: state.settings.memory || [],
         memoryOutcome: state.memoryOutcome,
       },
     })) {

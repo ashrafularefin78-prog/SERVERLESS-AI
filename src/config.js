@@ -47,11 +47,11 @@ export const MODES = [
 ];
 
 export const SUGGESTIONS = [
-  "Explain how a transformer model works, simply",
-  "Write a regex that matches ISO dates",
+  "What can you do?",
   "Help me plan a 30-minute study session",
-  "Summarize the key idea of compound interest",
-  "Write a Python function that retries a request",
+  "I had a rough day",
+  "Tell me a joke",
+  "Write a C program to add two numbers",
 ];
 
 export const DEFAULT_SETTINGS = {

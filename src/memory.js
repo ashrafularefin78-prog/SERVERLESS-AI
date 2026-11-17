@@ -24,8 +24,8 @@ export function parseMemoryCommand(text) {
     return { type: "forget", text: query };
   }
 
-  match = source.match(/^(?:my name is|i am called|call me)\s+([A-Za-z][A-Za-z' -]{0,39})$/i);
-  if (match) return { type: "add", text: `The user's name is ${clean(match[1])}.` };
+  match = source.match(/^(?:my name is|i am called|call me)\s+([A-Za-z][A-Za-z' -]{0,39})[.!]*$/i);
+  if (match) return { type: "add", text: `The user's name is ${clean(match[1]).replace(/[.!]+$/, "")}.` };
 
   return null;
 }
