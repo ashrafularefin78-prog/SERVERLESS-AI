@@ -12,9 +12,9 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function fromBase64(value: string): Uint8Array {
+function fromBase64(value: string): Uint8Array<ArrayBuffer> {
   const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
   return bytes;
 }
@@ -41,7 +41,7 @@ export async function deriveMemoryKey(passphrase: string, salt: string): Promise
 }
 
 export async function encryptJson(key: CryptoKey, value: unknown): Promise<EncryptedBlob> {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const iv: Uint8Array<ArrayBuffer> = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(12)));
   const ciphertext = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
     key,

@@ -1,5 +1,6 @@
 /* LocalMind service worker: caches the app shell and same-origin assets.
-   The app is model-free; there are no weight downloads to intercept. */
+   Model weights are deliberately not precached and never handled here: they
+   are fetched by WebLLM on explicit request and stored in OPFS. */
 
 const VERSION = "localmind-v2";
 const SHELL = [

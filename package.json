@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "A private, serverless AI chat that runs a built-in rule engine entirely in your browser.",
+  "description": "A private AI chat that runs in your browser: an optional on-device WebGPU model plus a built-in rule engine.",
   "license": "MIT",
   "scripts": {
     "dev": "vite",
@@ -26,6 +26,7 @@
     "node": ">=22"
   },
   "dependencies": {
+    "@mlc-ai/web-llm": "^0.2.89",
     "dompurify": "3.4.18",
     "highlight.js": "11.12.0",
     "marked": "18.2.1"

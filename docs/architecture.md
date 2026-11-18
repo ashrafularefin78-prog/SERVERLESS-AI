@@ -16,18 +16,22 @@ index.html
        |-- src/coder/             language/task detection and code recipes
        |-- src/ui/render.ts       safe DOM rendering
        |-- src/markdown.ts        marked + DOMPurify
-       |-- src/engine/manager.ts  generation lifecycle (rules-only)
-       |     `-- src/engine/demo.ts  built-in reply engine (pure, testable)
+       |-- src/engine/manager.ts  generation lifecycle for both backends
+       |     |-- src/engine/demo.ts    built-in reply engine (pure, testable)
+       |     |-- src/engine/models.ts  model catalogue and cache config
+       |     |-- src/engine/local.ts   WebGPU session, OPFS cache, streaming
+       |     `-- src/engine/model-worker.ts  WebLLM engine in a Worker
        `-- src/storage/db.ts      IndexedDB conversations and settings
 ```
 
-Dependencies point downward: UI code may import engine and storage modules, but the demo engine must not import DOM or app state. Keeping `src/engine/demo.ts` independent is what makes Node unit tests and a future Worker move straightforward.
+Dependencies point downward: UI code may import engine and storage modules, but the demo engine must not import DOM or app state. Keeping `src/engine/demo.ts` independent is what makes Node unit tests straightforward. `local.ts` is the only module that touches WebLLM, and it does so through a dynamic import so the built-in engine boots without it.
 
 ## Boot sequence
 
 1. `main.ts` calls `boot()` from `app.ts`.
 2. `app.ts` caches DOM nodes, binds events, applies the theme, and loads settings and conversation summaries from IndexedDB.
-3. `engine.init()` marks the built-in engine ready. Nothing is downloaded and no hardware is probed.
+3. The model panel renders from the static catalogue and probes WebGPU (`navigator.gpu.requestAdapter()`); this does not download anything.
+4. `engine.init({ modelId })` marks the built-in engine ready immediately. If a model was chosen previously and its weights are already cached, it loads in the background and the UI switches over when ready.
 4. The welcome screen or the most recent conversation is rendered.
 
 If boot fails, `main.ts` shows a self-contained error overlay with a reload action.
@@ -38,7 +42,7 @@ If boot fails, `main.ts` shows a self-contained error overlay with a reload acti
 2. `parseMemoryCommand(text)` inspects explicit commands. If one is present, `applyMemoryCommand()` updates the in-memory list and persisted settings, and the outcome is stored for the reply.
 3. The user message and a placeholder assistant message are appended to the conversation and saved to IndexedDB.
 4. `runGeneration()` builds a bounded context (`maxMessages`, `maxChars`) via `compactHistory()`, starts an `AbortController`, and calls `engine.generate()`. Turns that fall out of the window are not lost silently: an extractive digest of them is carried as a system note and can be recapped on request.
-5. `generateDemo()` resolves a reply with `buildDemoReply()`, splits it into word-sized chunks, yields them with a small delay, and emits token usage at the end.
+5. `engine.generate()` routes to the active backend: `generateDemo()` for the rule engine, or `streamModel()` in `local.ts` for a loaded model. Both yield the same `StreamChunk` shape and honour the abort signal. Model generation calls `interruptGenerate()` on the worker when the signal aborts.
 6. `app.ts` appends chunks through `streamText()` using `textContent` while streaming. When the stream finishes, the final content is saved and rendered as sanitized markdown.
 
 Stop and regenerate are handled with the run identifier and abort signal. A late chunk from an old run is ignored. Editing a user message loads it into the composer with a banner; sending truncates the conversation at that message and regenerates from the new text. Edit actions are hidden while a reply is generating.
@@ -61,7 +65,14 @@ IndexedDB database `localmind`, version 1:
 - `buildDemoReply()` is a pure function that resolves the text for one turn. Unit tests target this directly.
 - `generateDemo()` is an async generator that streams the resolved text and handles cancellation.
 
-`src/engine/manager.ts` owns the state machine (`idle`, `ready`, `generating`), exposes `subscribe()` for the UI, and streams replies from the rule engine. There are no model backends.
+`src/engine/manager.ts` owns the state machine (`idle`, `loading`, `ready`, `generating`), exposes `subscribe()` for the UI, and streams replies from whichever backend is active. It also owns model lifecycle: `useModel()` downloads/loads and reports progress, `unloadModel()` frees GPU memory, `deleteModel()` removes cached artifacts.
+
+## On-device model path
+
+- `src/engine/models.ts` holds the display catalogue and the cache configuration (`opfs`, `auto` access mode). Model records themselves come from WebLLM's pinned `prebuiltAppConfig`, so binaries, URLs and SHA-256 integrity data stay tied to the installed package.
+- `src/engine/model-worker.ts` hosts `WebWorkerMLCEngineHandler`. It also answers cache queries (`hasModelInCache`, `deleteModelAllInfoInCache`) so the page never imports the inference library just to check storage.
+- `src/engine/local.ts` creates the worker, wires `initProgressCallback` to the UI, requests persistent storage, and streams tokens. `isModelCached()`/`deleteCachedModel()` post a small RPC to a dedicated cache worker.
+- The inference library is loaded with `import("@mlc-ai/web-llm")` only when a model is loaded, so the entry bundle stays small (`npm run check:size` measures the initial payload, not the lazy chunk).
 
 See [rule-engine.md](rule-engine.md) for the rule order and extension points.
 
@@ -71,7 +82,7 @@ See [rule-engine.md](rule-engine.md) for the rule order and extension points.
 - Completed replies are parsed by marked, sanitized by DOMPurify with a restrictive allowlist, then inserted.
 - Links are restricted to `https:`, `http:`, and `mailto:` and open with `rel="noopener noreferrer"`.
 - Images and raw HTML are not rendered.
-- The production build injects a CSP meta tag. Hosts that can set headers should serve the same policy as a header and add `frame-ancestors 'none'`.
+- The production build injects a CSP meta tag. It allows `wasm-unsafe-eval` for the inference runtime and network access only to the pinned model hosts. Hosts that can set headers should serve the same policy as a header and add `frame-ancestors 'none'`.
 
 The full threat model is in [SECURITY.md](../SECURITY.md).
 
@@ -87,6 +98,8 @@ The worker ignores non-GET requests and cross-origin URLs. The Vite build rewrit
 ## Performance notes
 
 The built-in engine is small and runs on the main thread. That is a deliberate tradeoff: no Worker startup, no message serialization, and no duplicated state. Keep individual rule checks cheap and avoid scanning large inputs repeatedly.
+
+An on-device model always runs in a Worker. WebGPU decoding on the main thread would jank the chat UI, and the Worker boundary keeps GPU memory reclaimable: `unload()` terminates it. Weight downloads and compiled artifacts are cached in OPFS, never in IndexedDB and never in the service worker cache.
 
 The initial production payload has a **260 kB gzip budget**, enforced by `npm run check:size` in CI. The check measures the entry JavaScript, stylesheet, and HTML referenced by `dist/index.html`. The app is model-free, so everything it needs ships in this payload; the entry bundle should not grow without a deliberate decision.
 

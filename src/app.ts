@@ -16,14 +16,7 @@ import {
 } from "./memory.js";
 import { analyzeIntent, expandShorthand, normalizeText, understandingHint } from "./understand.js";
 import { compactHistory, formatCompactionNote } from "./context.js";
-import {
-  MEMORY_VERIFIER,
-  checkVerifier,
-  decryptJson,
-  deriveMemoryKey,
-  encryptJson,
-  randomSalt,
-} from "./crypto.js";
+import { encryptJson } from "./crypto.js";
 import * as engine from "./engine/manager.js";
 import {
   clearDatabase,
@@ -87,22 +80,12 @@ interface Dom {
   "memory-list": HTMLUListElement;
   "memory-input": HTMLInputElement;
   "memory-add": HTMLButtonElement;
-  "memory-add-row": HTMLElement;
-  "vault-status": HTMLElement;
-  "vault-enable": HTMLButtonElement;
-  "vault-unlock": HTMLButtonElement;
-  "vault-lock": HTMLButtonElement;
-  "vault-disable": HTMLButtonElement;
-  "vault-dialog": HTMLDialogElement;
-  "vault-title": HTMLElement;
-  "vault-sub": HTMLElement;
-  "vault-pass": HTMLInputElement;
-  "vault-confirm": HTMLInputElement;
-  "vault-confirm-field": HTMLElement;
-  "vault-hint": HTMLElement;
-  "vault-ok": HTMLButtonElement;
-  "import-data": HTMLButtonElement;
-  "import-file": HTMLInputElement;
+  "model-select": HTMLSelectElement;
+  "model-status": HTMLElement;
+  "model-note": HTMLElement;
+  "model-load": HTMLButtonElement;
+  "model-delete": HTMLButtonElement;
+  "model-progress": HTMLProgressElement;
   "theme-select": HTMLSelectElement;
   "export-data": HTMLButtonElement;
   "clear-data": HTMLButtonElement;
@@ -131,7 +114,8 @@ interface State {
   memoryOutcome: MemoryOutcome | null;
   editingId: string | null;
   memoryKey: CryptoKey | null;
-  vaultMode: "enable" | "unlock" | null;
+  modelSupport: { available: boolean; reason: string } | null;
+  modelCached: boolean | null;
 }
 
 const $ = (id: string) => document.getElementById(id);
@@ -154,7 +138,8 @@ const state: State = {
   memoryOutcome: null,
   editingId: null,
   memoryKey: null,
-  vaultMode: null,
+  modelSupport: null,
+  modelCached: null,
 };
 
 export async function boot() {
@@ -175,7 +160,12 @@ export async function boot() {
   renderAll();
   engine.subscribe(onEngineState);
 
-  await engine.init();
+  await initModelPanel();
+  await engine.init({
+    modelId: engine.models.some((model) => model.id === state.settings.modelId)
+      ? state.settings.modelId
+      : null,
+  });
 
   autoResize();
   updateComposerState();
@@ -217,22 +207,12 @@ function cacheDom() {
     "memory-list",
     "memory-input",
     "memory-add",
-    "memory-add-row",
-    "vault-status",
-    "vault-enable",
-    "vault-unlock",
-    "vault-lock",
-    "vault-disable",
-    "vault-dialog",
-    "vault-title",
-    "vault-sub",
-    "vault-pass",
-    "vault-confirm",
-    "vault-confirm-field",
-    "vault-hint",
-    "vault-ok",
-    "import-data",
-    "import-file",
+    "model-select",
+    "model-status",
+    "model-note",
+    "model-load",
+    "model-delete",
+    "model-progress",
     "theme-select",
     "export-data",
     "clear-data",
@@ -321,6 +301,15 @@ function bindEvents() {
     const button = (event.target as Element | null)?.closest<HTMLElement>("button[data-memory-id]");
     if (button) forgetMemory(button.dataset.memoryId ?? "");
   });
+  dom["model-select"].addEventListener("change", () => {
+    void applyModelChoice();
+  });
+  dom["model-load"].addEventListener("click", () => {
+    void downloadSelectedModel();
+  });
+  dom["model-delete"].addEventListener("click", () => {
+    void deleteSelectedModel();
+  });
   dom["theme-select"].addEventListener("change", () => {
     state.settings.theme = dom["theme-select"].value as Theme;
     applyTheme();
@@ -373,6 +362,15 @@ function onEngineState(snapshot: EngineState) {
   const previous = state.engine;
   state.engine = snapshot;
   updateEngineChrome(snapshot);
+  if (snapshot.error && snapshot.error !== previous.error) toast(snapshot.error);
+  if (
+    snapshot.phase !== previous.phase ||
+    snapshot.mode !== previous.mode ||
+    snapshot.modelId !== previous.modelId ||
+    snapshot.progress?.progress !== previous.progress?.progress
+  ) {
+    renderModelPanel();
+  }
 
   if (
     snapshot.phase === "ready" &&
@@ -442,7 +440,9 @@ function updateChatHeader() {
   dom["chat-title"].textContent = title;
 
   const mode = modeById(state.settings.mode);
-  dom["chat-sub"].textContent = `${mode.label} mode - built-in assistant`;
+  dom["chat-sub"].textContent = `${mode.label} mode - ${
+    state.engine.mode === "model" ? "on-device model" : "built-in assistant"
+  }`;
 }
 
 function updateComposerState() {
@@ -469,6 +469,28 @@ function updateEngineChrome(snapshot: EngineState) {
 }
 
 function engineStatus(snapshot: EngineState) {
+  const model = engine.models.find((item) => item.id === snapshot.modelId) ?? null;
+
+  if (snapshot.phase === "loading") {
+    const percent = Math.round((snapshot.progress?.progress ?? 0) * 100);
+    return {
+      tone: "generating",
+      label: "On-device model",
+      sub: snapshot.progress?.text || "Loading...",
+      chip: `Loading ${percent}%`,
+    };
+  }
+
+  if (snapshot.mode === "model" && model) {
+    return {
+      tone: snapshot.phase === "generating" ? "generating" : "ready",
+      label: model.label,
+      sub:
+        snapshot.phase === "generating" ? "Writing a reply..." : "On-device - WebGPU - offline",
+      chip: snapshot.phase === "generating" ? "Writing..." : model.label,
+    };
+  }
+
   if (snapshot.phase === "generating") {
     return {
       tone: "generating",
@@ -509,14 +531,17 @@ function renderMemoryList() {
   const memory = state.settings.memory || [];
 
   if (memoryLocked()) {
-    list.append(h("li", { class: "memory-empty", text: "Memory is locked. Unlock to view notes." }));
-    renderVaultControls();
+    list.append(
+      h("li", {
+        class: "memory-empty",
+        text: "This device holds an older encrypted memory store that this build cannot unlock.",
+      }),
+    );
     return;
   }
 
   if (!memory.length) {
     list.append(h("li", { class: "memory-empty", text: "Nothing remembered yet." }));
-    renderVaultControls();
     return;
   }
 
@@ -536,26 +561,10 @@ function renderMemoryList() {
       ),
     );
   }
-  renderVaultControls();
 }
 
 function memoryLocked(): boolean {
   return Boolean(state.settings.memoryVault) && !state.memoryKey;
-}
-
-function renderVaultControls() {
-  const vault = state.settings.memoryVault;
-  const locked = memoryLocked();
-  dom["vault-status"].textContent = vault
-    ? locked
-      ? "Encrypted with a passphrase. Locked until you unlock it."
-      : "Encrypted with a passphrase. Unlocked for this session."
-    : "Stored unencrypted on this device.";
-  dom["vault-enable"].hidden = Boolean(vault);
-  dom["vault-unlock"].hidden = !locked;
-  dom["vault-lock"].hidden = !vault || locked;
-  dom["vault-disable"].hidden = !vault || locked;
-  dom["memory-add-row"].hidden = locked;
 }
 
 async function commitMemory(notes: MemoryNote[]) {
@@ -572,117 +581,6 @@ async function commitMemory(notes: MemoryNote[]) {
   } catch (error) {
     console.error("Could not save memory", error);
     toast("Could not save memory.");
-  }
-}
-
-function openVaultDialog(mode: "enable" | "unlock") {
-  state.vaultMode = mode;
-  dom["vault-title"].textContent = mode === "enable" ? "Encrypt memory" : "Unlock memory";
-  dom["vault-sub"].textContent =
-    mode === "enable"
-      ? "Choose a passphrase. Notes are encrypted with AES-GCM before they are saved."
-      : "Enter the passphrase you set on this device.";
-  dom["vault-confirm-field"].hidden = mode !== "enable";
-  dom["vault-hint"].textContent =
-    mode === "enable"
-      ? "There is no recovery: if you forget the passphrase, the notes cannot be read. Use at least 8 characters."
-      : "The passphrase is never stored; it only unlocks notes for this session.";
-  dom["vault-pass"].value = "";
-  dom["vault-confirm"].value = "";
-  dom["vault-dialog"].showModal();
-  dom["vault-pass"].focus();
-}
-
-async function confirmVault() {
-  const mode = state.vaultMode;
-  const pass = dom["vault-pass"].value;
-  if (!mode) return;
-
-  if (mode === "enable") {
-    if (pass.length < 8) {
-      toast("Use a passphrase of at least 8 characters.");
-      return;
-    }
-    if (pass !== dom["vault-confirm"].value) {
-      toast("Passphrases do not match.");
-      return;
-    }
-    const salt = randomSalt();
-    const key = await deriveMemoryKey(pass, salt);
-    const vault: MemoryVault = {
-      salt,
-      verifier: await encryptJson(key, MEMORY_VERIFIER),
-      notes: await encryptJson(key, state.settings.memory || []),
-    };
-    state.settings.memoryVault = vault;
-    state.memoryKey = key;
-    await saveSettings({ memoryVault: vault, memory: [] });
-    closeDialog(dom["vault-dialog"]);
-    renderMemoryList();
-    toast("Memory encrypted on this device.");
-    return;
-  }
-
-  const vault = state.settings.memoryVault;
-  if (!vault) return;
-  const key = await deriveMemoryKey(pass, vault.salt);
-  if (!(await checkVerifier(key, vault.verifier))) {
-    toast("Wrong passphrase.");
-    return;
-  }
-  state.memoryKey = key;
-  state.settings.memory = await decryptJson<MemoryNote[]>(key, vault.notes);
-  closeDialog(dom["vault-dialog"]);
-  renderMemoryList();
-  toast("Memory unlocked for this session.");
-}
-
-function lockMemory() {
-  state.memoryKey = null;
-  state.settings.memory = [];
-  renderMemoryList();
-  toast("Memory locked.");
-}
-
-async function disableEncryption() {
-  const ok = await confirmDialog({
-    title: "Disable memory encryption?",
-    body: "Notes will be stored unencrypted on this device.",
-    confirmLabel: "Disable",
-  });
-  if (!ok) return;
-  const notes = state.settings.memory || [];
-  state.settings.memoryVault = null;
-  state.memoryKey = null;
-  await saveSettings({ memoryVault: null, memory: notes });
-  renderMemoryList();
-  toast("Memory encryption disabled.");
-}
-
-async function importChats(file: File) {
-  try {
-    const payload = JSON.parse(await file.text());
-    if (payload?.app !== "LocalMind" || !Array.isArray(payload.conversations)) {
-      toast("Not a LocalMind export.");
-      return;
-    }
-    for (const conversation of payload.conversations) await saveConversation(conversation);
-    const source = payload.settings || {};
-    const patch: Partial<Settings> = {};
-    if (typeof source.mode === "string") patch.mode = source.mode;
-    if (typeof source.theme === "string") patch.theme = source.theme as Theme;
-    if (source.memoryVault) {
-      patch.memoryVault = source.memoryVault;
-      patch.memory = [];
-    } else if (Array.isArray(source.memory)) {
-      patch.memory = source.memory;
-    }
-    await saveSettings(patch);
-    toast("Imported. Reloading...");
-    window.setTimeout(() => window.location.reload(), 500);
-  } catch (error) {
-    console.error(error);
-    toast("Import failed.");
   }
 }
 
@@ -728,6 +626,172 @@ function refreshWelcomeSuggestions() {
   if (state.conversation && state.conversation.messages.length === 0) {
     renderConversation({ scroll: false });
   }
+}
+
+/* ---------------------------------------------------------------
+   On-device model
+--------------------------------------------------------------- */
+
+async function initModelPanel() {
+  const select = dom["model-select"];
+  select.textContent = "";
+  select.append(h("option", { value: "", text: "Built-in assistant - no download" }));
+  for (const model of engine.models) {
+    select.append(
+      h("option", {
+        value: model.id,
+        text: `${model.label} - about ${model.sizeMB} MB`,
+      }),
+    );
+  }
+  select.value = engine.models.some((model) => model.id === state.settings.modelId)
+    ? state.settings.modelId
+    : "";
+
+  state.modelSupport = await engine.detectSupport();
+  renderModelPanel();
+}
+
+function selectedModel() {
+  const id = dom["model-select"].value;
+  return engine.models.find((model) => model.id === id) ?? null;
+}
+
+function renderModelPanel() {
+  const model = selectedModel();
+  const snapshot = engine.getState();
+  const supported = state.modelSupport?.available ?? false;
+  const loading = snapshot.phase === "loading";
+  const loadingThis = loading && snapshot.modelId === model?.id;
+  const active = snapshot.mode === "model" && snapshot.modelId === model?.id;
+  const cached = state.modelCached === true;
+
+  dom["model-select"].value = model ? model.id : "";
+  dom["model-select"].disabled = loading;
+
+  const status = dom["model-status"];
+  status.classList.remove("is-error");
+
+  if (!state.modelSupport) {
+    status.textContent = "Checking this device...";
+  } else if (!supported && model) {
+    status.textContent = state.modelSupport.reason;
+    status.classList.add("is-error");
+  } else if (!supported && !model) {
+    status.textContent = `Built-in assistant ready. ${state.modelSupport.reason}`;
+  } else if (loadingThis) {
+    status.textContent = snapshot.progress?.text || `Loading ${model.label}...`;
+  } else if (loading) {
+    status.textContent = "Another model is loading...";
+  } else if (active && snapshot.phase === "generating") {
+    status.textContent = `${model.label} is writing a reply on this device.`;
+  } else if (active) {
+    status.textContent = `${model.label} is loaded. Replies run on your GPU and never leave the tab.`;
+  } else if (model && cached) {
+    status.textContent = `${model.label} is downloaded. Load it to use it.`;
+  } else if (model) {
+    status.textContent = `${model.label} is not downloaded yet (about ${model.sizeMB} MB, once).`;
+  } else {
+    status.textContent =
+      "Using the built-in rule assistant. Pick a model above to run a real one on this device.";
+  }
+
+  const progress = dom["model-progress"];
+  progress.hidden = !loadingThis;
+  progress.value = snapshot.progress?.progress ?? 0;
+
+  const load = dom["model-load"];
+  load.hidden = !model;
+  load.disabled = !model || !supported || loading || active;
+  load.textContent = active ? "Loaded" : cached ? "Load model" : "Download and load";
+
+  const remove = dom["model-delete"];
+  remove.hidden = !model;
+  remove.disabled = !model || loading;
+
+  dom["model-note"].textContent = model
+    ? `${model.params} parameters. ${model.note} Weights are cached in this browser's private storage and can be deleted at any time.`
+    : "Models run in a Worker with WebGPU. Your prompts and replies stay on this device.";
+}
+
+async function refreshModelPanel({ checkCache = false }: { checkCache?: boolean } = {}) {
+  const model = selectedModel();
+  if (!model) {
+    state.modelCached = false;
+  } else if (checkCache && (state.modelSupport?.available ?? false)) {
+    state.modelCached = await engine.hasCachedModel(model.id).catch(() => false);
+  } else if (state.engine.mode === "model" && state.engine.modelId === model.id) {
+    state.modelCached = true;
+  }
+  renderModelPanel();
+}
+
+async function applyModelChoice() {
+  const model = selectedModel();
+  const next = model ? model.id : "";
+  state.modelCached = null;
+
+  if (next === state.settings.modelId) {
+    await refreshModelPanel({ checkCache: true });
+    return;
+  }
+
+  state.settings.modelId = next;
+  await saveSettingsPatch({ modelId: next });
+
+  if (!model) {
+    await engine.unloadModel();
+    toast("Using the built-in assistant.");
+  } else if ((state.modelSupport?.available ?? false) && (await engine.hasCachedModel(model.id))) {
+    await loadSelectedModel(model.id);
+  }
+
+  await refreshModelPanel({ checkCache: true });
+}
+
+async function downloadSelectedModel() {
+  const model = selectedModel();
+  if (!model) return;
+  await loadSelectedModel(model.id);
+}
+
+async function loadSelectedModel(id: string) {
+  const model = engine.models.find((item) => item.id === id) ?? null;
+  if (!model) return;
+
+  state.settings.modelId = id;
+  await saveSettingsPatch({ modelId: id });
+
+  try {
+    await engine.useModel(id);
+    state.modelCached = true;
+    toast(`${model.label} is ready on this device.`);
+  } catch (error) {
+    state.modelCached = false;
+    toast(friendlyError(error));
+  }
+  renderModelPanel();
+}
+
+async function deleteSelectedModel() {
+  const model = selectedModel();
+  if (!model) return;
+
+  const ok = await confirmDialog({
+    title: "Delete model download?",
+    body: `${model.label} weights (about ${model.sizeMB} MB) will be removed from this browser. You can download them again later.`,
+    confirmLabel: "Delete",
+  });
+  if (!ok) return;
+
+  try {
+    await engine.deleteModel(model.id);
+    state.modelCached = false;
+    toast("Model download deleted.");
+  } catch {
+    toast("Could not delete the model download.");
+  }
+  await refreshModelPanel({ checkCache: true });
 }
 
 /* ---------------------------------------------------------------
@@ -870,6 +934,7 @@ function upsertSummary(conversation: Conversation) {
 
 function openSettings() {
   syncSettingsForm();
+  void refreshModelPanel({ checkCache: true });
   if (!dom["settings-dialog"].open) dom["settings-dialog"].showModal();
 }
 
@@ -970,7 +1035,11 @@ function handleSend() {
   if (!text) return;
 
   if (!engine.isReady()) {
-    toast("The assistant is still starting. Try again in a second.");
+    toast(
+      state.engine.phase === "loading"
+        ? "The on-device model is still loading. Try again in a moment."
+        : "The assistant is still starting. Try again in a second.",
+    );
     return;
   }
 

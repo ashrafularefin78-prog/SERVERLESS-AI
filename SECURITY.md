@@ -12,7 +12,7 @@ This is a small project, not an audited product.
 
 ## Trust boundaries
 
-1. **The page and its bundled code.** Pinned npm dependencies are bundled at build time. There are no third-party scripts at runtime and no runtime downloads of any kind.
+1. **The page and its bundled code.** Pinned npm dependencies are bundled at build time. There are no third-party scripts at runtime. The only runtime download is an optional model: after an explicit user action, pinned weights and a compatible inference binary are fetched from Hugging Face and the model-library host. No chat text is ever sent with those requests.
 2. **Assistant output.** Text assembled from rules, templates, and user-supplied content. It can contain markup, misleading claims, links, or attempts to imitate the UI.
 3. **Other browser extensions and local malware.** Outside the app's control. An extension with page access can read everything.
 4. **The static host.** A compromised host or DNS can serve modified JavaScript. HTTPS and host security are required.
@@ -31,7 +31,7 @@ This is a small project, not an audited product.
 - Links are rewritten to `target="_blank"` with `rel="noopener noreferrer"`; links with schemes other than `http(s)` and `mailto` are replaced with plain text.
 - Images are not rendered, so image-based tracking and `onerror` payloads do not run.
 - Streaming text is inserted with `textContent`; markdown parsing happens only after the reply finishes.
-- A CSP forbids inline scripts, eval, WebAssembly compilation, non-self scripts, and non-self connections. The app is model-free; widening the policy for any new capability requires updating this document in the same change.
+- A CSP forbids inline scripts, eval, non-self scripts, and non-self connections. On-device inference requires `wasm-unsafe-eval` (to compile the pinned runtime) and network access limited to the model hosts. Those are the only widenings; the policy must be revisited in the same change as any new capability.
 
 **Residual risk:** Sanitizer bypasses are possible. Keep DOMPurify updated; do not add raw HTML rendering paths.
 
@@ -42,6 +42,20 @@ This is a small project, not an audited product.
 **Mitigation:** The app has no tools, no browsing, no file access, and no automatic actions, so a successful injection can only produce text. Pasted code and quoted text are treated as data by the rule engine.
 
 **Residual risk:** If retrieval or tools are added, treat retrieved text and tool output as untrusted. Require explicit user confirmation before any side effect.
+
+### Model weights and the inference runtime
+
+**Threat:** A compromised or swapped model artifact executes attacker-influenced code or feeds malicious weights into the inference runtime.
+
+**Mitigation:**
+
+- Model ids, weight URLs, compatible model libraries and integrity data come from WebLLM's pinned `prebuiltAppConfig` in the installed package, not from user input or a runtime manifest.
+- WebLLM verifies artifacts with SHA-256 SRI hashes before caching them (`integrity` records, `verifyIntegrity`).
+- Weights and the compiled library are written to OPFS; the service worker never precaches or intercepts them.
+- The page only reaches `huggingface.co`, its CDN subdomains, and `raw.githubusercontent.com`; nothing else is in `connect-src`.
+- Model output is still untrusted text and goes through the same markdown sanitizer.
+
+**Residual risk:** The hashes protect against corrupted downloads and CDN tampering on the wire, not against a compromised upstream model repository whose hash is also updated. Treat a downloaded model as executable third-party code, and keep `@mlc-ai/web-llm` updated.
 
 ### Data at rest
 

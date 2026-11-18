@@ -44,6 +44,8 @@ export interface Settings {
   customInstructions: string;
   memory: MemoryNote[];
   memoryVault: MemoryVault | null;
+  /** Model id to restore on start, or "" for the built-in rule engine. */
+  modelId: string;
 }
 
 export interface Mode {
@@ -97,8 +99,17 @@ export interface DemoOptions {
 export type StreamChunk =
   { text: string } | { usage: { completion_tokens: number; total_tokens: number } };
 
+export interface ModelProgress {
+  text: string;
+  progress: number;
+}
+
 export interface EngineState {
-  phase: "idle" | "ready" | "generating";
+  phase: "idle" | "loading" | "ready" | "generating";
   generating: boolean;
   loaded: boolean;
+  mode: "builtin" | "model";
+  modelId: string | null;
+  progress: ModelProgress | null;
+  error: string | null;
 }

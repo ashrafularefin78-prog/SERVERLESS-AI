@@ -1965,3 +1965,36 @@ svg {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------------------------------------------------------------
+   On-device model panel
+--------------------------------------------------------------- */
+
+.model-status {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.model-status.is-error {
+  color: var(--danger);
+}
+
+.model-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.model-controls .btn {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+#model-progress {
+  width: 100%;
+  height: 6px;
+  margin-top: 10px;
+  accent-color: var(--accent);
+}

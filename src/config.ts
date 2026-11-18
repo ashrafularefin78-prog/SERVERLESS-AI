@@ -60,6 +60,7 @@ export const DEFAULT_SETTINGS: Settings = {
   customInstructions: "",
   memory: [],
   memoryVault: null,
+  modelId: "",
 };
 
 export const CONTEXT_LIMITS = {

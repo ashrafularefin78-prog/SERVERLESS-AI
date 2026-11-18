@@ -273,19 +273,20 @@ export function renderWelcome({
       class: "welcome-lede",
       text:
         "Chat instantly with a built-in assistant - no setup, no API key, and nothing leaves " +
-        "this device. It handles everyday chat, on-device memory, and coding help.",
+        "this device. Add an on-device model in Settings for full neural replies.",
     }),
   );
 
   const ready = engine.phase === "ready" || engine.phase === "generating";
-  welcome.append(
-    renderNotice(
-      ready
-        ? "The built-in assistant is ready. Ask anything, or pick a suggestion below."
-        : "Starting the built-in assistant...",
-      false,
-    ),
-  );
+  const notice =
+    engine.phase === "loading"
+      ? engine.progress?.text || "Loading the on-device model..."
+      : engine.mode === "model" && ready
+        ? "The on-device model is ready. Ask anything, or pick a suggestion below."
+        : ready
+          ? "The built-in assistant is ready. Ask anything, or pick a suggestion below."
+          : "Starting the built-in assistant...";
+  welcome.append(renderNotice(notice, false));
 
   const chips = h("div", { class: "suggestions" });
   for (const suggestion of suggestions) {

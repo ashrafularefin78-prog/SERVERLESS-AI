@@ -6,7 +6,7 @@
     <title>LocalMind - private AI in your browser</title>
     <meta
       name="description"
-      content="A private AI chat that runs entirely in your browser on a built-in assistant. No API keys, no servers, no model downloads, and nothing leaves your device."
+      content="A private AI chat that runs entirely in your browser: an optional on-device WebGPU model plus a built-in rule assistant. No API keys, no servers, and nothing leaves your device."
     />
     <meta name="color-scheme" content="dark light" />
     <meta name="theme-color" content="#0c0f0e" />
@@ -254,13 +254,25 @@
         </header>
         <div class="modal-body">
           <section class="setting-section">
-            <h3>Assistant</h3>
-            <div class="setting-card">
-              <div class="setting-card-text">
-                <strong>Built-in assistant</strong>
-                <small>Rule-based, works offline, no setup or downloads.</small>
-              </div>
+            <h3>AI model</h3>
+            <p class="memory-note">
+              Optional: run a real neural model in this tab on your GPU. Weights download once into
+              this browser's private storage and never leave the device. Without it, the built-in
+              rule assistant answers instantly and offline.
+            </p>
+            <label class="field">
+              <span class="field-label">Model</span>
+              <select id="model-select"></select>
+            </label>
+            <div class="model-status" id="model-status" role="status">
+              Checking this device...
             </div>
+            <div class="model-controls">
+              <button class="btn subtle" id="model-load" type="button">Download and load</button>
+              <button class="btn subtle" id="model-delete" type="button">Delete download</button>
+            </div>
+            <progress id="model-progress" max="1" value="0" hidden></progress>
+            <p class="memory-note" id="model-note"></p>
           </section>
 
           <section class="setting-section">
@@ -319,7 +331,7 @@
             <div>
               <strong>LocalMind 1.0</strong>
               <p class="muted small">
-                Built-in assistant - no backend, no model download, no tracking.
+                Built-in rule assistant plus an optional on-device model - no backend, no tracking.
               </p>
             </div>
           </section>
