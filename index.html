@@ -305,6 +305,26 @@
           </section>
 
           <section class="setting-section">
+            <h3>Knowledge</h3>
+            <p class="memory-note">
+              Add notes, docs, or a README and replies can be grounded in them. Files are chunked,
+              embedded on this device, and stored in IndexedDB. Nothing is uploaded.
+            </p>
+            <ul class="memory-list" id="knowledge-list"></ul>
+            <div class="memory-add">
+              <button class="btn subtle" id="knowledge-add" type="button">Add documents</button>
+              <input
+                id="knowledge-file"
+                type="file"
+                accept=".txt,.md,.markdown,.csv,.json,.log"
+                multiple
+                hidden
+              />
+            </div>
+            <p class="memory-note" id="knowledge-status"></p>
+          </section>
+
+          <section class="setting-section">
             <h3>Appearance</h3>
             <label class="field">
               <span class="field-label">Theme</span>

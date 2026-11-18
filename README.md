@@ -4,6 +4,7 @@ A private AI chat that runs entirely in your browser. It ships with a **built-in
 
 - **Built-in assistant:** natural small talk, on-device memory, language/task detection, and coding scaffolding. Replies come from local rules and templates. No download needed.
 - **On-device models (optional):** one click downloads a quantised 0.3B-1B chat model, verifies and caches it in the browser's private storage (OPFS), and runs inference in a Web Worker on WebGPU. Weights are fetched once from Hugging Face and never leave the device. Delete them at any time in Settings.
+- **Knowledge and retrieval (optional):** add text or markdown documents in Settings. They are chunked, embedded on-device with all-MiniLM-L6-v2 through Transformers.js, and stored as vectors in IndexedDB. Relevant passages are retrieved with a flat cosine index and injected into the prompt, and replies name the documents they used. Nothing is uploaded.
 - **UI:** vanilla JS + Vite, markdown and code rendering, streaming with stop/regenerate/copy, modes, dark/light theme, mobile layout.
 - **Storage:** chats and settings in IndexedDB. Nothing is uploaded.
 - **Memory:** notes you ask it to remember ("remember ...", "forget ..."), kept on-device and carried into every chat. Manage them in Settings.
@@ -53,6 +54,20 @@ How the model path is built:
 
 Without a downloaded model everything still works offline; replies come from `generateDemo` in `src/engine/demo.ts`.
 
+## Knowledge and retrieval (optional)
+
+RAG is the difference between a chat toy and an assistant that knows your material. The pipeline is entirely local:
+
+1. **Ingest.** A text or markdown file (up to 200k characters, 20 documents) is read in the page, normalised and chunked into ~900-character passages with 120-character overlap. Chunking is deterministic.
+2. **Embed.** `@huggingface/transformers` runs `onnx-community/all-MiniLM-L6-v2-ONNX` (384 dimensions, q8) inside `src/rag/embed-worker.ts`. The model downloads once on first use and is cached by the browser; the ONNX Runtime WebAssembly binary ships from this origin, not a CDN.
+3. **Store.** `src/rag/store.ts` writes documents and chunk vectors to two new IndexedDB stores. The database moves to version 2 with an additive upgrade, so existing chats and settings are untouched.
+4. **Retrieve.** A query is embedded the same way, scored against every stored chunk with cosine similarity (a flat scan is both exact and fast at browser scale), and the top four passages above a score floor are formatted into a numbered grounding block.
+5. **Ground.** The block is added to the system prompt with an explicit instruction that document text is data, not instructions. The reply records which documents contributed, and the UI shows "From your documents: ..." under the answer.
+
+Removing a document deletes its chunks and vectors immediately. Retrieval failures never block a reply: the chat falls back to the conversation alone.
+
+Grounding applies to the on-device model path. The built-in rule engine cannot read reference material, so it answers from rules alone and no sources are shown for its replies. The first document download is about 23 MB of embedding weights plus a ~26 MB ONNX Runtime WebAssembly binary served from this origin.
+
 ## How it works
 
 ```
@@ -69,6 +84,7 @@ index.html, src/main.ts
         +-- src/engine/local.ts     WebGPU session: cache, worker, streaming
         +-- src/engine/model-worker.ts  WebLLM engine inside a Worker
         +-- src/engine/manager.ts   generation lifecycle for both backends
+        +-- src/rag/                chunking, embeddings, IndexedDB vectors, retrieval
 ```
 
 The rule engine runs on the main thread; an on-device model runs in a Worker and streams tokens back over `postMessage`. Either way the UI receives the same chunk stream.
@@ -135,6 +151,7 @@ The rule engine is the product, so it is covered by unit tests in `tests/unit/`:
 - reply rules, safety replies, math, and code scaffolding (`chat/replies.js`)
 - language and task detection (`coder/languages.js`)
 - the demo engine, including streaming and cancellation (`engine/demo.js`)
+- retrieval internals: chunking, overlap, cosine ranking, and grounding-block formatting (`rag/`)
 
 Playwright tests in `tests/e2e/` cover the critical browser flows: sending a message, receiving a streamed reply, memory commands, clearing local data, and making no cross-origin requests. They run against both the dev server and the production build (`npm run build && npm run test:e2e:preview`). CI runs lint, formatting, unit tests with coverage thresholds, `npm audit --omit=dev`, the production build, a bundle-size budget, and both browser test modes on every push and pull request.
 
@@ -159,7 +176,8 @@ Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md), follow the [
 - The built-in assistant uses rules and templates: it can chat, remember notes, and scaffold code, but it cannot genuinely reason or write arbitrary answers.
 - On-device models change that, but a 0.3B-1B quantised model is still small: expect uneven factual accuracy, weaker reasoning, and short context. It is a private local assistant, not a frontier model.
 - WebGPU support and GPU memory determine which models run. Settings reports the reason when a device cannot run them.
-- There is no internet access at reply time, no tools, and no retrieval.
+- There is no internet access at reply time and no tools. Retrieval covers only the documents you add; it does not search the web.
+- Retrieval is small-scale by design: up to 20 documents, flat cosine search, top four passages, no reranking. A small local model may still ignore or misread the passages.
 - Conversational prompts and local memory shape tone and continuity; they do not add reasoning ability.
 
 ## License

@@ -32,11 +32,19 @@ import {
 import { h, renderHistory, renderMessage, renderWelcome, streamText } from "./ui/render.js";
 import { buildCodingPrompt, coderSuggestions, demoCodingReply } from "./coder/languages.js";
 import { piiWarning } from "./guardrails.js";
+import {
+  addDocumentFile,
+  listDocuments,
+  removeDocument,
+  retrieveKnowledge,
+  setEmbeddingProgressListener,
+} from "./rag/index.js";
 import type {
   ChatMessage,
   Conversation,
   ConversationSummary,
   EngineState,
+  KnowledgeDoc,
   MemoryNote,
   MemoryOutcome,
   MemoryVault,
@@ -86,6 +94,10 @@ interface Dom {
   "model-load": HTMLButtonElement;
   "model-delete": HTMLButtonElement;
   "model-progress": HTMLProgressElement;
+  "knowledge-list": HTMLUListElement;
+  "knowledge-add": HTMLButtonElement;
+  "knowledge-file": HTMLInputElement;
+  "knowledge-status": HTMLElement;
   "theme-select": HTMLSelectElement;
   "export-data": HTMLButtonElement;
   "clear-data": HTMLButtonElement;
@@ -116,6 +128,8 @@ interface State {
   memoryKey: CryptoKey | null;
   modelSupport: { available: boolean; reason: string } | null;
   modelCached: boolean | null;
+  knowledge: KnowledgeDoc[];
+  knowledgeBusy: boolean;
 }
 
 const $ = (id: string) => document.getElementById(id);
@@ -140,6 +154,8 @@ const state: State = {
   memoryKey: null,
   modelSupport: null,
   modelCached: null,
+  knowledge: [],
+  knowledgeBusy: false,
 };
 
 export async function boot() {
@@ -161,6 +177,7 @@ export async function boot() {
   engine.subscribe(onEngineState);
 
   await initModelPanel();
+  await refreshKnowledge();
   await engine.init({
     modelId: engine.models.some((model) => model.id === state.settings.modelId)
       ? state.settings.modelId
@@ -213,6 +230,10 @@ function cacheDom() {
     "model-load",
     "model-delete",
     "model-progress",
+    "knowledge-list",
+    "knowledge-add",
+    "knowledge-file",
+    "knowledge-status",
     "theme-select",
     "export-data",
     "clear-data",
@@ -300,6 +321,18 @@ function bindEvents() {
   dom["memory-list"].addEventListener("click", (event) => {
     const button = (event.target as Element | null)?.closest<HTMLElement>("button[data-memory-id]");
     if (button) forgetMemory(button.dataset.memoryId ?? "");
+  });
+  dom["knowledge-add"].addEventListener("click", () => dom["knowledge-file"].click());
+  dom["knowledge-file"].addEventListener("change", () => {
+    const files = Array.from(dom["knowledge-file"].files ?? []);
+    dom["knowledge-file"].value = "";
+    if (files.length) void addKnowledgeFiles(files);
+  });
+  dom["knowledge-list"].addEventListener("click", (event) => {
+    const button = (event.target as Element | null)?.closest<HTMLElement>(
+      "button[data-knowledge-id]",
+    );
+    if (button) void deleteKnowledge(button.dataset.knowledgeId ?? "");
   });
   dom["model-select"].addEventListener("change", () => {
     void applyModelChoice();
@@ -625,6 +658,105 @@ function refreshWelcomeSuggestions() {
   if (state.conversation && state.conversation.messages.length === 0) {
     renderConversation({ scroll: false });
   }
+}
+
+/* ---------------------------------------------------------------
+   Knowledge base
+--------------------------------------------------------------- */
+
+async function refreshKnowledge() {
+  try {
+    state.knowledge = await listDocuments();
+  } catch (error) {
+    console.warn("Could not read the knowledge base", error);
+    state.knowledge = [];
+  }
+  renderKnowledgePanel();
+}
+
+function renderKnowledgePanel() {
+  const list = dom["knowledge-list"];
+  list.textContent = "";
+
+  if (!state.knowledge.length) {
+    list.append(h("li", { class: "memory-empty", text: "No documents yet." }));
+  } else {
+    for (const doc of state.knowledge) {
+      const chunks = `${doc.chunkCount} chunk${doc.chunkCount === 1 ? "" : "s"}`;
+      list.append(
+        h(
+          "li",
+          { class: "memory-item" },
+          h("span", { text: `${doc.title} (${chunks})` }),
+          h("button", {
+            class: "icon-btn",
+            type: "button",
+            "aria-label": `Remove ${doc.title}`,
+            dataset: { knowledgeId: doc.id },
+            html: '<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x"></use></svg>',
+          }),
+        ),
+      );
+    }
+  }
+
+  if (!state.knowledgeBusy) {
+    dom["knowledge-status"].textContent = state.knowledge.length
+      ? `${state.knowledge.length} document${state.knowledge.length === 1 ? "" : "s"} indexed. On-device model replies can cite them.`
+      : "Embeddings run on this device. The first document downloads a small model once.";
+  }
+  dom["knowledge-add"].disabled = state.knowledgeBusy;
+}
+
+async function addKnowledgeFiles(files: File[]) {
+  state.knowledgeBusy = true;
+  renderKnowledgePanel();
+
+  setEmbeddingProgressListener((progress) => {
+    const status = dom["knowledge-status"];
+    if (progress.phase === "download") {
+      const percent = progress.total ? Math.round((progress.loaded / progress.total) * 100) : 0;
+      status.textContent = `Preparing the embedding model... ${percent}%`;
+      return;
+    }
+    status.textContent = `Indexing ${progress.file}: ${progress.loaded}/${progress.total} chunks...`;
+  });
+
+  try {
+    for (const file of files) {
+      dom["knowledge-status"].textContent = `Indexing ${file.name}...`;
+      await addDocumentFile(file);
+    }
+    toast(
+      files.length === 1
+        ? `${files[0]?.name ?? "Document"} indexed on this device.`
+        : `${files.length} documents indexed on this device.`,
+    );
+  } catch (error) {
+    toast(friendlyError(error));
+  } finally {
+    setEmbeddingProgressListener(null);
+    state.knowledgeBusy = false;
+    await refreshKnowledge();
+  }
+}
+
+async function deleteKnowledge(id: string) {
+  const doc = state.knowledge.find((item) => item.id === id);
+  const ok = await confirmDialog({
+    title: "Remove this document?",
+    body: `"${doc?.title ?? "This document"}" and its embeddings will be deleted from this device.`,
+    confirmLabel: "Remove",
+  });
+  if (!ok) return;
+
+  try {
+    await removeDocument(id);
+    toast("Document removed.");
+  } catch {
+    toast("Could not remove the document.");
+  }
+  await refreshKnowledge();
 }
 
 /* ---------------------------------------------------------------
@@ -1127,7 +1259,27 @@ async function runGeneration(assistantId: string) {
   const assistant = conversation?.messages.find((message) => message.id === assistantId);
   if (!conversation || !assistant) return;
 
-  const messagesForEngine = buildEngineMessages(conversation, assistantId);
+  const latestUser =
+    [...conversation.messages]
+      .reverse()
+      .find((message) => message.role === "user" && message.id !== assistantId)?.content ?? "";
+
+  // The rule engine cannot read a grounding block, so retrieval only runs for
+  // the neural path. Otherwise the UI would claim sources a reply never used.
+  let knowledge: { block: string; sources: string[] } | null = null;
+  if (engine.getState().mode === "model" && latestUser.trim() && state.knowledge.length) {
+    try {
+      knowledge = await retrieveKnowledge(latestUser);
+    } catch (error) {
+      console.warn("Knowledge retrieval skipped", error);
+    }
+  }
+
+  const messagesForEngine = buildEngineMessages(
+    conversation,
+    assistantId,
+    knowledge?.block ?? null,
+  );
   if (!messagesForEngine) {
     assistant.streaming = false;
     assistant.error = "There is no message to answer.";
@@ -1202,6 +1354,7 @@ async function runGeneration(assistantId: string) {
   if (errorMessage) {
     assistant.error = errorMessage;
   } else {
+    assistant.sources = knowledge?.sources;
     if (!assistant.content) {
       assistant.content = stoppedByUser ? "_Stopped._" : "_No output. Try a shorter prompt._";
     }
@@ -1230,7 +1383,11 @@ async function runGeneration(assistantId: string) {
   focusInput();
 }
 
-function buildEngineMessages(conversation: Conversation, excludeId: string): ChatMessage[] | null {
+function buildEngineMessages(
+  conversation: Conversation,
+  excludeId: string,
+  knowledgeBlock: string | null = null,
+): ChatMessage[] | null {
   const mode = modeById(state.settings.mode);
   const latestUser =
     [...conversation.messages]
@@ -1246,6 +1403,8 @@ function buildEngineMessages(conversation: Conversation, excludeId: string): Cha
 
   const hint = understandingHint(analyzeIntent(latestUser));
   if (hint) systemPrompt += `\n\n${hint}`;
+
+  if (knowledgeBlock) systemPrompt += `\n\n${knowledgeBlock}`;
 
   if (mode.id === "coder") {
     systemPrompt += `\n\n${buildCodingPrompt({

@@ -21,6 +21,9 @@ index.html
        |     |-- src/engine/models.ts  model catalogue and cache config
        |     |-- src/engine/local.ts   WebGPU session, OPFS cache, streaming
        |     `-- src/engine/model-worker.ts  WebLLM engine in a Worker
+       |-- src/rag/               chunking, Transformers.js embeddings, vectors, retrieval
+       |     |-- src/rag/embed-worker.ts  MiniLM embeddings in a Worker
+       |     `-- src/rag/store.ts    IndexedDB documents and chunk vectors
        `-- src/storage/db.ts      IndexedDB conversations and settings
 ```
 
@@ -42,19 +45,25 @@ If boot fails, `main.ts` shows a self-contained error overlay with a reload acti
 2. `parseMemoryCommand(text)` inspects explicit commands. If one is present, `applyMemoryCommand()` updates the in-memory list and persisted settings, and the outcome is stored for the reply.
 3. The user message and a placeholder assistant message are appended to the conversation and saved to IndexedDB.
 4. `runGeneration()` builds a bounded context (`maxMessages`, `maxChars`) via `compactHistory()`, starts an `AbortController`, and calls `engine.generate()`. Turns that fall out of the window are not lost silently: an extractive digest of them is carried as a system note and can be recapped on request.
-5. `engine.generate()` routes to the active backend: `generateDemo()` for the rule engine, or `streamModel()` in `local.ts` for a loaded model. Both yield the same `StreamChunk` shape and honour the abort signal. Model generation calls `interruptGenerate()` on the worker when the signal aborts.
-6. `app.ts` appends chunks through `streamText()` using `textContent` while streaming. When the stream finishes, the final content is saved and rendered as sanitized markdown.
+5. If the knowledge base has documents, `retrieveKnowledge()` embeds the latest user message, scores stored chunks (flat cosine), and returns a grounding block plus the document titles used. Retrieval errors are logged and the reply continues without context.
+6. `engine.generate()` routes to the active backend: `generateDemo()` for the rule engine, or `streamModel()` in `local.ts` for a loaded model. Both yield the same `StreamChunk` shape and honour the abort signal. Model generation calls `interruptGenerate()` on the worker when the signal aborts.
+7. On completion the assistant message records `sources`, which the UI renders as "From your documents: ...".
+8. `app.ts` appends chunks through `streamText()` using `textContent` while streaming. When the stream finishes, the final content is saved and rendered as sanitized markdown.
 
 Stop and regenerate are handled with the run identifier and abort signal. A late chunk from an old run is ignored. Editing a user message loads it into the composer with a banner; sending truncates the conversation at that message and regenerates from the new text. Edit actions are hidden while a reply is generating.
 
 ## Data model
 
-IndexedDB database `localmind`, version 1:
+IndexedDB database `localmind`, version 2:
 
-| Store           | Key   | Contents                                                                |
-| --------------- | ----- | ----------------------------------------------------------------------- |
-| `conversations` | `id`  | Title, timestamps, mode, and messages                                   |
-| `settings`      | `key` | One row per setting key (theme, memory, custom instructions, and so on) |
+| Store             | Key   | Contents                                                                |
+| ----------------- | ----- | ----------------------------------------------------------------------- |
+| `conversations`   | `id`  | Title, timestamps, mode, messages, and grounding sources                |
+| `settings`        | `key` | One row per setting key (theme, memory, custom instructions, and so on) |
+| `knowledge`       | `id`  | Document title, size, timestamp, and chunk count                        |
+| `knowledgeChunks` | `id`  | Chunk text, owning document id, and a 384-dimension `Float32Array`      |
+
+The v1 to v2 upgrade is additive: existing conversations and settings are read unchanged, and the two knowledge stores are created on demand. `openDb()` also verifies every required store after opening and, if one is missing (an older profile, an interrupted upgrade), reopens at version + 1 to run the same idempotent creation path. It always opens the existing version first, so a profile that already moved past the configured version does not throw `VersionError`. This is the migration pattern to extend for future stores; never renumber or reuse a version.
 
 `settings` rows are merged over `DEFAULT_SETTINGS`, so missing keys get safe defaults. Conversations are sorted by `updatedAt` for the sidebar. "Clear all data" closes and deletes the database, clears caches and web storage, unregisters service workers, and reloads.
 
@@ -75,6 +84,18 @@ IndexedDB database `localmind`, version 1:
 - The inference library is loaded with `import("@mlc-ai/web-llm")` only when a model is loaded, so the entry bundle stays small (`npm run check:size` measures the initial payload, not the lazy chunk).
 
 See [rule-engine.md](rule-engine.md) for the rule order and extension points.
+
+## Retrieval
+
+`src/rag/` is a self-contained pipeline with pure, tested cores:
+
+- `chunk.ts` splits normalized text into deterministic ~900-character chunks with 120-character overlap. Paragraphs and sentences are preferred over hard cuts.
+- `embeddings.ts` owns a dedicated Worker (`embed-worker.ts`) that lazily loads `onnx-community/all-MiniLM-L6-v2-ONNX` through Transformers.js and pools to normalized 384-dimension vectors. No embeddings are computed unless the user adds or asks about documents.
+- `store.ts` persists documents and chunk vectors in IndexedDB. Vectors are stored as `Float32Array`; removal deletes via the `docId` index.
+- `similarity.ts` is a flat cosine scan returning the exact top-k. At browser scale this is simpler and more accurate than an approximate graph index.
+- `prompt.ts` formats the grounding block and enforces the character budget. Document text is labelled as data, not instructions.
+
+Embedding runs on the CPU (ONNX Runtime Web, asyncify build) and is independent of WebGPU, so retrieval works even when the chat model cannot run.
 
 ## Rendering and security boundary
 
@@ -115,7 +136,7 @@ The code-generation cluster under `src/coder/` (`ir.js`, `emit/*`, `recipes/*`, 
 
 ## Tests and CI
 
-- Vitest covers pure logic: normalization, memory, reply rules, language detection, and the demo engine.
+- Vitest covers pure logic: normalization, memory, reply rules, language detection, the demo engine, and retrieval internals (chunking, overlap, cosine ranking, grounding-block budget).
 - A golden eval suite (`tests/evals/cases.json` + `evals.test.js`) asserts reply properties, deterministic repeatability (fixed clock), and a per-case latency budget. Run it with `npm run evals`; it also runs inside `npm test`.
 - A model eval harness (`tests/evals/model/cases.json` + `scripts/model-eval.mjs`) scores recorded WebGPU replies against property checks and gates on drift from `baseline.json` (pass rate, per-case flip, p95 latency, verbosity, model id). `npm run evals:model:record` captures a real run through Playwright; `npm run evals:model` replays it without a GPU. CI replays; it skips with an explicit message until a recording is committed.
 - Playwright covers the browser flows and asserts that a chat makes no cross-origin requests.

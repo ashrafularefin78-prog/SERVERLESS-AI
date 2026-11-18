@@ -1,0 +1,130 @@
+// Retrieval-augmented generation for the user's own documents.
+//
+// Everything stays on the device: text is chunked in the page, embedded by
+// all-MiniLM-L6-v2 in a Worker, and stored as vectors in IndexedDB. Only the
+// top matches are injected into the prompt; the model never sees a document it
+// was not asked about.
+import { newId } from "../storage/db.js";
+import type { KnowledgeDoc, KnowledgeProgress, StoredChunk } from "../types.js";
+import { chunkText } from "./chunk.js";
+import { embedTexts, setEmbeddingProgressListener } from "./embeddings.js";
+import { buildKnowledgeBlock, type KnowledgeBlock } from "./prompt.js";
+import { rankBySimilarity } from "./similarity.js";
+import { deleteKnowledgeDoc, listKnowledgeDocs, loadAllChunks, saveKnowledgeDoc } from "./store.js";
+
+export const RAG = {
+  maxDocuments: 20,
+  maxCharsPerDocument: 200_000,
+  chunkChars: 900,
+  overlapChars: 120,
+  topK: 4,
+  minScore: 0.28,
+  promptChars: 2600,
+  embedBatch: 8,
+} as const;
+
+export { setEmbeddingProgressListener };
+export type { KnowledgeBlock };
+
+export async function listDocuments(): Promise<KnowledgeDoc[]> {
+  return listKnowledgeDocs();
+}
+
+export async function addDocument(
+  title: string,
+  text: string,
+  onProgress?: (progress: KnowledgeProgress) => void,
+): Promise<KnowledgeDoc> {
+  const content = String(text ?? "").trim();
+  const cleanTitle = String(title ?? "").trim() || "Untitled document";
+
+  if (!content) throw new Error("That document is empty.");
+  if (content.length > RAG.maxCharsPerDocument) {
+    throw new Error(
+      `Documents are limited to ${Math.round(RAG.maxCharsPerDocument / 1000)}k characters.`,
+    );
+  }
+
+  const existing = await listKnowledgeDocs();
+  if (existing.length >= RAG.maxDocuments) {
+    throw new Error(`The knowledge base holds at most ${RAG.maxDocuments} documents.`);
+  }
+
+  const pieces = chunkText(content, {
+    maxChars: RAG.chunkChars,
+    overlapChars: RAG.overlapChars,
+  });
+  if (!pieces.length) throw new Error("That document has no readable text.");
+
+  const vectors: number[][] = [];
+  for (let start = 0; start < pieces.length; start += RAG.embedBatch) {
+    const batch = pieces.slice(start, start + RAG.embedBatch);
+    vectors.push(...(await embedTexts(batch)));
+    onProgress?.({
+      phase: "embed",
+      file: cleanTitle,
+      loaded: Math.min(start + batch.length, pieces.length),
+      total: pieces.length,
+    });
+  }
+
+  const docId = newId();
+  const doc: KnowledgeDoc = {
+    id: docId,
+    title: cleanTitle,
+    addedAt: Date.now(),
+    chars: content.length,
+    chunkCount: pieces.length,
+  };
+
+  const chunks: StoredChunk[] = pieces.map((chunk, index) => ({
+    id: `${docId}:${index}`,
+    docId,
+    title: cleanTitle,
+    text: chunk,
+    vector: Float32Array.from(vectors[index] ?? []),
+  }));
+
+  await saveKnowledgeDoc(doc, chunks);
+  return doc;
+}
+
+export async function addDocumentFile(
+  file: File,
+  onProgress?: (progress: KnowledgeProgress) => void,
+): Promise<KnowledgeDoc> {
+  if (file.size > RAG.maxCharsPerDocument * 4) {
+    throw new Error("That file is too large to index in this browser.");
+  }
+  return addDocument(file.name, await file.text(), onProgress);
+}
+
+export async function removeDocument(id: string): Promise<void> {
+  await deleteKnowledgeDoc(id);
+}
+
+/**
+ * Find the document passages most relevant to a query and format them for the
+ * prompt. Returns null when there is no knowledge base or nothing matches.
+ */
+export async function retrieveKnowledge(query: string): Promise<KnowledgeBlock | null> {
+  const trimmed = String(query ?? "").trim();
+  if (!trimmed) return null;
+
+  const docs = await listKnowledgeDocs();
+  if (!docs.length) return null;
+
+  const chunks = await loadAllChunks();
+  if (!chunks.length) return null;
+
+  const [vector] = await embedTexts([trimmed]);
+  if (!vector?.length) return null;
+
+  const hits = rankBySimilarity(vector, chunks, RAG.topK, RAG.minScore).map(({ item, score }) => ({
+    title: item.title,
+    text: item.text,
+    score,
+  }));
+
+  return buildKnowledgeBlock(hits, RAG.promptChars);
+}

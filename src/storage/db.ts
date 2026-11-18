@@ -3,11 +3,13 @@ import type { Conversation, Message, Role, Settings } from "../types.js";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
-function openDb(): Promise<IDBDatabase> {
-  if (dbPromise) return dbPromise;
+const REQUIRED_STORES = ["conversations", "settings", "knowledge", "knowledgeChunks"] as const;
 
-  dbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(STORAGE.dbName, STORAGE.dbVersion);
+/** Open (or create) the database and make sure every store this build needs exists. */
+function openAt(version: number): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request =
+      version > 0 ? indexedDB.open(STORAGE.dbName, version) : indexedDB.open(STORAGE.dbName);
 
     request.onupgradeneeded = () => {
       const db = request.result;
@@ -18,19 +20,49 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains("settings")) {
         db.createObjectStore("settings", { keyPath: "key" });
       }
+      if (!db.objectStoreNames.contains("knowledge")) {
+        db.createObjectStore("knowledge", { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains("knowledgeChunks")) {
+        const chunks = db.createObjectStore("knowledgeChunks", { keyPath: "id" });
+        chunks.createIndex("docId", "docId");
+      }
     };
 
-    request.onsuccess = () => {
-      const db = request.result;
-      db.onversionchange = () => {
-        db.close();
-        dbPromise = null;
-      };
-      resolve(db);
-    };
-
+    request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
+}
+
+export function openDb(): Promise<IDBDatabase> {
+  if (dbPromise) return dbPromise;
+
+  dbPromise = (async () => {
+    // Open the existing version first: requesting a fixed version would throw
+    // VersionError on a profile that already upgraded past it.
+    let db = await openAt(0);
+    if (db.version < STORAGE.dbVersion) {
+      const target = STORAGE.dbVersion;
+      db.close();
+      db = await openAt(target);
+    }
+
+    // Never rely on an upgrade alone: a profile could have opened an earlier
+    // version of this schema (or a partial upgrade) without the new stores.
+    // Reopening at version + 1 runs the same idempotent creation path.
+    const missing = REQUIRED_STORES.filter((name) => !db.objectStoreNames.contains(name));
+    if (missing.length) {
+      const nextVersion = db.version + 1;
+      db.close();
+      db = await openAt(nextVersion);
+    }
+
+    db.onversionchange = () => {
+      db.close();
+      dbPromise = null;
+    };
+    return db;
+  })();
 
   return dbPromise;
 }
@@ -42,7 +74,7 @@ function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   });
 }
 
-function transactionDone(tx: IDBTransaction): Promise<void> {
+export function transactionDone(tx: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);

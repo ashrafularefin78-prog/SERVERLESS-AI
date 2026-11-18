@@ -58,8 +58,8 @@ good for focused tasks.
 
 
 ## PHASE 5: Make it smarter without a server (Week 4-6)
-[ ] In-browser RAG: embed documents with Transformers.js, store vectors in
-    IndexedDB, retrieve relevant chunks before answering
+[x] In-browser RAG: embed documents with Transformers.js, store vectors in
+    IndexedDB, retrieve relevant chunks before answering (src/rag)
 [ ] System prompts / modes (tutor, coder, summarizer)
 [ ] JS tools: calculator, unit converter, local notes search
 [ ] Optional: LoRA fine-tune offline (laptop or free Colab), convert and ship

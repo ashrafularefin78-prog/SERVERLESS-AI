@@ -167,6 +167,15 @@ export function renderMessage(
     body.append(content);
   }
 
+  if (!isUser && message.sources?.length) {
+    body.append(
+      h("p", {
+        class: "msg-sources",
+        text: `From your documents: ${message.sources.join(", ")}`,
+      }),
+    );
+  }
+
   const meta = h("div", { class: "msg-meta" });
   const actions = h("div", { class: "msg-actions" });
 

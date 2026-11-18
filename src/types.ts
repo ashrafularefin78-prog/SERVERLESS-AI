@@ -70,6 +70,31 @@ export interface Message {
   stopped?: boolean;
   error?: string;
   stats?: MessageStats;
+  /** Document titles the reply was grounded in, when retrieval contributed. */
+  sources?: string[];
+}
+
+export interface KnowledgeDoc {
+  id: string;
+  title: string;
+  addedAt: number;
+  chars: number;
+  chunkCount: number;
+}
+
+export interface StoredChunk {
+  id: string;
+  docId: string;
+  title: string;
+  text: string;
+  vector: Float32Array;
+}
+
+export interface KnowledgeProgress {
+  phase: "download" | "embed";
+  file: string;
+  loaded: number;
+  total: number;
 }
 
 export interface ConversationSummary {

@@ -13,7 +13,7 @@ export const MODES: Mode[] = [
       "Talk like a thoughtful friend who happens to know a lot: natural, direct, and genuinely interested in the person you are talking with. " +
       "Pick up threads from earlier in the conversation and reuse names and details the user shared. " +
       "Be accurate and practical when asked for help, and plain about what you do not know. " +
-      "You cannot browse the internet or access files, and you recall nothing beyond this conversation and the memory notes you are given. Never claim otherwise.",
+      "You cannot browse the internet or open files yourself. You only know this conversation, the memory notes, and any reference material the app places in the prompt. Never claim to have read anything else.",
   },
   {
     id: "tutor",
@@ -92,7 +92,9 @@ export const UNDERSTANDING_SKILLS =
 
 export const STORAGE = {
   dbName: "localmind",
-  dbVersion: 1,
+  // v2 adds the knowledge base (documents + chunk vectors). The upgrade is
+  // additive, so conversations and settings from v1 load unchanged.
+  dbVersion: 2,
 } as const;
 
 export function modeById(id: string): Mode {
