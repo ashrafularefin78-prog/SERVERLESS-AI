@@ -1,11 +1,7 @@
-// On-device inference through WebLLM (WebGPU) in a dedicated Worker.
-//
-// Nothing here is imported statically by the UI: the library is loaded with a
-// dynamic import the first time a model is used, so the built-in rule engine
-// still boots instantly and the initial bundle stays small. Model weights live
-// in OPFS and are only ever fetched after an explicit user action.
+// Keep both inference runtimes lazy so built-in chat needs no model download.
 import type { ChatMessage, ModelProgress, StreamChunk } from "../types.js";
-import { MODEL_CACHE } from "./models.js";
+import { MODEL_CACHE, modelById } from "./models.js";
+import type { LocalModel } from "./models.js";
 
 type WebLLMApi = typeof import("@mlc-ai/web-llm");
 type WebLLMEngine = import("@mlc-ai/web-llm").WebWorkerMLCEngine;
@@ -14,6 +10,7 @@ let engine: WebLLMEngine | null = null;
 let worker: Worker | null = null;
 let cacheWorker: Worker | null = null;
 let loadedModelId: string | null = null;
+let ggufBackend: typeof import("./gguf.js") | null = null;
 
 interface CacheResponse {
   kind: "localmind:cache-result";
@@ -98,9 +95,37 @@ function appConfig(api: WebLLMApi) {
   };
 }
 
-export interface SupportReport {
-  available: boolean;
-  reason: string;
+export type SupportReport =
+  | { available: false; reason: string }
+  | {
+      available: true;
+      reason: string;
+      features: string[];
+      maxStorageBufferBindingSize: number;
+    };
+
+export function modelSupportReason(model: LocalModel, support: SupportReport): string | null {
+  if (model.runtime === "gguf") {
+    if (typeof WebAssembly === "undefined" || typeof Worker === "undefined") {
+      return "Community GGUF models need a browser with WebAssembly and Web Workers.";
+    }
+    if (!("Suspending" in WebAssembly)) {
+      return "Community GGUF models need a current Chrome or Edge with WebAssembly JSPI support.";
+    }
+    if (typeof navigator === "undefined" || !navigator.storage?.getDirectory) {
+      return "Community GGUF models need browser private storage on HTTPS or localhost.";
+    }
+    return null;
+  }
+  if (!support.available) return support.reason;
+  const missing = model.requiredFeatures.filter((feature) => !support.features.includes(feature));
+  if (missing.length) {
+    return `This model requires GPU features unavailable on this device: ${missing.join(", ")}. Pick another variant.`;
+  }
+  if (model.bufferSizeBytes > support.maxStorageBufferBindingSize) {
+    return "This model needs larger GPU buffers than this device supports. Pick another model.";
+  }
+  return null;
 }
 
 /**
@@ -109,10 +134,17 @@ export interface SupportReport {
  * software renderer, disabled flag), so the adapter is the real test.
  */
 export async function detectSupport(): Promise<SupportReport> {
-  const nav = navigator as Navigator & {
-    gpu?: { requestAdapter(): Promise<unknown | null> };
-  };
-  if (typeof navigator === "undefined" || !nav.gpu) {
+  const nav = (typeof navigator === "undefined" ? undefined : navigator) as
+    | (Navigator & {
+        gpu?: {
+          requestAdapter(): Promise<{
+            features: Iterable<string>;
+            limits: { maxStorageBufferBindingSize: number };
+          } | null>;
+        };
+      })
+    | undefined;
+  if (!nav?.gpu) {
     return {
       available: false,
       reason: "This browser has no WebGPU. Models need a current Chrome, Edge, or Safari.",
@@ -126,7 +158,12 @@ export async function detectSupport(): Promise<SupportReport> {
         reason: "WebGPU is present but no GPU adapter is available on this device.",
       };
     }
-    return { available: true, reason: "WebGPU is available on this device." };
+    return {
+      available: true,
+      reason: "WebGPU is available on this device.",
+      features: [...adapter.features],
+      maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
+    };
   } catch {
     return { available: false, reason: "WebGPU could not be started in this browser." };
   }
@@ -136,6 +173,9 @@ export async function detectSupport(): Promise<SupportReport> {
 export async function isModelCached(modelId: string): Promise<boolean> {
   if (typeof navigator === "undefined" || !navigator.storage?.getDirectory) return false;
   try {
+    if (modelById(modelId)?.runtime === "gguf") {
+      return await (await import("./gguf.js")).isModelCached(modelId);
+    }
     return await cacheRequest<boolean>("has", modelId);
   } catch {
     return false;
@@ -144,6 +184,10 @@ export async function isModelCached(modelId: string): Promise<boolean> {
 
 /** Remove a model's weights, config and compiled library from the cache. */
 export async function deleteCachedModel(modelId: string): Promise<void> {
+  if (modelById(modelId)?.runtime === "gguf") {
+    await (await import("./gguf.js")).deleteCachedModel(modelId);
+    return;
+  }
   await cacheRequest<boolean>("delete", modelId);
 }
 
@@ -173,9 +217,21 @@ export async function loadModel(
   modelId: string,
   onProgress?: (progress: ModelProgress) => void,
 ): Promise<void> {
-  if (engine && loadedModelId === modelId) return;
+  if ((engine || ggufBackend) && loadedModelId === modelId) return;
+
+  const model = modelById(modelId);
+  if (!model) throw new Error("This model is not in the available catalogue.");
+  const unsupportedReason = modelSupportReason(model, await detectSupport());
+  if (unsupportedReason) throw new Error(unsupportedReason);
 
   await unload();
+
+  if (model.runtime === "gguf") {
+    ggufBackend = await import("./gguf.js");
+    await ggufBackend.loadModel(modelId, onProgress);
+    loadedModelId = modelId;
+    return;
+  }
 
   const api = await loadApi();
 
@@ -216,7 +272,7 @@ export async function loadModel(
 }
 
 export function isLoaded(modelId: string): boolean {
-  return loadedModelId === modelId && engine !== null;
+  return loadedModelId === modelId && (engine !== null || ggufBackend !== null);
 }
 
 export function loadedModel(): string | null {
@@ -227,9 +283,13 @@ export function loadedModel(): string | null {
 export async function unload(): Promise<void> {
   const current = engine;
   const currentWorker = worker;
+  const currentGGUF = ggufBackend;
+  ggufBackend = null;
   engine = null;
   worker = null;
   loadedModelId = null;
+
+  await currentGGUF?.unload();
 
   if (current) {
     try {
@@ -249,6 +309,7 @@ export async function unload(): Promise<void> {
 
 /** Ask the worker to stop generating. Safe to call when idle. */
 export function interrupt(): void {
+  ggufBackend?.interrupt();
   try {
     engine?.interruptGenerate();
   } catch {
@@ -264,6 +325,10 @@ export async function* streamModel(
   messages: ChatMessage[],
   signal?: AbortSignal,
 ): AsyncGenerator<StreamChunk> {
+  if (ggufBackend) {
+    yield* ggufBackend.streamModel(messages, signal);
+    return;
+  }
   if (!engine) throw new Error("No on-device model is loaded.");
 
   const onAbort = () => interrupt();

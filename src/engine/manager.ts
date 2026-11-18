@@ -10,6 +10,7 @@ import {
   isModelCached,
   loadModel as loadLocalModel,
   loadedModel,
+  modelSupportReason,
   storageUsage,
   streamModel,
   unload,
@@ -79,7 +80,7 @@ function patch(next: Partial<typeof state>): void {
 }
 
 export const models = LOCAL_MODELS;
-export { detectSupport, storageUsage };
+export { detectSupport, modelSupportReason, storageUsage };
 
 /**
  * Bring the built-in engine up. Instant, and independent of any model. When a

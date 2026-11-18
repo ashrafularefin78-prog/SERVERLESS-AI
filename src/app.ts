@@ -150,7 +150,7 @@ interface State {
   memoryOutcome: MemoryOutcome | null;
   editingId: string | null;
   memoryKey: CryptoKey | null;
-  modelSupport: { available: boolean; reason: string } | null;
+  modelSupport: Awaited<ReturnType<typeof engine.detectSupport>> | null;
   modelCached: boolean | null;
   knowledge: KnowledgeDoc[];
   knowledgeBusy: boolean;
@@ -581,7 +581,10 @@ function engineStatus(snapshot: EngineState) {
     return {
       tone: snapshot.phase === "generating" ? "generating" : "ready",
       label: model.label,
-      sub: snapshot.phase === "generating" ? "Writing a reply..." : "On-device - WebGPU - offline",
+      sub:
+        snapshot.phase === "generating"
+          ? "Writing a reply..."
+          : `On-device - ${model.runtime === "gguf" ? "CPU/WASM" : "WebGPU"} - offline`,
       chip: snapshot.phase === "generating" ? "Writing..." : model.label,
     };
   }
@@ -977,7 +980,7 @@ async function initModelPanel() {
     select.append(
       h("option", {
         value: model.id,
-        text: `${model.label} - about ${model.sizeMB} MB`,
+        text: `${model.label} - ${model.memoryLabel}`,
       }),
     );
   }
@@ -997,7 +1000,10 @@ function selectedModel() {
 function renderModelPanel() {
   const model = selectedModel();
   const snapshot = engine.getState();
-  const supported = state.modelSupport?.available ?? false;
+  const unsupportedReason =
+    model && state.modelSupport ? engine.modelSupportReason(model, state.modelSupport) : null;
+  const supported =
+    !!state.modelSupport && (model ? !unsupportedReason : state.modelSupport.available);
   const loading = snapshot.phase === "loading";
   const loadingThis = loading && snapshot.modelId === model?.id;
   const active = snapshot.mode === "model" && snapshot.modelId === model?.id;
@@ -1012,7 +1018,7 @@ function renderModelPanel() {
   if (!state.modelSupport) {
     status.textContent = "Checking this device...";
   } else if (!supported && model) {
-    status.textContent = state.modelSupport.reason;
+    status.textContent = unsupportedReason ?? state.modelSupport.reason;
     status.classList.add("is-error");
   } else if (!supported && !model) {
     status.textContent = `Built-in assistant ready. ${state.modelSupport.reason}`;
@@ -1023,11 +1029,14 @@ function renderModelPanel() {
   } else if (active && snapshot.phase === "generating") {
     status.textContent = `${model.label} is writing a reply on this device.`;
   } else if (active) {
-    status.textContent = `${model.label} is loaded. Replies run on your GPU and never leave the tab.`;
+    status.textContent = `${model.label} is loaded. Replies run on your ${model.runtime === "gguf" ? "CPU" : "GPU"} and never leave the tab.`;
   } else if (model && cached) {
     status.textContent = `${model.label} is downloaded. Load it to use it.`;
   } else if (model) {
-    status.textContent = `${model.label} is not downloaded yet (about ${model.sizeMB} MB, once).`;
+    status.textContent =
+      model.runtime === "gguf"
+        ? `${model.label} is not downloaded yet. About ${Math.ceil(model.downloadBytes / 1_000_000)} MB download; additional RAM is needed to run it.`
+        : `${model.label} is not downloaded yet. Download size varies by model; larger models can require many GB.`;
   } else {
     status.textContent =
       "Using the built-in rule assistant. Pick a model above to run a real one on this device.";
@@ -1047,15 +1056,19 @@ function renderModelPanel() {
   remove.disabled = !model || loading;
 
   dom["model-note"].textContent = model
-    ? `${model.params} parameters. ${model.note} Weights are cached in this browser's private storage and can be deleted at any time.`
-    : "Models run in a Worker with WebGPU. Your prompts and replies stay on this device.";
+    ? `${model.note} Weights are cached in this browser's private storage and can be deleted at any time.`
+    : "Models run in a Worker with WebGPU or CPU/WebAssembly. Your prompts and replies stay on this device.";
 }
 
 async function refreshModelPanel({ checkCache = false }: { checkCache?: boolean } = {}) {
   const model = selectedModel();
   if (!model) {
     state.modelCached = false;
-  } else if (checkCache && (state.modelSupport?.available ?? false)) {
+  } else if (
+    checkCache &&
+    state.modelSupport &&
+    !engine.modelSupportReason(model, state.modelSupport)
+  ) {
     state.modelCached = await engine.hasCachedModel(model.id).catch(() => false);
   } else if (state.engine.mode === "model" && state.engine.modelId === model.id) {
     state.modelCached = true;
@@ -1079,7 +1092,11 @@ async function applyModelChoice() {
   if (!model) {
     await engine.unloadModel();
     toast("Using the built-in assistant.");
-  } else if ((state.modelSupport?.available ?? false) && (await engine.hasCachedModel(model.id))) {
+  } else if (
+    state.modelSupport &&
+    !engine.modelSupportReason(model, state.modelSupport) &&
+    (await engine.hasCachedModel(model.id))
+  ) {
     await loadSelectedModel(model.id);
   }
 
@@ -1116,7 +1133,7 @@ async function deleteSelectedModel() {
 
   const ok = await confirmDialog({
     title: "Delete model download?",
-    body: `${model.label} weights (about ${model.sizeMB} MB) will be removed from this browser. You can download them again later.`,
+    body: `Downloaded files for ${model.label} will be removed from this browser. You can download them again later.`,
     confirmLabel: "Delete",
   });
   if (!ok) return;

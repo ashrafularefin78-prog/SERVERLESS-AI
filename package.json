@@ -3,10 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "A private AI chat that runs in your browser: an optional on-device WebGPU model plus a built-in rule engine.",
+  "description": "A private AI chat that runs in your browser: optional on-device WebGPU and CPU models plus a built-in rule engine.",
   "license": "MIT",
   "scripts": {
+    "models:sync": "node scripts/sync-model-catalogue.mjs",
+    "predev": "npm run models:sync",
     "dev": "vite",
+    "prebuild": "npm run models:sync",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
@@ -31,6 +34,7 @@
   "dependencies": {
     "@huggingface/transformers": "^4.3.2",
     "@mlc-ai/web-llm": "^0.2.89",
+    "@wllama/wllama": "3.13.0",
     "dompurify": "3.4.18",
     "highlight.js": "11.12.0",
     "marked": "18.2.1"
