@@ -3,7 +3,6 @@ import {
   CONVERSATION_SKILLS,
   CONTEXT_LIMITS,
   DEFAULT_SETTINGS,
-  DEMO_MODE,
   SUGGESTIONS,
   SYSTEM_GUARDRAIL,
   UNDERSTANDING_SKILLS,
@@ -16,9 +15,16 @@ import {
   parseMemoryCommand,
 } from "./memory.js";
 import { analyzeIntent, expandShorthand, normalizeText, understandingHint } from "./understand.js";
+import { compactHistory, formatCompactionNote } from "./context.js";
+import {
+  MEMORY_VERIFIER,
+  checkVerifier,
+  decryptJson,
+  deriveMemoryKey,
+  encryptJson,
+  randomSalt,
+} from "./crypto.js";
 import * as engine from "./engine/manager.js";
-import { detectDevice, requestPersistentStorage } from "./engine/device.js";
-import { isCpuModel, modelByKey, modelSizeLabel, recommendedModelKey } from "./engine/catalog.js";
 import {
   clearDatabase,
   createConversation,
@@ -32,16 +38,109 @@ import {
 } from "./storage/db.js";
 import { h, renderHistory, renderMessage, renderWelcome, streamText } from "./ui/render.js";
 import { buildCodingPrompt, coderSuggestions, demoCodingReply } from "./coder/languages.js";
+import { piiWarning } from "./guardrails.js";
+import type {
+  ChatMessage,
+  Conversation,
+  ConversationSummary,
+  EngineState,
+  MemoryNote,
+  MemoryOutcome,
+  MemoryVault,
+  Message,
+  Settings,
+  Theme,
+} from "./types.js";
 
-const $ = (id) => document.getElementById(id);
+interface Dom {
+  app: HTMLElement;
+  sidebar: HTMLElement;
+  scrim: HTMLElement;
+  history: HTMLElement;
+  "new-chat": HTMLButtonElement;
+  "sidebar-close": HTMLButtonElement;
+  "open-sidebar": HTMLButtonElement;
+  "engine-pill": HTMLElement;
+  "status-dot": HTMLElement;
+  "status-label": HTMLElement;
+  "status-sub": HTMLElement;
+  "open-settings": HTMLButtonElement;
+  "open-settings-2": HTMLButtonElement;
+  "chat-title": HTMLElement;
+  "chat-sub": HTMLElement;
+  "model-chip": HTMLElement;
+  "chip-dot": HTMLElement;
+  "model-chip-label": HTMLElement;
+  "theme-toggle": HTMLButtonElement;
+  "chat-scroll": HTMLElement;
+  messages: HTMLElement;
+  "mode-select": HTMLSelectElement;
+  composer: HTMLFormElement;
+  input: HTMLTextAreaElement;
+  send: HTMLButtonElement;
+  stop: HTMLButtonElement;
+  "edit-banner": HTMLElement;
+  "edit-cancel": HTMLButtonElement;
+  "clear-data-link": HTMLButtonElement;
+  "settings-dialog": HTMLDialogElement;
+  "custom-instructions": HTMLTextAreaElement;
+  "memory-list": HTMLUListElement;
+  "memory-input": HTMLInputElement;
+  "memory-add": HTMLButtonElement;
+  "memory-add-row": HTMLElement;
+  "vault-status": HTMLElement;
+  "vault-enable": HTMLButtonElement;
+  "vault-unlock": HTMLButtonElement;
+  "vault-lock": HTMLButtonElement;
+  "vault-disable": HTMLButtonElement;
+  "vault-dialog": HTMLDialogElement;
+  "vault-title": HTMLElement;
+  "vault-sub": HTMLElement;
+  "vault-pass": HTMLInputElement;
+  "vault-confirm": HTMLInputElement;
+  "vault-confirm-field": HTMLElement;
+  "vault-hint": HTMLElement;
+  "vault-ok": HTMLButtonElement;
+  "import-data": HTMLButtonElement;
+  "import-file": HTMLInputElement;
+  "theme-select": HTMLSelectElement;
+  "export-data": HTMLButtonElement;
+  "clear-data": HTMLButtonElement;
+  "confirm-dialog": HTMLDialogElement;
+  "confirm-title": HTMLElement;
+  "confirm-body": HTMLElement;
+  "confirm-ok": HTMLButtonElement;
+  "confirm-cancel": HTMLButtonElement;
+  toast: HTMLElement;
+}
 
-const dom = {};
-const state = {
-  device: null,
+interface State {
+  settings: Settings;
+  conversations: ConversationSummary[];
+  conversation: Conversation | null;
+  engine: EngineState;
+  generating: boolean;
+  runId: number;
+  streamSignal: AbortSignal | null;
+  partialText: string;
+  autoScroll: boolean;
+  resolveGeneration: (() => void) | null;
+  generationDone: Promise<void>;
+  instructionsTimer: number | null;
+  toastTimer: number | null;
+  memoryOutcome: MemoryOutcome | null;
+  editingId: string | null;
+  memoryKey: CryptoKey | null;
+  vaultMode: "enable" | "unlock" | null;
+}
+
+const $ = (id: string) => document.getElementById(id);
+
+const dom = {} as Dom;
+const state: State = {
   settings: { ...DEFAULT_SETTINGS },
   conversations: [],
   conversation: null,
-  selectedKey: null,
   engine: engine.getState(),
   generating: false,
   runId: 0,
@@ -50,10 +149,12 @@ const state = {
   autoScroll: true,
   resolveGeneration: null,
   generationDone: Promise.resolve(),
-  loadDialogMode: null,
   instructionsTimer: null,
   toastTimer: null,
   memoryOutcome: null,
+  editingId: null,
+  memoryKey: null,
+  vaultMode: null,
 };
 
 export async function boot() {
@@ -63,23 +164,18 @@ export async function boot() {
 
   const [settings, conversations] = await Promise.all([getSettings(), listConversations()]);
   state.settings = { ...DEFAULT_SETTINGS, ...settings };
+  if (state.settings.memoryVault) state.settings.memory = [];
   state.conversations = conversations;
 
   applyTheme();
   syncSettingsForm();
   updateModeSelect();
 
-  state.device = await detectDevice();
-  state.selectedKey = normalizeModelKey(
-    state.settings.modelKey || recommendedModelKey(state.device),
-  );
-
   state.conversation = await initialConversation();
   renderAll();
   engine.subscribe(onEngineState);
 
-  // The built-in assistant is the engine: it needs no download and no model.
-  await engine.loadModel({ modelKey: "demo", device: state.device });
+  await engine.init();
 
   autoResize();
   updateComposerState();
@@ -106,9 +202,6 @@ function cacheDom() {
     "chip-dot",
     "model-chip-label",
     "theme-toggle",
-    "load-strip",
-    "load-strip-fill",
-    "load-strip-text",
     "chat-scroll",
     "messages",
     "mode-select",
@@ -116,30 +209,30 @@ function cacheDom() {
     "input",
     "send",
     "stop",
+    "edit-banner",
+    "edit-cancel",
     "clear-data-link",
-    "model-dialog",
-    "model-device",
-    "model-list",
-    "load-dialog",
-    "load-title",
-    "load-sub",
-    "load-progress-track",
-    "load-fill",
-    "load-percent",
-    "load-detail",
-    "load-hide",
-    "load-cancel",
-    "load-retry",
     "settings-dialog",
-    "settings-model-name",
-    "settings-model-meta",
-    "temperature",
-    "temp-output",
-    "max-tokens",
     "custom-instructions",
     "memory-list",
     "memory-input",
     "memory-add",
+    "memory-add-row",
+    "vault-status",
+    "vault-enable",
+    "vault-unlock",
+    "vault-lock",
+    "vault-disable",
+    "vault-dialog",
+    "vault-title",
+    "vault-sub",
+    "vault-pass",
+    "vault-confirm",
+    "vault-confirm-field",
+    "vault-hint",
+    "vault-ok",
+    "import-data",
+    "import-file",
     "theme-select",
     "export-data",
     "clear-data",
@@ -150,9 +243,10 @@ function cacheDom() {
     "confirm-cancel",
     "toast",
   ];
+  const cache = dom as unknown as Record<string, HTMLElement | null>;
   for (const id of ids) {
-    dom[id] = $(id);
-    if (!dom[id]) console.warn(`Missing element #${id}`);
+    cache[id] = $(id);
+    if (!cache[id]) console.warn(`Missing element #${id}`);
   }
 }
 
@@ -166,41 +260,19 @@ function bindEvents() {
   dom["sidebar-close"].addEventListener("click", closeSidebar);
   dom.scrim.addEventListener("click", closeSidebar);
 
-  const showAssistantStatus = () =>
-    toast("You're using the built-in assistant. It works fully offline.");
-  dom["engine-pill"].addEventListener("click", showAssistantStatus);
-  dom["model-chip"].addEventListener("click", showAssistantStatus);
   dom["theme-toggle"].addEventListener("click", toggleTheme);
   dom["open-settings"].addEventListener("click", openSettings);
   dom["open-settings-2"].addEventListener("click", openSettings);
 
   for (const button of document.querySelectorAll("[data-close-dialog]")) {
     button.addEventListener("click", () => {
-      const dialog = button.closest("dialog");
+      const dialog = button.closest<HTMLDialogElement>("dialog");
       if (dialog) closeDialog(dialog);
     });
   }
 
-  for (const dialog of [dom["model-dialog"], dom["settings-dialog"]]) {
-    dialog.addEventListener("click", (event) => {
-      if (event.target === dialog) closeDialog(dialog);
-    });
-  }
-
-  dom["load-dialog"].addEventListener("cancel", (event) => {
-    event.preventDefault();
-    hideLoadDialog();
-  });
-  dom["load-dialog"].addEventListener("click", (event) => {
-    if (event.target === dom["load-dialog"]) hideLoadDialog();
-  });
-  dom["load-hide"].addEventListener("click", hideLoadDialog);
-  dom["load-cancel"].addEventListener("click", cancelLoad);
-  dom["load-retry"].addEventListener("click", () => startModelLoad({ modal: true }));
-
-  dom["model-list"].addEventListener("click", (event) => {
-    const option = event.target.closest("[data-model-key]");
-    if (option && !option.disabled) handleModelChoice(option.dataset.modelKey);
+  dom["settings-dialog"].addEventListener("click", (event) => {
+    if (event.target === dom["settings-dialog"]) closeDialog(dom["settings-dialog"]);
   });
 
   dom.history.addEventListener("click", onHistoryClick);
@@ -221,6 +293,7 @@ function bindEvents() {
     }
   });
   dom.stop.addEventListener("click", () => stopGeneration());
+  dom["edit-cancel"].addEventListener("click", () => cancelEdit());
 
   dom["mode-select"].addEventListener("change", () => {
     state.settings.mode = dom["mode-select"].value;
@@ -230,20 +303,9 @@ function bindEvents() {
     refreshWelcomeSuggestions();
   });
 
-  dom.temperature.addEventListener("input", () => {
-    const value = Number(dom.temperature.value);
-    dom["temp-output"].textContent = value.toFixed(1);
-    state.settings.temperature = value;
-  });
-  dom.temperature.addEventListener("change", () => {
-    saveSettingsPatch({ temperature: Number(dom.temperature.value) });
-  });
-  dom["max-tokens"].addEventListener("change", () => {
-    saveSettingsPatch({ maxTokens: Number(dom["max-tokens"].value) });
-  });
   dom["custom-instructions"].addEventListener("input", () => {
     state.settings.customInstructions = dom["custom-instructions"].value;
-    window.clearTimeout(state.instructionsTimer);
+    window.clearTimeout(state.instructionsTimer ?? undefined);
     state.instructionsTimer = window.setTimeout(() => {
       saveSettingsPatch({ customInstructions: state.settings.customInstructions });
     }, 600);
@@ -256,11 +318,11 @@ function bindEvents() {
     }
   });
   dom["memory-list"].addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-memory-id]");
-    if (button) forgetMemory(button.dataset.memoryId);
+    const button = (event.target as Element | null)?.closest<HTMLElement>("button[data-memory-id]");
+    if (button) forgetMemory(button.dataset.memoryId ?? "");
   });
   dom["theme-select"].addEventListener("change", () => {
-    state.settings.theme = dom["theme-select"].value;
+    state.settings.theme = dom["theme-select"].value as Theme;
     applyTheme();
     saveSettingsPatch({ theme: state.settings.theme });
   });
@@ -284,8 +346,9 @@ function bindEvents() {
       newChat();
       return;
     }
-    if (event.key === "Escape" && state.generating && !document.querySelector("dialog[open]")) {
-      stopGeneration();
+    if (event.key === "Escape" && !document.querySelector("dialog[open]")) {
+      if (state.editingId) cancelEdit();
+      else if (state.generating) stopGeneration();
     }
   });
 
@@ -300,53 +363,23 @@ function bindEvents() {
 
 async function initialConversation() {
   if (state.conversations.length) {
-    const conversation = await getConversation(state.conversations[0].id);
+    const conversation = await getConversation(state.conversations[0]!.id);
     if (conversation) return conversation;
   }
-  return createConversation({
-    mode: state.settings.mode,
-    modelKey: state.selectedKey,
-  });
+  return createConversation({ mode: state.settings.mode });
 }
 
-function normalizeModelKey(key) {
-  if (!state.device?.webgpu) return "cpu";
-  if (!key) return recommendedModelKey(state.device);
-  if (isCpuModel(key)) return key;
-
-  const model = modelByKey(key);
-  if (!model) return recommendedModelKey(state.device);
-  if (model.requiresF16 && !state.device.shaderF16) return recommendedModelKey(state.device);
-  if (!model.ids?.f16 && !model.ids?.f32) return recommendedModelKey(state.device);
-  return key;
-}
-
-function onEngineState(snapshot) {
+function onEngineState(snapshot: EngineState) {
   const previous = state.engine;
   state.engine = snapshot;
   updateEngineChrome(snapshot);
-  updateSettingsModelInfo();
 
-  if (snapshot.phase === "loading") {
-    if (dom["load-dialog"].open && state.loadDialogMode === "loading") {
-      updateLoadProgress(snapshot);
-    }
-    return;
-  }
-
-  if (snapshot.phase === "ready") {
-    if (dom["load-dialog"].open && state.loadDialogMode === "loading") {
-      closeDialog(dom["load-dialog"]);
-      state.loadDialogMode = null;
-    }
-    if (previous.phase !== "ready" && state.conversation?.messages.length === 0) {
-      renderConversation({ scroll: false });
-    }
-    return;
-  }
-
-  if (snapshot.phase === "error" && previous.phase !== "error" && snapshot.error) {
-    showLoadError(snapshot.error);
+  if (
+    snapshot.phase === "ready" &&
+    previous.phase !== "ready" &&
+    state.conversation?.messages.length === 0
+  ) {
+    renderConversation({ scroll: false });
   }
 }
 
@@ -354,7 +387,6 @@ function renderAll() {
   renderSidebar();
   renderConversation({ scroll: true });
   updateEngineChrome(state.engine);
-  updateSettingsModelInfo();
   updateComposerState();
   updateChatHeader();
 }
@@ -364,10 +396,10 @@ function renderAll() {
 --------------------------------------------------------------- */
 
 function renderSidebar() {
-  renderHistory(dom.history, state.conversations, state.conversation?.id);
+  renderHistory(dom.history, state.conversations, state.conversation?.id ?? null);
 }
 
-function renderConversation({ scroll = true } = {}) {
+function renderConversation({ scroll = true }: { scroll?: boolean } = {}) {
   const conversation = state.conversation;
   if (!conversation) return;
 
@@ -378,10 +410,7 @@ function renderConversation({ scroll = true } = {}) {
     const mode = modeById(state.settings.mode);
     dom.messages.append(
       renderWelcome({
-        device: state.device || {},
         engine: state.engine,
-        selectedKey: state.selectedKey || recommendedModelKey(state.device || {}),
-        demo: DEMO_MODE,
         suggestions: mode.id === "coder" ? coderSuggestions() : SUGGESTIONS,
       }),
     );
@@ -392,6 +421,7 @@ function renderConversation({ scroll = true } = {}) {
       dom.messages.append(
         renderMessage(message, {
           canRegenerate: message === last && canRegenerate,
+          canEdit: !state.generating,
         }),
       );
     }
@@ -412,28 +442,23 @@ function updateChatHeader() {
   dom["chat-title"].textContent = title;
 
   const mode = modeById(state.settings.mode);
-  const model =
-    state.engine.phase === "ready" || state.engine.phase === "generating"
-      ? state.engine.modelFamily
-      : "built-in assistant";
-  dom["chat-sub"].textContent = `${mode.label} mode - ${model}`;
+  dom["chat-sub"].textContent = `${mode.label} mode - built-in assistant`;
 }
 
 function updateComposerState() {
   const busy = state.generating;
-  const loading = state.engine.phase === "loading";
   const hasText = Boolean(dom.input.value.trim());
 
   dom.send.hidden = busy;
   dom.stop.hidden = !busy;
-  dom.send.disabled = !hasText || busy || loading;
+  dom.send.disabled = !hasText || busy;
   dom.input.disabled = false;
   dom["mode-select"].disabled = false;
+  dom.messages.classList.toggle("is-generating", busy);
 }
 
-function updateEngineChrome(snapshot) {
+function updateEngineChrome(snapshot: EngineState) {
   const status = engineStatus(snapshot);
-  const pct = Math.round((snapshot.progress || 0) * 100);
   const dotClass = `status-dot${status.tone === "idle" ? "" : ` is-${status.tone}`}`;
 
   dom["status-dot"].className = dotClass;
@@ -441,64 +466,24 @@ function updateEngineChrome(snapshot) {
   dom["status-label"].textContent = status.label;
   dom["status-sub"].textContent = status.sub;
   dom["model-chip-label"].textContent = status.chip;
-
-  if (snapshot.phase === "loading") {
-    dom["load-strip"].hidden = false;
-    dom["load-strip-fill"].style.width = `${pct}%`;
-    dom["load-strip-text"].textContent =
-      `${snapshot.modelName || "Model"} - ${pct}% - ${snapshot.progressText || "Loading..."}`;
-  } else {
-    dom["load-strip"].hidden = true;
-    dom["load-strip-fill"].style.width = "0%";
-  }
-
-  if (dom["load-dialog"].open && state.loadDialogMode === "loading") {
-    updateLoadProgress(snapshot);
-  }
 }
 
-function engineStatus(snapshot) {
-  const pct = Math.round((snapshot.progress || 0) * 100);
-  const modelName = snapshot.modelName || snapshot.modelFamily || "model";
-
-  if (snapshot.phase === "loading") {
-    return {
-      tone: "loading",
-      label: `Loading ${modelName}`,
-      sub: `${pct}% - ${snapshot.progressText || "Preparing..."}`,
-      chip: `${modelName} ${pct}%`,
-    };
-  }
-
+function engineStatus(snapshot: EngineState) {
   if (snapshot.phase === "generating") {
     return {
       tone: "generating",
-      label: snapshot.modelFamily || "Model ready",
+      label: "Built-in assistant",
       sub: "Writing a reply...",
       chip: "Writing...",
-    };
-  }
-
-  if (snapshot.phase === "error") {
-    return {
-      tone: "error",
-      label: "Model failed to load",
-      sub: snapshot.error || "Open settings to try another model.",
-      chip: "Model error",
     };
   }
 
   if (snapshot.phase === "ready") {
     return {
       tone: "ready",
-      label: snapshot.modelFamily || "Model ready",
-      sub:
-        snapshot.backend === "wasm"
-          ? "CPU fallback - replies will be slow"
-          : snapshot.backend === "demo"
-            ? "Built-in rules - works offline"
-            : "WebGPU - runs entirely here",
-      chip: snapshot.modelFamily || "Model ready",
+      label: "Built-in assistant",
+      sub: "Built-in rules - works offline",
+      chip: "Built-in assistant",
     };
   }
 
@@ -510,34 +495,7 @@ function engineStatus(snapshot) {
   };
 }
 
-function updateSettingsModelInfo() {
-  const snapshot = state.engine;
-  if (snapshot.phase === "ready" || snapshot.phase === "generating") {
-    dom["settings-model-name"].textContent =
-      snapshot.backend === "demo"
-        ? "Built-in assistant"
-        : `${snapshot.modelFamily || "Model"} - ${snapshot.modelName}`;
-    dom["settings-model-meta"].textContent =
-      snapshot.backend === "wasm"
-        ? "CPU fallback loaded"
-        : snapshot.backend === "demo"
-          ? "Built-in rules - works offline"
-          : "WebGPU model loaded";
-    return;
-  }
-  if (snapshot.phase === "loading") {
-    dom["settings-model-name"].textContent = `Loading ${snapshot.modelName || "model"}`;
-    dom["settings-model-meta"].textContent = `${Math.round((snapshot.progress || 0) * 100)}%`;
-    return;
-  }
-  dom["settings-model-name"].textContent = "Built-in assistant";
-  dom["settings-model-meta"].textContent = "Starting...";
-}
-
 function syncSettingsForm() {
-  dom.temperature.value = String(state.settings.temperature);
-  dom["temp-output"].textContent = Number(state.settings.temperature).toFixed(1);
-  dom["max-tokens"].value = String(state.settings.maxTokens);
   dom["custom-instructions"].value = state.settings.customInstructions || "";
   dom["theme-select"].value = state.settings.theme;
   updateModeSelect();
@@ -550,8 +508,15 @@ function renderMemoryList() {
   list.textContent = "";
   const memory = state.settings.memory || [];
 
+  if (memoryLocked()) {
+    list.append(h("li", { class: "memory-empty", text: "Memory is locked. Unlock to view notes." }));
+    renderVaultControls();
+    return;
+  }
+
   if (!memory.length) {
     list.append(h("li", { class: "memory-empty", text: "Nothing remembered yet." }));
+    renderVaultControls();
     return;
   }
 
@@ -571,9 +536,161 @@ function renderMemoryList() {
       ),
     );
   }
+  renderVaultControls();
+}
+
+function memoryLocked(): boolean {
+  return Boolean(state.settings.memoryVault) && !state.memoryKey;
+}
+
+function renderVaultControls() {
+  const vault = state.settings.memoryVault;
+  const locked = memoryLocked();
+  dom["vault-status"].textContent = vault
+    ? locked
+      ? "Encrypted with a passphrase. Locked until you unlock it."
+      : "Encrypted with a passphrase. Unlocked for this session."
+    : "Stored unencrypted on this device.";
+  dom["vault-enable"].hidden = Boolean(vault);
+  dom["vault-unlock"].hidden = !locked;
+  dom["vault-lock"].hidden = !vault || locked;
+  dom["vault-disable"].hidden = !vault || locked;
+  dom["memory-add-row"].hidden = locked;
+}
+
+async function commitMemory(notes: MemoryNote[]) {
+  state.settings.memory = notes;
+  const vault = state.settings.memoryVault;
+  try {
+    if (vault && state.memoryKey) {
+      const next: MemoryVault = { ...vault, notes: await encryptJson(state.memoryKey, notes) };
+      state.settings.memoryVault = next;
+      await saveSettings({ memoryVault: next, memory: [] });
+    } else {
+      await saveSettings({ memory: notes });
+    }
+  } catch (error) {
+    console.error("Could not save memory", error);
+    toast("Could not save memory.");
+  }
+}
+
+function openVaultDialog(mode: "enable" | "unlock") {
+  state.vaultMode = mode;
+  dom["vault-title"].textContent = mode === "enable" ? "Encrypt memory" : "Unlock memory";
+  dom["vault-sub"].textContent =
+    mode === "enable"
+      ? "Choose a passphrase. Notes are encrypted with AES-GCM before they are saved."
+      : "Enter the passphrase you set on this device.";
+  dom["vault-confirm-field"].hidden = mode !== "enable";
+  dom["vault-hint"].textContent =
+    mode === "enable"
+      ? "There is no recovery: if you forget the passphrase, the notes cannot be read. Use at least 8 characters."
+      : "The passphrase is never stored; it only unlocks notes for this session.";
+  dom["vault-pass"].value = "";
+  dom["vault-confirm"].value = "";
+  dom["vault-dialog"].showModal();
+  dom["vault-pass"].focus();
+}
+
+async function confirmVault() {
+  const mode = state.vaultMode;
+  const pass = dom["vault-pass"].value;
+  if (!mode) return;
+
+  if (mode === "enable") {
+    if (pass.length < 8) {
+      toast("Use a passphrase of at least 8 characters.");
+      return;
+    }
+    if (pass !== dom["vault-confirm"].value) {
+      toast("Passphrases do not match.");
+      return;
+    }
+    const salt = randomSalt();
+    const key = await deriveMemoryKey(pass, salt);
+    const vault: MemoryVault = {
+      salt,
+      verifier: await encryptJson(key, MEMORY_VERIFIER),
+      notes: await encryptJson(key, state.settings.memory || []),
+    };
+    state.settings.memoryVault = vault;
+    state.memoryKey = key;
+    await saveSettings({ memoryVault: vault, memory: [] });
+    closeDialog(dom["vault-dialog"]);
+    renderMemoryList();
+    toast("Memory encrypted on this device.");
+    return;
+  }
+
+  const vault = state.settings.memoryVault;
+  if (!vault) return;
+  const key = await deriveMemoryKey(pass, vault.salt);
+  if (!(await checkVerifier(key, vault.verifier))) {
+    toast("Wrong passphrase.");
+    return;
+  }
+  state.memoryKey = key;
+  state.settings.memory = await decryptJson<MemoryNote[]>(key, vault.notes);
+  closeDialog(dom["vault-dialog"]);
+  renderMemoryList();
+  toast("Memory unlocked for this session.");
+}
+
+function lockMemory() {
+  state.memoryKey = null;
+  state.settings.memory = [];
+  renderMemoryList();
+  toast("Memory locked.");
+}
+
+async function disableEncryption() {
+  const ok = await confirmDialog({
+    title: "Disable memory encryption?",
+    body: "Notes will be stored unencrypted on this device.",
+    confirmLabel: "Disable",
+  });
+  if (!ok) return;
+  const notes = state.settings.memory || [];
+  state.settings.memoryVault = null;
+  state.memoryKey = null;
+  await saveSettings({ memoryVault: null, memory: notes });
+  renderMemoryList();
+  toast("Memory encryption disabled.");
+}
+
+async function importChats(file: File) {
+  try {
+    const payload = JSON.parse(await file.text());
+    if (payload?.app !== "LocalMind" || !Array.isArray(payload.conversations)) {
+      toast("Not a LocalMind export.");
+      return;
+    }
+    for (const conversation of payload.conversations) await saveConversation(conversation);
+    const source = payload.settings || {};
+    const patch: Partial<Settings> = {};
+    if (typeof source.mode === "string") patch.mode = source.mode;
+    if (typeof source.theme === "string") patch.theme = source.theme as Theme;
+    if (source.memoryVault) {
+      patch.memoryVault = source.memoryVault;
+      patch.memory = [];
+    } else if (Array.isArray(source.memory)) {
+      patch.memory = source.memory;
+    }
+    await saveSettings(patch);
+    toast("Imported. Reloading...");
+    window.setTimeout(() => window.location.reload(), 500);
+  } catch (error) {
+    console.error(error);
+    toast("Import failed.");
+  }
 }
 
 async function addMemoryFromInput() {
+  if (memoryLocked()) {
+    toast("Memory is locked. Unlock it to add notes.");
+    return;
+  }
   const text = dom["memory-input"].value.trim();
   if (!text) return;
   const result = applyMemoryCommand(state.settings.memory, { type: "add", text });
@@ -585,14 +702,14 @@ async function addMemoryFromInput() {
     toast("Already remembered.");
     return;
   }
-  await saveSettingsPatch({ memory: result.memory });
+  await commitMemory(result.memory);
   dom["memory-input"].value = "";
   renderMemoryList();
 }
 
-async function forgetMemory(id) {
+async function forgetMemory(id: string) {
   const memory = (state.settings.memory || []).filter((item) => item.id !== id);
-  await saveSettingsPatch({ memory });
+  await commitMemory(memory);
   renderMemoryList();
 }
 
@@ -654,23 +771,22 @@ function closeSidebar() {
 }
 
 async function newChat() {
+  cancelEdit();
   await stopAndWait();
   await saveCurrent();
-  state.conversation = createConversation({
-    mode: state.settings.mode,
-    modelKey: state.selectedKey,
-  });
+  state.conversation = createConversation({ mode: state.settings.mode });
   renderSidebar();
   renderConversation();
   closeSidebar();
   focusInput();
 }
 
-async function openConversation(id) {
+async function openConversation(id: string) {
   if (state.conversation?.id === id) {
     closeSidebar();
     return;
   }
+  cancelEdit();
   await stopAndWait();
   await saveCurrent();
   const conversation = await getConversation(id);
@@ -684,19 +800,20 @@ async function openConversation(id) {
   closeSidebar();
 }
 
-async function onHistoryClick(event) {
-  const remove = event.target.closest("[data-delete-conversation]");
+async function onHistoryClick(event: MouseEvent) {
+  const target = event.target as Element | null;
+  const remove = target?.closest<HTMLElement>("[data-delete-conversation]");
   if (remove) {
     event.stopPropagation();
-    await deleteChatById(remove.dataset.deleteConversation);
+    await deleteChatById(remove.dataset.deleteConversation ?? "");
     return;
   }
 
-  const item = event.target.closest("[data-conversation-id]");
-  if (item) await openConversation(item.dataset.conversationId);
+  const item = target?.closest<HTMLElement>("[data-conversation-id]");
+  if (item) await openConversation(item.dataset.conversationId ?? "");
 }
 
-async function deleteChatById(id) {
+async function deleteChatById(id: string) {
   const summary = state.conversations.find((item) => item.id === id);
   const active = state.conversation?.id === id;
 
@@ -712,10 +829,7 @@ async function deleteChatById(id) {
   state.conversations = state.conversations.filter((item) => item.id !== id);
 
   if (active) {
-    state.conversation = createConversation({
-      mode: state.settings.mode,
-      modelKey: state.selectedKey,
-    });
+    state.conversation = createConversation({ mode: state.settings.mode });
   }
 
   renderSidebar();
@@ -736,7 +850,7 @@ async function saveCurrent() {
   upsertSummary(conversation);
 }
 
-function upsertSummary(conversation) {
+function upsertSummary(conversation: Conversation) {
   const summary = {
     id: conversation.id,
     title: conversation.title,
@@ -751,178 +865,15 @@ function upsertSummary(conversation) {
 }
 
 /* ---------------------------------------------------------------
-   Model loading
---------------------------------------------------------------- */
-
-async function handleModelChoice(key) {
-  if (DEMO_MODE) {
-    closeDialog(dom["model-dialog"]);
-    return;
-  }
-
-  const current = engine.getState();
-  if (current.modelKey === key && (current.phase === "ready" || current.phase === "generating")) {
-    closeDialog(dom["model-dialog"]);
-    toast("That model is already loaded.");
-    return;
-  }
-
-  if (current.phase === "loading") {
-    toast("Wait for the current model to finish loading.");
-    return;
-  }
-
-  const model = modelByKey(key);
-  if (!model) return;
-
-  if (current.phase === "ready" || current.phase === "generating") {
-    const ok = await confirmDialog({
-      title: `Switch to ${model.name}?`,
-      body: `${current.modelFamily || "The current model"} will be unloaded. The new model may need a fresh download.`,
-      confirmLabel: "Switch model",
-      tone: "primary",
-    });
-    if (!ok) return;
-  }
-
-  state.selectedKey = key;
-  state.settings.modelKey = key;
-  saveSettingsPatch({ modelKey: key });
-  closeDialog(dom["model-dialog"]);
-  await startModelLoad({ modal: true });
-}
-
-function selectWelcomeModel(key) {
-  if (engine.getState().phase === "loading") return;
-  state.selectedKey = key;
-  state.settings.modelKey = key;
-  saveSettingsPatch({ modelKey: key });
-  renderConversation({ scroll: false });
-}
-
-async function startModelLoad({ modal = true } = {}) {
-  if (DEMO_MODE) return;
-
-  const current = engine.getState();
-  if (current.phase === "loading") {
-    if (modal) showLoadDialog();
-    return;
-  }
-
-  await stopAndWait();
-
-  const key = normalizeModelKey(
-    state.selectedKey || state.settings.modelKey || recommendedModelKey(state.device),
-  );
-  const model = modelByKey(key);
-  if (!model) {
-    toast("Pick a model first.");
-    return;
-  }
-
-  state.selectedKey = key;
-  state.settings.modelKey = key;
-  state.settings.onboardingDone = true;
-  await saveSettingsPatch({ modelKey: key, onboardingDone: true });
-  await requestPersistentStorage();
-
-  if (modal) showLoadDialog();
-
-  try {
-    await engine.loadModel({ modelKey: key, device: state.device });
-    if (engine.getState().phase === "ready") {
-      if (dom["load-dialog"].open) closeDialog(dom["load-dialog"]);
-      state.loadDialogMode = null;
-      toast(`${model.name} is ready.`);
-      updateSettingsModelInfo();
-      renderConversation({ scroll: false });
-    }
-  } catch (error) {
-    if (error?.name === "AbortError" || engine.getState().phase === "idle") {
-      if (dom["load-dialog"].open) closeDialog(dom["load-dialog"]);
-      state.loadDialogMode = null;
-      return;
-    }
-    showLoadError(engine.getState().error || error?.message || "The model failed to load.");
-  }
-}
-
-function showLoadDialog() {
-  const model = modelByKey(state.selectedKey) || null;
-  state.loadDialogMode = "loading";
-
-  dom["load-title"].textContent = "Preparing your model";
-  dom["load-sub"].textContent = model
-    ? `${model.family} needs about ${modelSizeLabel(model.downloadMB)} on first load. The weights are cached after that.`
-    : "The first visit downloads the weights once. Later visits load from cache.";
-
-  dom["load-retry"].hidden = true;
-  dom["load-hide"].hidden = false;
-  dom["load-cancel"].hidden = false;
-  dom["load-cancel"].textContent = "Cancel";
-
-  updateLoadProgress(engine.getState());
-  if (!dom["load-dialog"].open) dom["load-dialog"].showModal();
-}
-
-function updateLoadProgress(snapshot) {
-  const pct = Math.max(0, Math.min(100, Math.round((snapshot.progress || 0) * 100)));
-  dom["load-fill"].style.width = `${pct}%`;
-  dom["load-percent"].textContent = `${pct}%`;
-  dom["load-detail"].textContent = snapshot.progressText || "Starting...";
-  dom["load-progress-track"].setAttribute("aria-valuenow", String(pct));
-}
-
-function showLoadError(message) {
-  state.loadDialogMode = "error";
-  dom["load-title"].textContent = "The model did not load";
-  dom["load-sub"].textContent = message;
-  dom["load-fill"].style.width = "0%";
-  dom["load-percent"].textContent = "Error";
-  dom["load-detail"].textContent = "Try again, or pick a smaller model.";
-  dom["load-retry"].hidden = false;
-  dom["load-hide"].hidden = true;
-  dom["load-cancel"].hidden = false;
-  dom["load-cancel"].textContent = "Close";
-  if (!dom["load-dialog"].open) dom["load-dialog"].showModal();
-}
-
-function hideLoadDialog() {
-  closeDialog(dom["load-dialog"]);
-  state.loadDialogMode = null;
-  if (engine.getState().phase === "loading") {
-    toast("Download continues in the background.");
-  }
-}
-
-async function cancelLoad() {
-  if (state.loadDialogMode === "error") {
-    closeDialog(dom["load-dialog"]);
-    state.loadDialogMode = null;
-    return;
-  }
-
-  engine.abortLoad();
-  closeDialog(dom["load-dialog"]);
-  state.loadDialogMode = null;
-  state.settings.onboardingDone = false;
-  await saveSettingsPatch({ onboardingDone: false });
-  toast("Model load cancelled. Partial downloads may be reused later.");
-  renderConversation({ scroll: false });
-  updateEngineChrome(engine.getState());
-}
-
-/* ---------------------------------------------------------------
    Settings
 --------------------------------------------------------------- */
 
 function openSettings() {
   syncSettingsForm();
-  updateSettingsModelInfo();
   if (!dom["settings-dialog"].open) dom["settings-dialog"].showModal();
 }
 
-async function saveSettingsPatch(patch) {
+async function saveSettingsPatch(patch: Partial<Settings>) {
   Object.assign(state.settings, patch);
   try {
     await saveSettings(patch);
@@ -934,7 +885,7 @@ async function saveSettingsPatch(patch) {
 
 async function exportChats() {
   try {
-    const conversations = [];
+    const conversations: Conversation[] = [];
     for (const summary of state.conversations) {
       const conversation = await getConversation(summary.id);
       if (conversation) conversations.push(conversation);
@@ -946,8 +897,6 @@ async function exportChats() {
       exportedAt: new Date().toISOString(),
       settings: {
         mode: state.settings.mode,
-        temperature: state.settings.temperature,
-        maxTokens: state.settings.maxTokens,
         theme: state.settings.theme,
         memory: state.settings.memory || [],
       },
@@ -982,7 +931,6 @@ async function clearAllData() {
   if (!ok) return;
 
   await stopAndWait();
-  await engine.unload();
   await clearDatabase();
 
   try {
@@ -1026,24 +974,66 @@ function handleSend() {
     return;
   }
 
+  const warning = piiWarning(text);
+  if (warning) toast(warning);
+
+  if (state.editingId) truncateForEdit(state.editingId);
+  state.editingId = null;
+  dom["edit-banner"].hidden = true;
+
   dom.input.value = "";
   autoResize();
   updateComposerState();
   sendUserMessage(text);
 }
 
-async function sendUserMessage(text) {
+function truncateForEdit(id: string) {
+  const conversation = state.conversation;
+  if (!conversation) return;
+  const index = conversation.messages.findIndex((message) => message.id === id);
+  if (index < 0) return;
+  conversation.messages = conversation.messages.slice(0, index);
+  if (!conversation.messages.length) conversation.title = "New chat";
+  conversation.updatedAt = Date.now();
+}
+
+function startEdit(message: Message) {
+  if (state.generating) {
+    toast("Wait for the reply to finish, then edit.");
+    return;
+  }
+  state.editingId = message.id;
+  dom.input.value = message.content;
+  dom["edit-banner"].hidden = false;
+  autoResize();
+  updateComposerState();
+  focusInput();
+}
+
+function cancelEdit() {
+  if (!state.editingId) return;
+  state.editingId = null;
+  dom["edit-banner"].hidden = true;
+  dom.input.value = "";
+  autoResize();
+  updateComposerState();
+}
+
+async function sendUserMessage(text: string) {
   const command = parseMemoryCommand(text);
+  if (command && memoryLocked()) {
+    toast("Memory is locked. Unlock it in Settings to change notes.");
+    return;
+  }
   state.memoryOutcome = command ? applyMemoryCommand(state.settings.memory, command) : null;
   if (state.memoryOutcome?.changed) {
-    await saveSettingsPatch({ memory: state.memoryOutcome.memory });
+    await commitMemory(state.memoryOutcome.memory);
   }
 
   const conversation = ensureConversation();
   const userMessage = createMessage("user", text);
   conversation.messages.push(userMessage);
   conversation.mode = state.settings.mode;
-  conversation.modelKey = state.selectedKey;
   conversation.updatedAt = Date.now();
   if (conversation.title === "New chat") conversation.title = deriveTitle(text);
 
@@ -1056,17 +1046,15 @@ async function sendUserMessage(text) {
   runGeneration(assistant.id);
 }
 
-function ensureConversation() {
-  if (!state.conversation) {
-    state.conversation = createConversation({
-      mode: state.settings.mode,
-      modelKey: state.selectedKey,
-    });
-  }
-  return state.conversation;
+function ensureConversation(): Conversation {
+  const existing = state.conversation;
+  if (existing) return existing;
+  const created = createConversation({ mode: state.settings.mode });
+  state.conversation = created;
+  return created;
 }
 
-async function runGeneration(assistantId) {
+async function runGeneration(assistantId: string) {
   const conversation = state.conversation;
   const assistant = conversation?.messages.find((message) => message.id === assistantId);
   if (!conversation || !assistant) return;
@@ -1083,8 +1071,8 @@ async function runGeneration(assistantId) {
   state.generating = true;
   state.partialText = "";
   state.streamSignal = engine.newGenerationSignal();
-  state.generationDone = new Promise((resolve) => {
-    state.resolveGeneration = resolve;
+  state.generationDone = new Promise<void>((resolve) => {
+    state.resolveGeneration = () => resolve();
   });
   state.autoScroll = true;
   updateComposerState();
@@ -1092,16 +1080,14 @@ async function runGeneration(assistantId) {
 
   const started = performance.now();
   let accumulated = "";
-  let usage = null;
+  let usage: { completion_tokens: number; total_tokens: number } | null = null;
   let aborted = false;
-  let errorMessage = null;
+  let errorMessage: string | null = null;
   let lastSave = performance.now();
 
   try {
     for await (const chunk of engine.generate({
       messages: messagesForEngine,
-      temperature: Number(state.settings.temperature),
-      maxTokens: Number(state.settings.maxTokens),
       signal: state.streamSignal,
       demo: {
         buildDemoReply: state.settings.mode === "coder" ? demoCodingReply : null,
@@ -1111,10 +1097,12 @@ async function runGeneration(assistantId) {
     })) {
       if (runId !== state.runId) return;
 
-      if (chunk.text) {
+      if ("text" in chunk && chunk.text) {
         accumulated += chunk.text;
         state.partialText = accumulated;
-        const node = dom.messages.querySelector(`[data-message-id="${cssEscape(assistantId)}"]`);
+        const node = dom.messages.querySelector<HTMLElement>(
+          `[data-message-id="${cssEscape(assistantId)}"]`,
+        );
         if (node) streamText(node, accumulated, state.autoScroll);
 
         if (performance.now() - lastSave > 2500) {
@@ -1125,10 +1113,11 @@ async function runGeneration(assistantId) {
         }
       }
 
-      if (chunk.usage) usage = chunk.usage;
+      if ("usage" in chunk) usage = chunk.usage;
     }
   } catch (error) {
-    if (error?.name === "AbortError" || state.streamSignal?.aborted) aborted = true;
+    if ((error instanceof Error && error.name === "AbortError") || state.streamSignal?.aborted)
+      aborted = true;
     else errorMessage = friendlyError(error);
   }
 
@@ -1173,7 +1162,7 @@ async function runGeneration(assistantId) {
   focusInput();
 }
 
-function buildEngineMessages(conversation, excludeId) {
+function buildEngineMessages(conversation: Conversation, excludeId: string): ChatMessage[] | null {
   const mode = modeById(state.settings.mode);
   const latestUser =
     [...conversation.messages]
@@ -1210,18 +1199,16 @@ function buildEngineMessages(conversation, excludeId) {
       (message.role === "user" || message.role === "assistant"),
   );
 
-  const trimmed = [];
-  let characters = 0;
+  const measure = (message: ChatMessage) =>
+    message.role === "user" ? expandShorthand(normalizeText(message.content)) : message.content;
+  const { kept, summary } = compactHistory(history, CONTEXT_LIMITS, measure);
+  const note = formatCompactionNote(summary);
+  if (note) systemPrompt += `\n\n${note}`;
 
-  for (let index = history.length - 1; index >= 0; index -= 1) {
-    const message = history[index];
-    if (trimmed.length >= CONTEXT_LIMITS.maxMessages) break;
-    const content =
-      message.role === "user" ? expandShorthand(normalizeText(message.content)) : message.content;
-    if (characters + content.length > CONTEXT_LIMITS.maxChars && trimmed.length > 0) break;
-    trimmed.unshift({ role: message.role, content });
-    characters += content.length;
-  }
+  const trimmed: ChatMessage[] = kept.map((message) => ({
+    role: message.role,
+    content: measure(message),
+  }));
 
   if (!trimmed.length) return null;
   return [{ role: "system", content: systemPrompt }, ...trimmed];
@@ -1255,7 +1242,7 @@ async function stopAndWait() {
   engine.stop();
   await Promise.race([
     state.generationDone,
-    new Promise((resolve) => window.setTimeout(resolve, 2500)),
+    new Promise<void>((resolve) => window.setTimeout(resolve, 2500)),
   ]);
   if (state.generating) forceFinishGeneration();
 }
@@ -1271,7 +1258,7 @@ function forceFinishGeneration() {
     assistant.streaming = false;
     assistant.content = state.partialText.trimEnd() || "_Stopped._";
     assistant.stopped = true;
-    assistant.error = null;
+    assistant.error = undefined;
     saveCurrent().catch(() => {});
     renderConversation({ scroll: false });
   }
@@ -1289,8 +1276,9 @@ function resolveGenerationRun() {
   }
 }
 
-function onMessagesClick(event) {
-  const copyButton = event.target.closest("[data-copy-code]");
+function onMessagesClick(event: MouseEvent) {
+  const target = event.target as Element | null;
+  const copyButton = target?.closest<HTMLElement>("[data-copy-code]");
   if (copyButton) {
     const block = copyButton.closest(".code-block");
     const code = block?.querySelector("pre code")?.textContent || "";
@@ -1305,7 +1293,7 @@ function onMessagesClick(event) {
     return;
   }
 
-  const actionButton = event.target.closest("[data-action]");
+  const actionButton = target?.closest<HTMLElement>("[data-action]");
   if (actionButton) {
     const action = actionButton.dataset.action;
     if (action === "copy") {
@@ -1318,25 +1306,22 @@ function onMessagesClick(event) {
       }
       return;
     }
+    if (action === "edit") {
+      const message = state.conversation?.messages.find(
+        (item) => item.id === actionButton.dataset.messageId,
+      );
+      if (message) startEdit(message);
+      return;
+    }
     if (action === "regenerate" || action === "retry") {
       regenerate();
       return;
     }
-    if (action === "start-model") {
-      startModelLoad({ modal: true });
-      return;
-    }
   }
 
-  const modelCard = event.target.closest("[data-model-key]");
-  if (modelCard && !modelCard.disabled) {
-    selectWelcomeModel(modelCard.dataset.modelKey);
-    return;
-  }
-
-  const suggestion = event.target.closest("[data-suggestion]");
+  const suggestion = target?.closest<HTMLElement>("[data-suggestion]");
   if (suggestion) {
-    dom.input.value = suggestion.dataset.suggestion;
+    dom.input.value = suggestion.dataset.suggestion ?? "";
     autoResize();
     updateComposerState();
     focusInput();
@@ -1347,7 +1332,7 @@ function onMessagesClick(event) {
    Utilities
 --------------------------------------------------------------- */
 
-function deriveTitle(text) {
+function deriveTitle(text: string) {
   const clean = String(text || "")
     .replace(/\s+/g, " ")
     .trim();
@@ -1355,26 +1340,18 @@ function deriveTitle(text) {
   return clean.length > 52 ? `${clean.slice(0, 49).trimEnd()}...` : clean;
 }
 
-function estimateTokens(text) {
+function estimateTokens(text: string) {
   return Math.max(1, Math.ceil(String(text || "").length / 4));
 }
 
-function friendlyError(error) {
-  const message = String(error?.message || error || "Unknown error");
-  if (/out of memory|OOM|memory allocation/i.test(message)) {
-    return "The browser ran out of memory. Pick a smaller model or close other tabs.";
-  }
-  if (/device lost/i.test(message)) {
-    return "The GPU device was lost. Reload the page and try again.";
-  }
-  if (/fetch|network|download/i.test(message)) {
-    return "The download failed. Check your connection and try again.";
-  }
+function friendlyError(error: unknown) {
+  const raw = error instanceof Error ? error.message : error;
+  const message = String(raw || error || "Unknown error");
   return message.length > 260 ? `${message.slice(0, 257)}...` : message;
 }
 
-function cssEscape(value) {
-  if (window.CSS?.escape) return CSS.escape(value);
+function cssEscape(value: string) {
+  if (typeof CSS !== "undefined" && CSS.escape) return CSS.escape(value);
   return String(value).replace(/["\\]/g, "\\$&");
 }
 
@@ -1395,7 +1372,7 @@ function focusInput() {
   dom.input.focus();
 }
 
-async function copyText(text) {
+async function copyText(text: string) {
   const value = String(text || "");
   try {
     await navigator.clipboard.writeText(value);
@@ -1422,8 +1399,8 @@ async function copyText(text) {
   }
 }
 
-function toast(message) {
-  window.clearTimeout(state.toastTimer);
+function toast(message: string) {
+  window.clearTimeout(state.toastTimer ?? undefined);
   dom.toast.textContent = message;
   dom.toast.classList.add("show");
   state.toastTimer = window.setTimeout(() => {
@@ -1431,21 +1408,31 @@ function toast(message) {
   }, 2800);
 }
 
-let activeConfirm = null;
+let activeConfirm: ((value: boolean) => void) | null = null;
 
-function confirmDialog({ title, body, confirmLabel = "Confirm", tone = "danger" }) {
+function confirmDialog({
+  title,
+  body,
+  confirmLabel = "Confirm",
+  tone = "danger",
+}: {
+  title: string;
+  body: string;
+  confirmLabel?: string;
+  tone?: string;
+}): Promise<boolean> {
   if (activeConfirm) activeConfirm(false);
 
-  return new Promise((resolve) => {
+  return new Promise<boolean>((resolve) => {
     let settled = false;
-    const onCancel = (event) => {
+    const onCancel = (event: Event) => {
       event.preventDefault();
       finish(false);
     };
-    const onBackdrop = (event) => {
+    const onBackdrop = (event: MouseEvent) => {
       if (event.target === dom["confirm-dialog"]) finish(false);
     };
-    const finish = (value) => {
+    const finish = (value: boolean) => {
       if (settled) return;
       settled = true;
       activeConfirm = null;
@@ -1470,6 +1457,6 @@ function confirmDialog({ title, body, confirmLabel = "Confirm", tone = "danger" 
   });
 }
 
-function closeDialog(dialog) {
+function closeDialog(dialog: HTMLDialogElement | null) {
   if (dialog?.open) dialog.close();
 }

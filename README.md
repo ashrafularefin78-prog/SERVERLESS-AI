@@ -33,7 +33,7 @@ The production build is a static site in `dist/`. Serve it from any static host.
 
 ## No model downloads
 
-This build is intentionally model-free. There is no model picker, no download step, and no remote API. Replies are produced by the built-in rule engine (`generateDemo` in `src/engine/demo.js`) with language/task detection from `src/coder/languages.js`. The WebLLM and wllama loaders remain in the source but are not reachable from the UI.
+This build is intentionally model-free. There is no model picker, no download step, no remote API, and no model-loading code in the source. Replies are produced by the built-in rule engine (`generateDemo` in `src/engine/demo.js`) with language/task detection from `src/coder/languages.js`.
 
 ## How it works
 
@@ -46,10 +46,8 @@ index.html, src/main.js
         +-- src/ui/render.js        history, messages, welcome
         +-- src/markdown.js         marked + DOMPurify + safe code blocks
         +-- src/storage/db.js       IndexedDB conversations and settings
-        +-- src/engine/device.js    device summary for the status panel
-        +-- src/engine/catalog.js   model catalog metadata (dormant)
         +-- src/engine/demo.js      built-in reply engine and streaming
-        +-- src/engine/manager.js   generation lifecycle and backend selection
+        +-- src/engine/manager.js   generation lifecycle (rules-only)
 ```
 
 The built-in assistant runs on the main thread: no worker, no model, no network. The main thread streams tokens into the chat and handles input.

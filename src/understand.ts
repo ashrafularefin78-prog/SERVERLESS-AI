@@ -1,8 +1,8 @@
 // Deterministic reading of messy human input: unicode cleanup, chat shorthand
 // expansion, and a coarse intent read. History keeps the original text; only
-// the copy sent to the model is normalized.
+// the copy sent to the engine is normalized.
 
-const SHORTHAND = [
+const SHORTHAND: [RegExp, string][] = [
   [/\b(?:pls|plz|pleas)\b/gi, "please"],
   [/\b(?:thx|tnx|ty)\b/gi, "thanks"],
   [/\bur\b/gi, "your"],
@@ -27,21 +27,22 @@ const SHORTHAND = [
   [/\bthats\b/gi, "that's"],
 ];
 
+export interface Intent {
+  kind: "smalltalk" | "emotion" | "bug" | "question" | "request";
+  vague: boolean;
+}
+
 /**
  * Clean up user input before it reaches the reply engine: strip invisible
  * characters, normalize smart punctuation and line endings, and trim
  * redundant whitespace. Chat history keeps the original text.
- *
- * @param {unknown} text
- * @returns {string}
  */
-export function normalizeText(text) {
+export function normalizeText(text: unknown): string {
   // The character classes below hold invisible literals: zero-width chars,
   // smart quotes, ellipsis, and en/em dashes.
   return (
     String(text ?? "")
       // The class below intentionally contains invisible literal characters.
-      // eslint-disable-next-line no-irregular-whitespace, no-misleading-character-class
       .replace(/[​‌‍﻿]/g, "")
       .replace(/[‘’‛]/g, "'")
       .replace(/[“”‟]/g, '"')
@@ -56,20 +57,15 @@ export function normalizeText(text) {
 
 // Fenced blocks and inline code spans are left untouched so identifiers and
 // string literals are never rewritten.
-function mapProse(text, fn) {
+function mapProse(text: string, fn: (prose: string) => string): string {
   return String(text)
     .split(/(```[\s\S]*?(?:```|$)|`[^`\n]*`)/g)
     .map((part, index) => (index % 2 === 1 ? part : fn(part)))
     .join("");
 }
 
-/**
- * Expand common chat shorthand outside fenced and inline code.
- *
- * @param {string} text
- * @returns {string}
- */
-export function expandShorthand(text) {
+/** Expand common chat shorthand outside fenced and inline code. */
+export function expandShorthand(text: string): string {
   return mapProse(text, (prose) => {
     let out = prose;
     for (const [pattern, replacement] of SHORTHAND) out = out.replace(pattern, replacement);
@@ -80,11 +76,8 @@ export function expandShorthand(text) {
 /**
  * Classify the latest message and flag messages that point at a problem
  * without enough detail to answer well.
- *
- * @param {string} text
- * @returns {{ kind: "smalltalk" | "emotion" | "bug" | "question" | "request", vague: boolean }}
  */
-export function analyzeIntent(text) {
+export function analyzeIntent(text: string): Intent {
   const raw = String(text ?? "");
   const t = expandShorthand(normalizeText(raw)).toLowerCase();
   const words = t.split(/\s+/).filter(Boolean);
@@ -143,11 +136,8 @@ export function analyzeIntent(text) {
 /**
  * Turn an intent into one short system-prompt hint, or null when the message
  * is clear enough to answer directly.
- *
- * @param {{ vague?: boolean } | null | undefined} intent
- * @returns {string | null}
  */
-export function understandingHint(intent) {
+export function understandingHint(intent: { vague?: boolean } | null | undefined): string | null {
   if (intent?.vague) {
     return "The latest message is underspecified: it points at a problem without giving code, an error, or a concrete goal. Ask one short, targeted question to get what you need before guessing.";
   }

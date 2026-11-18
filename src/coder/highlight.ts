@@ -1,4 +1,5 @@
 import hljs from "highlight.js/lib/core";
+import type { LanguageFn } from "highlight.js";
 import ada from "highlight.js/lib/languages/ada";
 import bash from "highlight.js/lib/languages/bash";
 import basic from "highlight.js/lib/languages/basic";
@@ -53,7 +54,7 @@ import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 import { abap, cobol, logo, solidity, zig } from "./grammars.js";
 
-const GRAMMARS = {
+const GRAMMARS: Record<string, LanguageFn> = {
   abap,
   ada,
   apex: java,
@@ -124,7 +125,7 @@ for (const [name, definition] of Object.entries(GRAMMARS)) {
   hljs.registerLanguage(name, definition);
 }
 
-export function highlightToHtml(code, languageId) {
+export function highlightToHtml(code: string, languageId: string | null | undefined) {
   if (!languageId || !hljs.getLanguage(languageId)) return null;
   try {
     return hljs.highlight(code, { language: languageId, ignoreIllegals: true }).value;

@@ -13,7 +13,7 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
   });
 }
 
-function showFatalError(error) {
+function showFatalError(error: unknown) {
   const existing = document.getElementById("fatal-error");
   if (existing) return;
 
@@ -28,8 +28,9 @@ function showFatalError(error) {
   title.textContent = "LocalMind could not start";
 
   const body = document.createElement("p");
+  const raw = error instanceof Error ? error.message : error;
   body.textContent =
-    String(error?.message || error || "Unknown error.") +
+    String(raw || error || "Unknown error.") +
     " Reload the page to try again. If the problem continues, clear this site's data.";
 
   const hint = document.createElement("p");

@@ -1,5 +1,5 @@
-// Performance budget for the initial production payload. Dormant model chunks
-// are loaded on demand and are deliberately excluded from this check.
+// Performance budget for the initial production payload. The app is model-free:
+// everything it needs ships in this payload.
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1,6 +1,7 @@
 import js from "@eslint/js";
 import prettier from "eslint-config-prettier";
 import globals from "globals";
+import tseslint from "typescript-eslint";
 
 export default [
   {
@@ -12,7 +13,11 @@ export default [
       "test-results/**",
     ],
   },
-  js.configs.recommended,
+  {
+    files: ["**/*.js", "**/*.mjs"],
+    ...js.configs.recommended,
+  },
+  ...tseslint.configs.recommended,
   {
     files: ["src/**/*.js"],
     languageOptions: {
@@ -29,8 +34,20 @@ export default [
     },
   },
   {
-    files: ["src/engine/webllm.worker.js"],
-    languageOptions: { globals: { ...globals.worker } },
+    files: ["src/**/*.ts"],
+    languageOptions: {
+      globals: { ...globals.browser },
+    },
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+      "no-console": ["warn", { allow: ["warn", "error"] }],
+      eqeqeq: ["error", "smart"],
+      "no-var": "error",
+      "prefer-const": "error",
+    },
   },
   {
     files: ["public/sw.js"],

@@ -3,7 +3,43 @@
 
 import { expandShorthand, normalizeText } from "../understand.js";
 
-const LANGUAGE_META = {
+interface LanguageMeta {
+  name: string;
+  fence: string;
+  setup: string;
+  commands: string[];
+  runNote?: string;
+}
+
+interface ProgramOptions {
+  decimal?: boolean;
+}
+
+export interface ProgramTask {
+  id: string;
+  options: ProgramOptions;
+}
+
+export interface ProgramLanguage {
+  id: string;
+  name?: string;
+  fence?: string;
+}
+
+type ProgramBuilder = (options: ProgramOptions) => string;
+
+export interface BasicProgram {
+  languageId: string;
+  languageName: string;
+  fence: string;
+  setup: string;
+  commands: string[];
+  runNote: string;
+  description: string;
+  code: string;
+}
+
+const LANGUAGE_META: Record<string, LanguageMeta> = {
   c: {
     name: "C",
     fence: "c",
@@ -51,10 +87,9 @@ const LANGUAGE_META = {
   },
 };
 
-export const SUPPORTED_PROGRAM_LANGUAGE_NAMES =
-  "C, C++, Java, C#, Python, JavaScript, and Go";
+export const SUPPORTED_PROGRAM_LANGUAGE_NAMES = "C, C++, Java, C#, Python, JavaScript, and Go";
 
-const TASK_DESCRIPTIONS = {
+const TASK_DESCRIPTIONS: Record<string, string> = {
   "hello-world": "prints Hello, World!",
   "sum-two": "asks for two numbers and prints their sum",
   "sum-n": "adds the numbers from 1 up to n",
@@ -75,23 +110,29 @@ const TASK_DESCRIPTIONS = {
   "leap-year": "checks whether a year is a leap year",
 };
 
-function task(id, options = {}) {
+function task(id: string, options: ProgramOptions = {}): ProgramTask {
   return { id, options };
 }
 
-export function findBasicProgramTask(prompt) {
+export function findBasicProgramTask(prompt: string): ProgramTask | null {
   const text = expandShorthand(normalizeText(prompt || "")).toLowerCase();
   if (!text) return null;
-  const decimal = /\b(?:decimal|decimals|float|floating|fraction|fractions|real numbers?)\b/.test(text);
+  const decimal = /\b(?:decimal|decimals|float|floating|fraction|fractions|real numbers?)\b/.test(
+    text,
+  );
 
   if (/\bhello[\s,.-]*world\b/.test(text)) return task("hello-world");
 
-  if (/\bsum\b[^.\n]{0,40}\b(?:of\s+)?(?:its\s+)?digits?\b|\bdigits?\b[^.\n]{0,40}\bsum\b/.test(text)) {
+  if (
+    /\bsum\b[^.\n]{0,40}\b(?:of\s+)?(?:its\s+)?digits?\b|\bdigits?\b[^.\n]{0,40}\bsum\b/.test(text)
+  ) {
     return task("sum-digits");
   }
 
   if (
-    /\bsum\b[^.\n]{0,50}\b(?:first\s+(?:n|\d+)|1\s*(?:to|through)\s*(?:n|\d+)|natural\s+numbers?)\b/.test(text) ||
+    /\bsum\b[^.\n]{0,50}\b(?:first\s+(?:n|\d+)|1\s*(?:to|through)\s*(?:n|\d+)|natural\s+numbers?)\b/.test(
+      text,
+    ) ||
     /\b(?:first\s+(?:n|\d+)|1\s*(?:to|through)\s+(?:n|\d+))\b[^.\n]{0,50}\bsum\b/.test(text)
   ) {
     return task("sum-n");
@@ -114,7 +155,11 @@ export function findBasicProgramTask(prompt) {
   if (/\b(?:multiplication\s+table|times\s+table|table\s+of)\b/.test(text)) {
     return task("multiplication-table");
   }
-  if (/\bswap\b/.test(text) && /\b(?:two|2)\b/.test(text) && /\b(?:numbers?|integers?|values?|variables?)\b/.test(text)) {
+  if (
+    /\bswap\b/.test(text) &&
+    /\b(?:two|2)\b/.test(text) &&
+    /\b(?:numbers?|integers?|values?|variables?)\b/.test(text)
+  ) {
     return task("swap-two");
   }
   if (
@@ -126,7 +171,10 @@ export function findBasicProgramTask(prompt) {
   }
 
   if (/\breverse\b/.test(text)) {
-    if (/\b(?:array|list|linked\s+list|stack|queue|tree|graph)\b/.test(text) && !/\b(?:string|text|word)\b/.test(text)) {
+    if (
+      /\b(?:array|list|linked\s+list|stack|queue|tree|graph)\b/.test(text) &&
+      !/\b(?:string|text|word)\b/.test(text)
+    ) {
       return null;
     }
     if (
@@ -142,7 +190,11 @@ export function findBasicProgramTask(prompt) {
   if (/\b(?:even|odd)\b/.test(text)) return task("even-odd");
 
   if (/\b(?:sum|add|addition|total)\b/.test(text)) {
-    if (/\b(?:array|list|elements?|n\s+numbers?|multiple\s+numbers?|numbers\s+entered|all\s+numbers)\b/.test(text)) {
+    if (
+      /\b(?:array|list|elements?|n\s+numbers?|multiple\s+numbers?|numbers\s+entered|all\s+numbers)\b/.test(
+        text,
+      )
+    ) {
       return null;
     }
     return task("sum-two", { decimal });
@@ -151,7 +203,7 @@ export function findBasicProgramTask(prompt) {
   return null;
 }
 
-const C_PROGRAMS = {
+const C_PROGRAMS: Record<string, ProgramBuilder> = {
   "hello-world": () => String.raw`#include <stdio.h>
 
 int main(void) {
@@ -491,7 +543,7 @@ int main(void) {
 }`,
 };
 
-const CPP_PROGRAMS = {
+const CPP_PROGRAMS: Record<string, ProgramBuilder> = {
   "hello-world": () => String.raw`#include <iostream>
 
 int main() {
@@ -815,7 +867,7 @@ int main() {
 }`,
 };
 
-const JAVA_PROGRAMS = {
+const JAVA_PROGRAMS: Record<string, ProgramBuilder> = {
   "hello-world": () => String.raw`public class Main {
     public static void main(String[] args) {
         System.out.println("Hello, World!");
@@ -1151,7 +1203,7 @@ public class Main {
 }`,
 };
 
-const CSHARP_PROGRAMS = {
+const CSHARP_PROGRAMS: Record<string, ProgramBuilder> = {
   "hello-world": () => String.raw`using System;
 
 class Program
@@ -1524,7 +1576,7 @@ class Program
 }`,
 };
 
-const PYTHON_PROGRAMS = {
+const PYTHON_PROGRAMS: Record<string, ProgramBuilder> = {
   "hello-world": () => String.raw`print("Hello, World!")`,
   "sum-two": ({ decimal }) =>
     decimal
@@ -1649,7 +1701,7 @@ else:
     print(f"{year} is not a leap year.")`,
 };
 
-const JAVASCRIPT_PROGRAMS = {
+const JAVASCRIPT_PROGRAMS: Record<string, ProgramBuilder> = {
   "hello-world": () => String.raw`console.log("Hello, World!");`,
   "sum-two": ({ decimal }) =>
     decimal
@@ -1935,7 +1987,7 @@ const rl = readline.createInterface({ input, output });
 })();`,
 };
 
-const GO_PROGRAMS = {
+const GO_PROGRAMS: Record<string, ProgramBuilder> = {
   "hello-world": () => String.raw`package main
 
 import "fmt"
@@ -2352,7 +2404,7 @@ func main() {
 }`,
 };
 
-const BASIC_PROGRAMS = {
+const BASIC_PROGRAMS: Record<string, Record<string, ProgramBuilder>> = {
   c: C_PROGRAMS,
   cpp: CPP_PROGRAMS,
   java: JAVA_PROGRAMS,
@@ -2362,7 +2414,11 @@ const BASIC_PROGRAMS = {
   go: GO_PROGRAMS,
 };
 
-export function buildBasicProgram(prompt, language, resolvedTask = null) {
+export function buildBasicProgram(
+  prompt: string,
+  language: ProgramLanguage | null | undefined,
+  resolvedTask: ProgramTask | null = null,
+): BasicProgram | null {
   if (!language) return null;
   const taskInfo = resolvedTask || findBasicProgramTask(prompt);
   if (!taskInfo) return null;
@@ -2384,13 +2440,19 @@ export function buildBasicProgram(prompt, language, resolvedTask = null) {
     setup: meta.setup,
     commands: meta.commands,
     runNote: meta.runNote || "",
-    description: TASK_DESCRIPTIONS[taskInfo.id],
+    description: TASK_DESCRIPTIONS[taskInfo.id] ?? "",
     code,
   };
 }
 
-export function formatBasicProgram(program, { coder = false, framework = null } = {}) {
-  const parts = [];
+export function formatBasicProgram(
+  program: BasicProgram,
+  {
+    coder = false,
+    framework = null,
+  }: { coder?: boolean; framework?: { name: string } | null } = {},
+): string {
+  const parts: string[] = [];
 
   if (coder) {
     const target = framework
@@ -2404,7 +2466,9 @@ export function formatBasicProgram(program, { coder = false, framework = null } 
   }
 
   if (framework) {
-    parts.push(`This is plain ${program.languageName}; it does not include the ${framework.name} setup.`);
+    parts.push(
+      `This is plain ${program.languageName}; it does not include the ${framework.name} setup.`,
+    );
   }
 
   parts.push("```" + program.fence + "\n" + program.code + "\n```");

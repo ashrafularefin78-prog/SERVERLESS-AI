@@ -1,4 +1,6 @@
 import { expandShorthand, normalizeText } from "../understand.js";
+import { detectInjection, injectionRefusal } from "../guardrails.js";
+import { recapReply } from "../context.js";
 import { detectLanguageDetailed, detectTask } from "../coder/languages.js";
 import {
   buildBasicProgram,
@@ -6,6 +8,15 @@ import {
   formatBasicProgram,
   SUPPORTED_PROGRAM_LANGUAGE_NAMES,
 } from "../coder/programs.js";
+import type { ChatMessage, MemoryNote } from "../types.js";
+
+interface History {
+  prior: ChatMessage[];
+  priorUsers: ChatMessage[];
+  previousAssistant: ChatMessage | null;
+  previousUser: ChatMessage | null;
+  turnCount: number;
+}
 
 const JOKES = [
   "Why do programmers prefer dark mode? Because light attracts bugs.",
@@ -167,7 +178,17 @@ const OPINIONS = [
   },
 ];
 
-export function demoChatReply({ prompt, messages = [], memory = [], now = new Date() } = {}) {
+export function demoChatReply({
+  prompt = "",
+  messages = [],
+  memory = [],
+  now = new Date(),
+}: {
+  prompt?: string;
+  messages?: ChatMessage[];
+  memory?: (MemoryNote | string)[];
+  now?: Date;
+} = {}): string {
   const raw = normalizeText(prompt);
   if (!raw) return "I'm here. What's on your mind?";
 
@@ -176,12 +197,14 @@ export function demoChatReply({ prompt, messages = [], memory = [], now = new Da
   const history = readHistory(messages);
   const notes = (memory || [])
     .map((item) => (typeof item === "string" ? item : item?.text))
-    .filter(Boolean);
+    .filter((note): note is string => Boolean(note));
   const current = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
   const seed = history.turnCount + (history.previousAssistant?.content?.length || 0);
 
   const safety = safetyReply(lower);
   if (safety) return safety;
+
+  if (detectInjection(lower)) return injectionRefusal();
 
   const nameIntro = nameIntroduction(text);
   if (nameIntro) {
@@ -255,13 +278,16 @@ export function demoChatReply({ prompt, messages = [], memory = [], now = new Da
   if (casual) return casual;
   if (isLightAcknowledgement(lower)) return acknowledgementReply(lower, history);
 
+  const recap = recapReply(messages);
+  if (recap) return recap;
+
   const statement = statementReply(text, lower, history);
   if (statement) return statement;
 
   return fallbackReply(text, lower, history, seed);
 }
 
-function readHistory(messages) {
+function readHistory(messages: ChatMessage[]): History {
   const turns = (messages || []).filter(
     (message) =>
       (message.role === "user" || message.role === "assistant") &&
@@ -271,7 +297,7 @@ function readHistory(messages) {
 
   let currentIndex = -1;
   for (let index = turns.length - 1; index >= 0; index -= 1) {
-    if (turns[index].role === "user") {
+    if (turns[index]?.role === "user") {
       currentIndex = index;
       break;
     }
@@ -286,15 +312,15 @@ function readHistory(messages) {
   return { prior, priorUsers, previousAssistant, previousUser, turnCount: priorUsers.length };
 }
 
-function pick(list, seed = 0) {
-  return list[Math.abs(seed) % list.length];
+function pick<T>(list: T[], seed = 0): T {
+  return list[Math.abs(seed) % list.length]!;
 }
 
-function countMatching(messages, test) {
+function countMatching(messages: ChatMessage[], test: (content: string) => boolean): number {
   return messages.filter((message) => test(message.content.toLowerCase())).length;
 }
 
-function safetyReply(lower) {
+function safetyReply(lower: string) {
   if (
     /\b(?:i (?:want|wanna|plan|am going|feel like) (?:to )?(?:kill|hurt) myself|i(?:'m| am) suicidal|suicidal|end my life|don'?t want to (?:live|be alive)|self[- ]harm|hurt myself)\b/.test(
       lower,
@@ -305,28 +331,28 @@ function safetyReply(lower) {
   return null;
 }
 
-function nameIntroduction(text) {
+function nameIntroduction(text: string) {
   const match = text.match(
     /^(?:hi|hello|hey|yo)?[,\s]*(?:my name is|i'm|i am|call me)\s+([A-Za-z][A-Za-z' -]{0,39})[.!]*$/i,
   );
   if (!match) return null;
-  const candidate = match[1].trim();
+  const candidate = (match[1] ?? "").trim();
   const words = candidate.split(/\s+/);
-  if (words.length > 3 || NAME_STOPWORDS.has(words[0].toLowerCase())) return null;
+  if (words.length > 3 || NAME_STOPWORDS.has((words[0] ?? "").toLowerCase())) return null;
   return candidate;
 }
 
-function nameFromNotes(notes) {
+function nameFromNotes(notes: string[]) {
   for (const note of notes || []) {
     const match =
       note.match(/The user's name is ([A-Za-z][A-Za-z' -]{0,39})\.?$/i) ||
       note.match(/\b(?:my name is|call me|i am called)\s+([A-Za-z][A-Za-z' -]{0,39})/i);
-    if (match) return match[1].trim().replace(/[.!]+$/, "");
+    if (match) return (match[1] ?? "").trim().replace(/[.!]+$/, "");
   }
   return null;
 }
 
-function memoryQuestion(lower, notes) {
+function memoryQuestion(lower: string, notes: string[]) {
   if (/\bwhat(?:'s| is) my name\b|\bdo you know my name\b|\bdo you remember me\b/.test(lower)) {
     const name = nameFromNotes(notes);
     return name
@@ -349,7 +375,7 @@ function memoryQuestion(lower, notes) {
   return null;
 }
 
-function timeOrDateReply(lower, now) {
+function timeOrDateReply(lower: string, now: Date) {
   if (/\bwhat(?:'s| is)? (?:the )?time\b|\bwhat time is it\b|\bcurrent time\b/.test(lower)) {
     const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(
       now,
@@ -375,18 +401,18 @@ function timeOrDateReply(lower, now) {
   return null;
 }
 
-function isWeatherQuestion(lower) {
+function isWeatherQuestion(lower: string) {
   return /\bweather\b|\bforecast\b|\btemperature (?:outside|today)\b|\bis it (?:raining|snowing|sunny)\b/.test(
     lower,
   );
 }
 
-function tryMath(text) {
+function tryMath(text: string) {
   const lower = text.toLowerCase();
   const direct = lower.match(
     /^(?:what(?:'s| is)|calculate|compute|evaluate|solve)\s+(.+?)\s*\??$/i,
   );
-  let expression = direct ? direct[1].trim() : "";
+  let expression = direct ? (direct[1] ?? "").trim() : "";
   if (!expression && /^\d[\d\s.+\-*/%^()]*$/.test(lower)) expression = lower;
   if (!expression) {
     const percentOf = lower.match(/^(\d+(?:\.\d+)?)\s*%\s*of\s*(\d+(?:\.\d+)?)\s*\??$/);
@@ -429,7 +455,7 @@ function tryMath(text) {
   }
 }
 
-function isCodeRequest(text) {
+function isCodeRequest(text: string) {
   if (!/\b(?:program|code|function|script|snippet|class)\b/.test(text)) return false;
   if (
     /\b(?:write|create|make|generate|build|implement|show|give|need|want|can|could|would|please)\b/.test(
@@ -441,7 +467,7 @@ function isCodeRequest(text) {
   return /^\s*(?:[a-z+#]{1,12}\s+)?(?:program|code|function|script|snippet|class)\b/.test(text);
 }
 
-function codeRequestReply(original) {
+function codeRequestReply(original: string) {
   const text = original.toLowerCase();
   const taskId = detectTask(text);
   if (!["write", "explain", "fix", "error"].includes(taskId)) return null;
@@ -456,7 +482,7 @@ function codeRequestReply(original) {
       return `Sure. Which language should I use? I can write this example in ${SUPPORTED_PROGRAM_LANGUAGE_NAMES}.`;
     }
     const program = buildBasicProgram(text, language, task);
-    if (program) return formatBasicProgram(program, { framework: detection.framework });
+    if (program) return formatBasicProgram(program, { framework: detection?.framework });
     return `I can write this example in ${SUPPORTED_PROGRAM_LANGUAGE_NAMES}. I don't have a complete ${language.name} recipe for this one yet. Which language should I use?`;
   }
 
@@ -478,14 +504,14 @@ function codeRequestReply(original) {
   return `Paste the ${language ? `${language.name} ` : ""}code and the exact error message. I'll help narrow down what is going wrong.`;
 }
 
-function evaluateExpression(source) {
+function evaluateExpression(source: string): number {
   let index = 0;
 
-  function skipSpaces() {
+  function skipSpaces(): void {
     while (source[index] === " ") index += 1;
   }
 
-  function parseExpression() {
+  function parseExpression(): number {
     let value = parseTerm();
     for (;;) {
       skipSpaces();
@@ -497,7 +523,7 @@ function evaluateExpression(source) {
     }
   }
 
-  function parseTerm() {
+  function parseTerm(): number {
     let value = parseUnary();
     for (;;) {
       skipSpaces();
@@ -514,7 +540,7 @@ function evaluateExpression(source) {
     }
   }
 
-  function parseUnary() {
+  function parseUnary(): number {
     skipSpaces();
     if (source[index] === "+") {
       index += 1;
@@ -527,7 +553,7 @@ function evaluateExpression(source) {
     return parsePower();
   }
 
-  function parsePower() {
+  function parsePower(): number {
     const base = parsePrimary();
     skipSpaces();
     if (source[index] !== "^") return base;
@@ -535,7 +561,7 @@ function evaluateExpression(source) {
     return base ** parseUnary();
   }
 
-  function parsePrimary() {
+  function parsePrimary(): number {
     skipSpaces();
     if (source[index] === "(") {
       index += 1;
@@ -557,12 +583,12 @@ function evaluateExpression(source) {
   return value;
 }
 
-function formatNumber(value) {
+function formatNumber(value: number) {
   const rounded = Math.round((value + Number.EPSILON) * 1e10) / 1e10;
   return String(rounded);
 }
 
-function riddleAnswer(previousAssistant, lower) {
+function riddleAnswer(previousAssistant: string | null | undefined, lower: string) {
   if (!previousAssistant) return null;
   const riddle = RIDDLES.find((item) => previousAssistant.includes(item.question));
   if (!riddle) return null;
@@ -588,7 +614,7 @@ function riddleAnswer(previousAssistant, lower) {
   return null;
 }
 
-function isJokeRequest(lower) {
+function isJokeRequest(lower: string) {
   return (
     (/\bjokes?\b/.test(lower) &&
       /\b(?:tell|share|say|give|got|know|hear|another|more)\b/.test(lower)) ||
@@ -596,49 +622,49 @@ function isJokeRequest(lower) {
   );
 }
 
-function jokeReply(history) {
+function jokeReply(history: History) {
   const used = countMatching(history.priorUsers, isJokeRequest);
-  const joke = JOKES[used % JOKES.length];
+  const joke = JOKES[used % JOKES.length]!;
   return `${joke}\n\nWant another?`;
 }
 
-function isFactRequest(lower) {
+function isFactRequest(lower: string) {
   return /\b(?:fun|interesting|random|strange|weird|useless)\s+fact\b|\btell me something (?:interesting|strange|weird)\b|\bknow any facts\b/.test(
     lower,
   );
 }
 
-function factReply(history) {
+function factReply(history: History) {
   const used = countMatching(history.priorUsers, isFactRequest);
-  const fact = FACTS[used % FACTS.length];
+  const fact = FACTS[used % FACTS.length]!;
   return `${fact}\n\nWant another?`;
 }
 
-function isStoryRequest(lower) {
+function isStoryRequest(lower: string) {
   return /\btell me a (?:short )?story\b|\bgot a story\b|\bmini story\b/.test(lower);
 }
 
-function storyReply(history) {
+function storyReply(history: History) {
   const used = countMatching(history.priorUsers, isStoryRequest);
-  const story = STORIES[used % STORIES.length];
+  const story = STORIES[used % STORIES.length]!;
   return `${story}\n\nWant another?`;
 }
 
-function isRiddleRequest(lower) {
+function isRiddleRequest(lower: string) {
   return /\briddle\b|\bbrain teaser\b/.test(lower);
 }
 
-function riddleReply(history) {
+function riddleReply(history: History) {
   const used = countMatching(history.priorUsers, isRiddleRequest);
-  const riddle = RIDDLES[used % RIDDLES.length];
+  const riddle = RIDDLES[used % RIDDLES.length]!;
   return `Here's a riddle: ${riddle.question}`;
 }
 
-function isMotivationRequest(lower) {
+function isMotivationRequest(lower: string) {
   return /\b(?:motivate me|inspire me|need motivation|pep talk|encourage me)\b/.test(lower);
 }
 
-function motivationReply(history) {
+function motivationReply(history: History) {
   const lines = [
     "You don't need to feel ready; you need a next step small enough to start. Pick a five-minute version of the thing and do only that. What are you avoiding?",
     "Progress usually looks boring before it looks impressive. Choose one visible action for the next ten minutes, then let that count. What's the task?",
@@ -647,7 +673,7 @@ function motivationReply(history) {
   return pick(lines, history.turnCount);
 }
 
-function emotionalReply(lower, history) {
+function emotionalReply(lower: string, history: History) {
   const ventFollowUp =
     /\bvent\b|\btalk it through\b|\btalk about it\b/.test(
       history.previousAssistant?.content?.toLowerCase() || "",
@@ -701,11 +727,11 @@ function emotionalReply(lower, history) {
   return null;
 }
 
-function isBored(lower) {
+function isBored(lower: string) {
   return /\bi(?:'m| am) bored\b|\bbored\b|\bentertain me\b|\bamuse me\b/.test(lower);
 }
 
-function identityReply(lower, notes) {
+function identityReply(lower: string, notes: string[]) {
   if (/\bare you (?:a )?(?:human|real|person)\b|\bare you alive\b/.test(lower)) {
     return "I'm not a person. I'm LocalMind's built-in rule engine, running inside this browser tab. I can still keep you company, but I won't pretend to be human.";
   }
@@ -767,7 +793,7 @@ function identityReply(lower, notes) {
   return null;
 }
 
-function opinionReply(text, lower) {
+function opinionReply(text: string, lower: string) {
   const match = lower.match(/\bwhat do you think (?:of|about)\s+(.+?)\s*\??$/);
   if (!match) {
     if (/\bwhat(?:'s| is) your favorite (?:color|colour)\b/.test(lower)) {
@@ -782,7 +808,7 @@ function opinionReply(text, lower) {
     return null;
   }
 
-  const topic = match[1].replace(/^(?:the|a|an)\s+/, "").trim();
+  const topic = (match[1] ?? "").replace(/^(?:the|a|an)\s+/, "").trim();
   const known = OPINIONS.find((item) => item.match.test(topic));
   if (known) return known.text;
   if (!topic) return null;
@@ -794,7 +820,7 @@ function opinionReply(text, lower) {
   return `My honest take: ${readable} has a time and a place, and it usually comes down to whether it leaves you with more energy afterward. What's your take?`;
 }
 
-function explanationReply(lower) {
+function explanationReply(lower: string) {
   if (
     !/\b(?:explain|what is|what are|what'?s|how does|how do|summarize|summary|tell me about)\b/.test(
       lower,
@@ -806,7 +832,7 @@ function explanationReply(lower) {
   return found ? found.text : null;
 }
 
-function planningReply(lower) {
+function planningReply(lower: string) {
   if (
     /\b(?:meeting|project update|standup)\b/.test(lower) &&
     /\b(?:prepare|before|quick|checklist|20 minutes)\b/.test(lower)
@@ -828,7 +854,7 @@ function planningReply(lower) {
   return null;
 }
 
-function decisionReply(lower) {
+function decisionReply(lower: string) {
   if (
     !/\bshould i\b|\bwhat should i do\b|\bcan'?t decide\b|\bi need to decide\b|\bhelp me decide\b/.test(
       lower,
@@ -839,7 +865,7 @@ function decisionReply(lower) {
   return "I can't make the call for you, but a useful test is: which option would you regret not trying, which one is reversible if it goes wrong, and what would you choose if nobody was watching? Tell me the two options and I'll help you compare them.";
 }
 
-function followUpReply(lower, history) {
+function followUpReply(lower: string, history: History) {
   if (!history.previousAssistant) return null;
   const last = history.previousAssistant.content;
   const lastLower = last.toLowerCase();
@@ -912,7 +938,7 @@ function followUpReply(lower, history) {
   return null;
 }
 
-function greetingReply(lower, history, notes, now) {
+function greetingReply(lower: string, history: History, notes: string[], now: Date) {
   const greetingOnly =
     /^(?:hi|hiya|hello|hey|yo|sup|howdy|good (?:morning|afternoon|evening|night))(?: there| again| localmind)?[\s!.?,]*$/i.test(
       lower,
@@ -947,13 +973,13 @@ function greetingReply(lower, history, notes, now) {
   return `Hey${name ? `, ${name}` : ""}. ${part} is off to a quiet start on my side. What's on your mind?`;
 }
 
-function isHowAreYou(lower) {
+function isHowAreYou(lower: string) {
   return /\bhow are you\b|\bhow(?:'s| is) it going\b|\bhow are things\b|\bhow(?:'s| is| was) your day\b|\bhow have you been\b|\bwhat'?s up\b|\bwassup\b|\bwhat'?s new\b/.test(
     lower,
   );
 }
 
-function howAreYouReply(lower, history) {
+function howAreYouReply(lower: string, history: History) {
   if (/\bwhat'?s up\b|\bwassup\b|\bwhat'?s new\b/.test(lower)) {
     return pick(
       [
@@ -971,18 +997,18 @@ function howAreYouReply(lower, history) {
   return pick(variants, history.turnCount);
 }
 
-function isThanks(lower) {
+function isThanks(lower: string) {
   return /^(?:thanks|thank you|thx|ty|cheers|appreciate it)\b/.test(lower);
 }
 
-function thanksReply(history) {
+function thanksReply(history: History) {
   return pick(
     ["Anytime. Glad it was useful.", "You're welcome. What's next?", "Happy to help."],
     history.turnCount,
   );
 }
 
-function isBye(lower) {
+function isBye(lower: string) {
   return /^(?:bye|goodbye|see you|see ya|good night|goodnight|talk later|gtg)\b/.test(lower);
 }
 
@@ -990,24 +1016,24 @@ function byeReply() {
   return "Take care. I'll be here when you want to pick this back up.";
 }
 
-function isApology(lower) {
+function isApology(lower: string) {
   return /^(?:sorry|my bad|apologies|i apologize)\b/.test(lower);
 }
 
-function isCompliment(lower) {
+function isCompliment(lower: string) {
   return /\byou(?:'re| are) (?:great|awesome|amazing|helpful|smart|funny|kind|the best)\b|\bgood bot\b|\bi like you\b/.test(
     lower,
   );
 }
 
-function complimentReply(history) {
+function complimentReply(history: History) {
   return pick(
     ["That's kind of you. Glad I'm good company.", "Thanks. I'll take that as a good sign."],
     history.turnCount,
   );
 }
 
-function isCorrection(lower) {
+function isCorrection(lower: string) {
   return /\b(?:that'?s (?:wrong|incorrect)|you'?re wrong|you misunderstood|that'?s not what i (?:meant|asked)|you'?re repeating)\b/.test(
     lower,
   );
@@ -1017,13 +1043,13 @@ function correctionReply() {
   return "Fair enough. Point me at the part that's off, and I'll correct it instead of repeating myself.";
 }
 
-function isInvitation(lower) {
+function isInvitation(lower: string) {
   return /^(?:can i (?:ask|tell) you something|can we talk|i need to talk|guess what|i have (?:news|something to tell you)|are you there|you there|hello\?|i'?m back|i am back)\b/.test(
     lower,
   );
 }
 
-function invitationReply(lower) {
+function invitationReply(lower: string) {
   if (/are you there|you there|hello\?/.test(lower)) return "Right here. What's up?";
   if (/guess what/.test(lower)) return "I'm listening. What happened?";
   if (/i have (?:news|something to tell you)/.test(lower))
@@ -1032,7 +1058,7 @@ function invitationReply(lower) {
   return "Of course. Go ahead.";
 }
 
-function isAbilityQuestion(lower) {
+function isAbilityQuestion(lower: string) {
   return /\bwhat can you do\b|\bwhat are you good at\b|\bhow can you help\b|\bwhat are your (?:abilities|skills|limits)\b|\bwhat can'?t you do\b/.test(
     lower,
   );
@@ -1042,7 +1068,7 @@ function abilityReply() {
   return "I can hold a normal conversation, keep notes you ask me to save, do quick arithmetic and dates, sketch simple plans, write beginner programs like sums, factorials, and Fibonacci in common languages, and explain a few everyday ideas. In Coder mode I can detect the language and help with code. I can't browse, see files, or answer arbitrary facts reliably, and I'll tell you when something is outside that.";
 }
 
-function helpReply(lower) {
+function helpReply(lower: string) {
   if (/^(?:help|help me|i need help)\s*[.!?]*$/.test(lower)) {
     return "I can help. Tell me what you're trying to do, and what's getting in the way.";
   }
@@ -1059,7 +1085,7 @@ function helpReply(lower) {
   return null;
 }
 
-function casualReply(lower) {
+function casualReply(lower: string) {
   if (/^what are you (?:doing|up to)\b/.test(lower)) {
     return "Just waiting for a good conversation. What are you up to?";
   }
@@ -1090,20 +1116,20 @@ function casualReply(lower) {
   return null;
 }
 
-function isLightAcknowledgement(lower) {
+function isLightAcknowledgement(lower: string) {
   return /^(?:ok|okay|k|cool|nice|great|sure|alright|got it|i see|makes sense|fair enough|yeah|yep|hmm+|hm+|lol|lmao|haha+)[\s.!]*$/.test(
     lower,
   );
 }
 
-function acknowledgementReply(lower, history) {
+function acknowledgementReply(lower: string, history: History) {
   if (/^(?:lol|lmao|haha+)/.test(lower)) return "Glad that landed. What else?";
   if (/^(?:hmm+|hm+)$/.test(lower)) return "Take your time. I'm here.";
   if (/^(?:ok|okay|k|alright)$/.test(lower)) return "Alright. What next?";
   return pick(["Good. Where do you want to take it?", "Got it. What's next?"], history.turnCount);
 }
 
-function statementReply(text, lower, history) {
+function statementReply(text: string, lower: string, history: History) {
   const positiveEvent =
     /\b(?:good|great|fun|amazing|awesome|nice|lovely|worked|won|passed|finished|promoted)\b/.test(
       lower,
@@ -1142,7 +1168,7 @@ function statementReply(text, lower, history) {
   return null;
 }
 
-function fallbackReply(text, lower, history, seed) {
+function fallbackReply(text: string, lower: string, _history: History, seed: number) {
   if (/\b(?:summarize|summarise|summary)\b/.test(lower)) {
     return "Paste the passage you want condensed, and tell me how short you need it. With the text in front of me, I can pull out the key points.";
   }
@@ -1176,6 +1202,6 @@ function fallbackReply(text, lower, history, seed) {
   );
 }
 
-function escapeInline(text) {
+function escapeInline(text: string) {
   return String(text).replace(/([\\`*_{}[\]()#+\-.!|>])/g, "\\$1");
 }

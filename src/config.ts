@@ -1,9 +1,9 @@
+import type { Mode, Settings } from "./types.js";
+
 export const APP_NAME = "LocalMind";
 export const APP_VERSION = "1.0.0";
 
-export const DEMO_MODE = new URLSearchParams(window.location.search).get("demo") === "1";
-
-export const MODES = [
+export const MODES: Mode[] = [
   {
     id: "general",
     label: "General",
@@ -46,7 +46,7 @@ export const MODES = [
   },
 ];
 
-export const SUGGESTIONS = [
+export const SUGGESTIONS: string[] = [
   "What can you do?",
   "Help me plan a 30-minute study session",
   "I had a rough day",
@@ -54,21 +54,18 @@ export const SUGGESTIONS = [
   "Write a C program to add two numbers",
 ];
 
-export const DEFAULT_SETTINGS = {
+export const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   mode: "general",
-  modelKey: null,
-  temperature: 0.7,
-  maxTokens: 1024,
   customInstructions: "",
   memory: [],
-  onboardingDone: false,
+  memoryVault: null,
 };
 
 export const CONTEXT_LIMITS = {
   maxMessages: 16,
   maxChars: 8500,
-};
+} as const;
 
 export const SYSTEM_GUARDRAIL =
   "Answer in the same language as the user. Keep formatting valid markdown. Do not output raw HTML, scripts, or iframes.";
@@ -95,8 +92,8 @@ export const UNDERSTANDING_SKILLS =
 export const STORAGE = {
   dbName: "localmind",
   dbVersion: 1,
-};
+} as const;
 
-export function modeById(id) {
-  return MODES.find((mode) => mode.id === id) ?? MODES[0];
+export function modeById(id: string): Mode {
+  return MODES.find((mode) => mode.id === id) ?? MODES[0]!;
 }

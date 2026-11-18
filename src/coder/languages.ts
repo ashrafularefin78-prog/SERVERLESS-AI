@@ -1,7 +1,6 @@
 // Programming language support for Coder mode. Each entry drives prompt
 // guidance, fence labels, auto-detection, and highlighting.
 // `tier: "specialized"` marks languages where small models need a warning.
-/* eslint-disable no-useless-escape -- detection regexes escape [ and / inside character classes for readability */
 
 import { expandShorthand, normalizeText } from "../understand.js";
 import {
@@ -10,7 +9,54 @@ import {
   SUPPORTED_PROGRAM_LANGUAGE_NAMES,
 } from "./programs.js";
 
-export const LANGUAGES = [
+export interface Language {
+  id: string;
+  name: string;
+  group: string;
+  fence: string;
+  fences?: string[];
+  extensions?: string[];
+  version?: string;
+  toolchain?: string;
+  contextOnly?: boolean;
+  signals?: RegExp[];
+  guidance: string;
+  match?: string[];
+  tier?: string;
+  kind?: string;
+  patterns?: string[];
+}
+
+export interface Framework {
+  id: string;
+  name: string;
+  language: string;
+  patterns: RegExp[];
+  mention?: RegExp;
+  supersedes?: string[];
+  note?: string;
+}
+
+export interface ScoredFramework extends Framework {
+  score: number;
+}
+
+export interface CodingTask {
+  id: string;
+  label: string;
+  instruction?: string;
+}
+
+export interface Detection {
+  language: Language | null;
+  method: string;
+  confidence: string;
+  score: number;
+  frameworks?: ScoredFramework[];
+  framework?: ScoredFramework | null;
+}
+
+export const LANGUAGES: Language[] = [
   {
     id: "c",
     name: "C",
@@ -21,7 +67,9 @@ export const LANGUAGES = [
     version: "C17",
     toolchain: "gcc or clang",
     contextOnly: true,
-    signals: [/#include\s*<(?:stdio|stdlib|string|stdint|stdbool|math|time|ctype|errno|assert|unistd)\.h>|\b(?:printf|scanf|malloc|free)\s*\(|\b(?:gcc|clang)\b|\bsegmentation\s+fault\b/i],
+    signals: [
+      /#include\s*<(?:stdio|stdlib|string|stdint|stdbool|math|time|ctype|errno|assert|unistd)\.h>|\b(?:printf|scanf|malloc|free)\s*\(|\b(?:gcc|clang)\b|\bsegmentation\s+fault\b/i,
+    ],
     guidance:
       "Use C17, include every header you use, check return values, free allocated memory, and avoid undefined behavior. Use fixed-width types from <stdint.h> when sizes matter.",
   },
@@ -891,7 +939,7 @@ export const LANGUAGES = [
 
 // Framework signatures add a second layer on top of language detection: they
 // name the stack behind the code and supply one concrete review focus.
-const FRAMEWORKS = [
+const FRAMEWORKS: Framework[] = [
   {
     id: "nextjs",
     name: "Next.js",
@@ -905,7 +953,7 @@ const FRAMEWORKS = [
     ],
     mention: /\bNext\.?js\b/i,
     supersedes: ["react"],
-    note: "Use the App Router split: keep data access in server components and mark only interactive components with \"use client\".",
+    note: 'Use the App Router split: keep data access in server components and mark only interactive components with "use client".',
   },
   {
     id: "react-native",
@@ -1095,11 +1143,7 @@ const FRAMEWORKS = [
     id: "pytest",
     name: "pytest",
     language: "python",
-    patterns: [
-      /\bimport\s+pytest\b/,
-      /@pytest\.\w+/,
-      /\bpytest\.(?:raises|fixture|mark)\b/,
-    ],
+    patterns: [/\bimport\s+pytest\b/, /@pytest\.\w+/, /\bpytest\.(?:raises|fixture|mark)\b/],
     mention: /\bpytest\b/i,
     note: "Prefer small fixtures with explicit scope and test failure paths, not only the happy path.",
   },
@@ -1287,7 +1331,8 @@ const FRAMEWORKS = [
       /\bbootstrap(?:\.min)?\.(?:css|js)\b/,
       /\bdata-bs-\w+/,
     ],
-    mention: /\bBootstrap\s+(?:CSS|framework|grid|classes|5|4)\b|\b(?:use|using|with)\s+Bootstrap\b/i,
+    mention:
+      /\bBootstrap\s+(?:CSS|framework|grid|classes|5|4)\b|\b(?:use|using|with)\s+Bootstrap\b/i,
     note: "Use the grid deliberately, keep custom CSS minimal, and verify accessibility when overriding component styles.",
   },
   {
@@ -1304,9 +1349,9 @@ const FRAMEWORKS = [
   },
 ];
 
-export function detectFrameworks(text) {
+export function detectFrameworks(text: string): ScoredFramework[] {
   const source = normalizeText(text);
-  const found = [];
+  const found: ScoredFramework[] = [];
   for (const framework of FRAMEWORKS) {
     let score = 0;
     for (const pattern of framework.patterns) {
@@ -1315,24 +1360,28 @@ export function detectFrameworks(text) {
     if (framework.mention?.test(source)) score += 1;
     if (score > 0) found.push({ ...framework, score });
   }
-  const blocked = new Set();
+  const blocked = new Set<string>();
   for (const framework of found) {
     for (const id of framework.supersedes || []) blocked.add(id);
   }
   return found.filter((framework) => !blocked.has(framework.id)).sort((a, b) => b.score - a.score);
 }
 
-function frameworkApplies(framework, language) {
+function frameworkApplies(
+  framework: Framework | null | undefined,
+  language: Language | null | undefined,
+): boolean {
   if (!framework || !language) return false;
   if (framework.language === language.id) return true;
   const web = new Set(["javascript", "typescript", "html", "css"]);
   if (web.has(framework.language) && web.has(language.id)) return true;
   const jvm = new Set(["java", "kotlin"]);
-  if (framework.id === "android" && jvm.has(framework.language) && jvm.has(language.id)) return true;
+  if (framework.id === "android" && jvm.has(framework.language) && jvm.has(language.id))
+    return true;
   return false;
 }
 
-export const CODING_TASKS = [
+export const CODING_TASKS: CodingTask[] = [
   { id: "auto", label: "Auto" },
   {
     id: "write",
@@ -1414,16 +1463,19 @@ export const CODING_TASKS = [
   },
 ];
 
-const LANGUAGE_RISKS = {
+const LANGUAGE_RISKS: Record<string, string> = {
   c: "Check buffer bounds, null returns, and integer overflow; build with -Wall -Wextra and sanitizers while debugging.",
   cpp: "Watch object lifetimes, iterator invalidation, and exception safety; prefer RAII over manual new/delete.",
-  csharp: "Enable nullable reference types, dispose IDisposable resources, and avoid async void outside event handlers.",
+  csharp:
+    "Enable nullable reference types, dispose IDisposable resources, and avoid async void outside event handlers.",
   java: "Respect equals/hashCode contracts, close resources with try-with-resources, and document thread-safety.",
-  python: "Avoid mutable default arguments, bare except clauses, and blocking calls inside async code.",
+  python:
+    "Avoid mutable default arguments, bare except clauses, and blocking calls inside async code.",
   go: "Wrap errors with context, pass context for cancellation, and check for goroutine leaks.",
   rust: "Prefer Result over unwrap, respect ownership, and avoid blocking work inside async runtimes.",
   swift: "Avoid force unwraps, keep UI work on the main actor, and state the deployment target.",
-  kotlin: "Prefer val and null-safe calls; scope coroutines correctly and keep blocking work off the main thread.",
+  kotlin:
+    "Prefer val and null-safe calls; scope coroutines correctly and keep blocking work off the main thread.",
   dart: "Handle null safety explicitly and avoid unnecessary widget rebuilds.",
   php: "Use prepared statements, escape output, and never unserialize untrusted input.",
   ruby: "Avoid interpolated SQL, handle nil explicitly, and watch symbol/string key mismatches.",
@@ -1442,18 +1494,23 @@ const LANGUAGE_RISKS = {
   r: "Vectorize hot paths, handle NA values, and check factor/character conversions.",
   julia: "Keep hot code type-stable and avoid untyped global variables.",
   matlab: "Preallocate arrays, vectorize loops, and check indexing bounds.",
-  scala: "Prefer immutable data and explicit effects; avoid implicit conversions that hide failures.",
-  javascript: "Validate untrusted input before HTML or DOM sinks; guard null values and rejected promises.",
-  typescript: "Keep strict mode on, avoid any and non-null assertions, and narrow types at runtime boundaries.",
+  scala:
+    "Prefer immutable data and explicit effects; avoid implicit conversions that hide failures.",
+  javascript:
+    "Validate untrusted input before HTML or DOM sinks; guard null values and rejected promises.",
+  typescript:
+    "Keep strict mode on, avoid any and non-null assertions, and narrow types at runtime boundaries.",
   html: "Use semantic elements and accessible names; keep ARIA minimal and nesting valid.",
   xml: "Validate against a schema and preserve namespaces and encoding declarations.",
   css: "Check specificity, contrast, and responsive breakpoints; avoid !important as a fix.",
-  markdown: "Keep headings hierarchical and fence code with its language; avoid raw HTML unless needed.",
+  markdown:
+    "Keep headings hierarchical and fence code with its language; avoid raw HTML unless needed.",
   yaml: "Use two-space indentation, quote ambiguous scalars, and never use tabs.",
   json: "Use double-quoted keys with no comments or trailing commas, and validate at the boundary.",
   haskell: "Avoid partial functions and watch laziness leaks; keep types total.",
   lisp: "Watch dynamic scope, package prefixes, and mutation of shared structures.",
-  scheme: "Keep tail calls where iteration matters and avoid relying on unspecified evaluation order.",
+  scheme:
+    "Keep tail calls where iteration matters and avoid relying on unspecified evaluation order.",
   clojure: "Prefer pure functions and immutable data; watch lazy sequence realization.",
   fsharp: "Keep functions total and async code explicit; guard against null from .NET boundaries.",
   erlang: "Design supervisor trees and match every message; avoid unbounded mailboxes.",
@@ -1483,15 +1540,19 @@ const LANGUAGE_RISKS = {
   monkeyc: "Respect memory limits and device API levels; release resources when the app stops.",
 };
 
-const TASK_FOCUS = {
+const TASK_FOCUS: Record<string, string> = {
   write: "State inputs, assumptions, and edge cases, and include the run command.",
   fix: "Keep the patch minimal and add a regression test that fails before it.",
-  error: "Reproduce with the smallest failing input, then fix the root cause rather than the symptom.",
+  error:
+    "Reproduce with the smallest failing input, then fix the root cause rather than the symptom.",
   review: "Rank findings by severity and back each one with an input that demonstrates it.",
-  security: "Trace untrusted input to sinks such as queries, HTML, shell, files, and outbound requests.",
-  refactor: "Keep behavior identical, preserve the public API, and land the change in test-backed steps.",
+  security:
+    "Trace untrusted input to sinks such as queries, HTML, shell, files, and outbound requests.",
+  refactor:
+    "Keep behavior identical, preserve the public API, and land the change in test-backed steps.",
   tests: "Cover boundaries, failure paths, and one regression case for every bug found.",
-  optimize: "Measure first, state complexity and memory tradeoffs, and keep a benchmark that guards the result.",
+  optimize:
+    "Measure first, state complexity and memory tradeoffs, and keep a benchmark that guards the result.",
   convert: "Preserve edge cases and public APIs, and list idioms that cannot map one-to-one.",
   explain: "Trace control flow and data first, then side effects, complexity, and failure modes.",
   document: "Document the behavior the code actually has, including errors and side effects.",
@@ -1499,7 +1560,7 @@ const TASK_FOCUS = {
   design: "Separate interfaces from implementation, state tradeoffs, and include a test plan.",
 };
 
-const KIND_FOCUS = {
+const KIND_FOCUS: Record<string, string> = {
   markup: "Validate structure and accessibility, and keep content separate from presentation.",
   data: "Validate the format at the boundary and keep the schema explicit.",
   stylesheet: "Check specificity, responsive behavior, and contrast.",
@@ -1507,14 +1568,26 @@ const KIND_FOCUS = {
   educational: "Keep examples short and state the expected result.",
 };
 
-const SQL_DIALECTS = [
+const SQL_DIALECTS: [string, RegExp[]][] = [
   [
     "PostgreSQL",
-    [/\bILIKE\b/i, /::\w+/, /\b(?:BIG)?SERIAL\b/i, /\bRETURNING\b/i, /\bjsonb\b/i, /\bON\s+CONFLICT\b/i],
+    [
+      /\bILIKE\b/i,
+      /::\w+/,
+      /\b(?:BIG)?SERIAL\b/i,
+      /\bRETURNING\b/i,
+      /\bjsonb\b/i,
+      /\bON\s+CONFLICT\b/i,
+    ],
   ],
   [
     "MySQL or MariaDB",
-    [/`[A-Za-z_]\w*`/, /\bAUTO_INCREMENT\b/i, /\bENGINE\s*=\s*InnoDB\b/i, /\bLIMIT\s+\d+\s*,\s*\d+/],
+    [
+      /`[A-Za-z_]\w*`/,
+      /\bAUTO_INCREMENT\b/i,
+      /\bENGINE\s*=\s*InnoDB\b/i,
+      /\bLIMIT\s+\d+\s*,\s*\d+/,
+    ],
   ],
   ["SQLite", [/\bPRAGMA\b/i, /\bAUTOINCREMENT\b/i, /\bWITHOUT\s+ROWID\b/i, /\bstrftime\s*\(/i]],
   [
@@ -1527,8 +1600,8 @@ const SQL_DIALECTS = [
   ],
 ];
 
-function detectSqlDialect(text) {
-  let best = null;
+function detectSqlDialect(text: string): { name: string; score: number } | null {
+  let best: { name: string; score: number } | null = null;
   for (const [name, patterns] of SQL_DIALECTS) {
     let score = 0;
     for (const pattern of patterns) {
@@ -1539,16 +1612,25 @@ function detectSqlDialect(text) {
   return best;
 }
 
-const CODE_FEATURE_HINTS = {
+const CODE_FEATURE_HINTS: Record<string, [RegExp, string][]> = {
   c: [
-    [/\b(?:nullptr|constexpr|typeof)\b/, "The code uses C23 features; compile with a C23-capable compiler."],
+    [
+      /\b(?:nullptr|constexpr|typeof)\b/,
+      "The code uses C23 features; compile with a C23-capable compiler.",
+    ],
   ],
   cpp: [
-    [/\bstd::expected\b|\bstd::print\b|\bstd::ranges::to\b/, "The code uses C++23 library features."],
+    [
+      /\bstd::expected\b|\bstd::print\b|\bstd::ranges::to\b/,
+      "The code uses C++23 library features.",
+    ],
     [/\bconcept\s+\w+|\brequires\s+/, "The code uses C++20 concepts or constraints."],
   ],
   java: [
-    [/\bThread\.ofVirtual\b|\bnewVirtualThreadPerTaskExecutor\b/, "The code uses Java 21 virtual threads."],
+    [
+      /\bThread\.ofVirtual\b|\bnewVirtualThreadPerTaskExecutor\b/,
+      "The code uses Java 21 virtual threads.",
+    ],
   ],
   python: [
     [/\bprint\s+["']/, "The code uses Python 2 print syntax; port it to Python 3 print()."],
@@ -1560,18 +1642,25 @@ const CODE_FEATURE_HINTS = {
     [/\biter\.Seq\b|\brange\s+func\b/, "The code uses Go 1.23 iterator syntax."],
   ],
   javascript: [
-    [/\b(?:import|export)\s+[^;\n]*\bfrom\s+["']/, "The code uses ES modules; confirm type=\"module\" or the package module type."],
-    [/\brequire\s*\(|\bmodule\.exports\b/, "The code uses CommonJS modules; confirm the Node.js runtime settings."],
+    [
+      /\b(?:import|export)\s+[^;\n]*\bfrom\s+["']/,
+      'The code uses ES modules; confirm type="module" or the package module type.',
+    ],
+    [
+      /\brequire\s*\(|\bmodule\.exports\b/,
+      "The code uses CommonJS modules; confirm the Node.js runtime settings.",
+    ],
   ],
   php: [
-    [/#\[(?:Override|SensitiveParameter)\]|\bconst\s+(?:int|string|bool)\s+\w+/, "The code uses PHP 8.3 attributes or typed constants."],
+    [
+      /#\[(?:Override|SensitiveParameter)\]|\bconst\s+(?:int|string|bool)\s+\w+/,
+      "The code uses PHP 8.3 attributes or typed constants.",
+    ],
   ],
-  css: [
-    [/@container\b|:has\s*\(/, "The code uses modern CSS container queries or :has()."],
-  ],
+  css: [[/@container\b|:has\s*\(/, "The code uses modern CSS container queries or :has()."]],
 };
 
-function inferFeatureHint(language, text) {
+function inferFeatureHint(language: Language | null | undefined, text: string): string {
   if (!language) return "";
   const hints = CODE_FEATURE_HINTS[language.id];
   if (!hints) return "";
@@ -1581,12 +1670,16 @@ function inferFeatureHint(language, text) {
   return "";
 }
 
-function advancedFocus(language, task, framework) {
-  const items = [];
+function advancedFocus(
+  language: Language | null | undefined,
+  task: string,
+  framework: Framework | null | undefined,
+): string[] {
+  const items: string[] = [];
   const taskTip = TASK_FOCUS[task];
   if (taskTip) items.push(taskTip);
   if (framework?.note) items.push(framework.note);
-  const risk = (language && LANGUAGE_RISKS[language.id]) || KIND_FOCUS[language?.kind];
+  const risk = (language && LANGUAGE_RISKS[language.id]) || KIND_FOCUS[language?.kind ?? ""];
   if (risk) items.push(risk);
   if (language?.tier === "specialized") {
     items.push("State the exact compiler or platform version and avoid guessed APIs.");
@@ -1594,8 +1687,8 @@ function advancedFocus(language, task, framework) {
   return [...new Set(items)].slice(0, 3);
 }
 
-const languageIndex = new Map();
-const fenceIndex = new Map();
+const languageIndex = new Map<string, Language>();
+const fenceIndex = new Map<string, Language>();
 
 for (const language of LANGUAGES) {
   languageIndex.set(language.id, language);
@@ -1607,27 +1700,27 @@ for (const language of LANGUAGES) {
 // Longer names win over aliases during scoring, so "Objective-C" and
 // "Monkey C" beat the bare "C" without a special case.
 
-export function languageById(id) {
+export function languageById(id: string | null | undefined): Language | null {
   if (!id || id === "auto") return null;
   return languageIndex.get(String(id).toLowerCase()) || null;
 }
 
-export function languageByFence(fence) {
+export function languageByFence(fence: string | null | undefined): Language | null {
   if (!fence) return null;
   return fenceIndex.get(String(fence).toLowerCase().trim()) || null;
 }
 
-export function languageDisplayName(fence) {
+export function languageDisplayName(fence: string | null | undefined): string {
   const language = languageByFence(fence);
   if (language) return language.name;
   return String(fence || "").trim() || "Code";
 }
 
-export function taskById(id) {
-  return CODING_TASKS.find((task) => task.id === id) || CODING_TASKS[0];
+export function taskById(id: string): CodingTask {
+  return CODING_TASKS.find((task) => task.id === id) || CODING_TASKS[0]!;
 }
 
-const DETECTION_METHOD_LABELS = {
+const DETECTION_METHOD_LABELS: Record<string, string> = {
   fence: "fenced code label",
   conversion: "conversion target",
   mention: "language or API mention",
@@ -1636,7 +1729,7 @@ const DETECTION_METHOD_LABELS = {
   framework: "framework mention",
 };
 
-const TASK_ASK = {
+const TASK_ASK: Record<string, string> = {
   review: "Share the goal and any compatibility constraints.",
   security: "Share the trust boundary and how untrusted data reaches this code.",
   refactor: "Share the tests that must keep passing.",
@@ -1648,14 +1741,14 @@ const TASK_ASK = {
   design: "Share scale, data shape, and deployment constraints.",
 };
 
-function formatList(items) {
+function formatList(items: string[]): string {
   if (!items.length) return "";
-  if (items.length === 1) return items[0];
+  if (items.length === 1) return items[0]!;
   if (items.length === 2) return `${items[0]} and ${items[1]}`;
   return `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
 }
 
-function detectionConfidence(detection) {
+function detectionConfidence(detection: Detection | null | undefined): string {
   if (!detection) return "";
   const label = DETECTION_METHOD_LABELS[detection.method] || "matching patterns";
   let text = `\n\nDetection confidence: **${detection.confidence}** (${label}).`;
@@ -1665,13 +1758,17 @@ function detectionConfidence(detection) {
   return text;
 }
 
-function companionLanguages(text, detection, framework) {
+function companionLanguages(
+  text: string,
+  detection: Detection | null | undefined,
+  framework: Framework | null | undefined,
+): Language[] {
   const primary = detection?.language || null;
   const seen = new Set(primary ? [primary.id] : []);
   if (framework) seen.add(framework.language);
-  const extras = [];
+  const extras: Language[] = [];
 
-  const add = (id) => {
+  const add = (id: string) => {
     if (!id || seen.has(id)) return;
     const language = languageById(id);
     if (!language) return;
@@ -1690,14 +1787,23 @@ function companionLanguages(text, detection, framework) {
       const isTypeScript = /<script[^>]*\blang\s*=\s*["'](?:ts|typescript)["']/i.test(text);
       add(isTypeScript ? "typescript" : "javascript");
     }
-  } else if (primary?.id === "css" && /<(?:html|body|main|section|header|form|button)\b/i.test(text)) {
+  } else if (
+    primary?.id === "css" &&
+    /<(?:html|body|main|section|header|form|button)\b/i.test(text)
+  ) {
     add("html");
   }
 
   return extras.slice(0, 2);
 }
 
-export function demoCodingReply({ prompt, systemPrompt: _systemPrompt = "" }) {
+export function demoCodingReply({
+  prompt,
+  systemPrompt: _systemPrompt = "",
+}: {
+  prompt: string;
+  systemPrompt?: string;
+}): string {
   const detection = detectLanguageDetailed(prompt);
   const language = detection?.language || null;
   const framework = detection?.framework || null;
@@ -1714,7 +1820,7 @@ export function demoCodingReply({ prompt, systemPrompt: _systemPrompt = "" }) {
     ? `\n\n**Advanced focus**\n${focus.map((item) => `- ${item}`).join("\n")}`
     : "";
 
-  const names = [];
+  const names: string[] = [];
   if (language) names.push(`**${language.name}**`);
   if (framework) names.push(`**${framework.name}**`);
   if (!companions.length && language) {
@@ -1765,9 +1871,9 @@ I run on local rules. Complete beginner examples are built in for ${SUPPORTED_PR
 I've attached the right coding task prompt. The built-in assistant uses local rules, so I can outline the approach but can't produce the full result on my own.${ask}`;
 }
 
-function languageFacts(language, text = "") {
+function languageFacts(language: Language | null | undefined, text = ""): string {
   if (!language) return "";
-  const parts = [];
+  const parts: string[] = [];
   if (language.version) parts.push(`Target ${language.version}`);
   if (language.toolchain) parts.push(`assume ${language.toolchain}`);
   let body = parts.length ? `\n\n${parts.join("; ")}.` : "";
@@ -1793,16 +1899,16 @@ function languageFacts(language, text = "") {
   return body;
 }
 
-function escapeRegExp(value) {
+function escapeRegExp(value: string): string {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function literalPattern(value) {
+function literalPattern(value: string): string {
   return `\\b${escapeRegExp(value)}(?![\\w+#/])`;
 }
 
-function valuesFor(language) {
-  const values = new Set();
+function valuesFor(language: Language): string[] {
+  const values = new Set<string>();
   values.add(language.name);
   if (language.id.length > 1) values.add(language.id);
   for (const fence of language.fences || []) values.add(fence);
@@ -1810,22 +1916,24 @@ function valuesFor(language) {
   return [...values].filter(Boolean);
 }
 
-function plainPatterns(language) {
+function plainPatterns(language: Language): string[] {
   if (language.patterns) return language.patterns;
-  return valuesFor(language).filter((value) => value.length > 1).map(literalPattern);
+  return valuesFor(language)
+    .filter((value) => value.length > 1)
+    .map(literalPattern);
 }
 
-function anyPatterns(language) {
-  if (language.patterns) return language.patterns;
-  return valuesFor(language).map(literalPattern);
-}
-
-function contextPatterns(language) {
+function anyPatterns(language: Language): string[] {
   if (language.patterns) return language.patterns;
   return valuesFor(language).map(literalPattern);
 }
 
-function regexMatch(source, text) {
+function contextPatterns(language: Language): string[] {
+  if (language.patterns) return language.patterns;
+  return valuesFor(language).map(literalPattern);
+}
+
+function regexMatch(source: string, text: string): RegExpExecArray | null {
   try {
     return new RegExp(source, "i").exec(text);
   } catch {
@@ -1833,9 +1941,12 @@ function regexMatch(source, text) {
   }
 }
 
-function contextRegexes(source) {
+function contextRegexes(source: string): RegExp[] {
   return [
-    new RegExp(`\\b(?:in|using|with|for|written\\s+in|language|lang|programming\\s+in)\\s+(?:the\\s+)?${source}`, "i"),
+    new RegExp(
+      `\\b(?:in|using|with|for|written\\s+in|language|lang|programming\\s+in)\\s+(?:the\\s+)?${source}`,
+      "i",
+    ),
     new RegExp(
       `${source}\\s+(?:code|program|language|function|script|snippet|module|class|file|compiler|runtime|error|exception|syntax|developer|programming|project|tests?|library|framework|game|animation|story|proc|turtle|closure|fiber|widget|goroutine|asyncio|lambda|monad|borrow|unit|form|macro|routine|dataframe|plot|matrix|query|trigger|contract|coroutine|ownership|optional)\\b`,
       "i",
@@ -1847,8 +1958,8 @@ function contextRegexes(source) {
   ];
 }
 
-function contextScore(language, text) {
-  let best = null;
+function contextScore(language: Language, text: string): { index: number; length: number } | null {
+  let best: { index: number; length: number } | null = null;
   for (const source of contextPatterns(language)) {
     for (const pattern of contextRegexes(source)) {
       const full = pattern.exec(text);
@@ -1870,7 +1981,7 @@ function contextScore(language, text) {
 
 // Code-shape signatures: recognize pasted code even when the user never names
 // the language. Each pattern counts once; weights favor unmistakable tokens.
-const CODE_SIGNATURES = {
+const CODE_SIGNATURES: Record<string, [RegExp, number][]> = {
   c: [
     [/#include\s*<(?:stdio|stdlib|string|stdint|stdbool|math|time|ctype|errno|assert)\.h>/, 4],
     [/\b(?:printf|fprintf|sprintf|snprintf|scanf|malloc|calloc|realloc|free)\s*\(/, 2],
@@ -2129,7 +2240,10 @@ const CODE_SIGNATURES = {
   css: [
     [/[.#]?[\w-]+\s*\{[^{}]*[\w-]+\s*:\s*[^;{}]+;/, 3],
     [/@media\s*\(|@keyframes\b/, 3],
-    [/\b(?:display|position|margin|padding|color|background|font-size|flex|grid|gap|border-radius)\s*:/, 1],
+    [
+      /\b(?:display|position|margin|padding|color|background|font-size|flex|grid|gap|border-radius)\s*:/,
+      1,
+    ],
     [/\bvar\(\s*--[\w-]+/, 3],
   ],
   markdown: [
@@ -2375,8 +2489,8 @@ const CODE_SIGNATURES = {
 
 const CODE_SIGNATURE_THRESHOLD = 4;
 
-function detectCodeSignatures(text) {
-  let best = null;
+function detectCodeSignatures(text: string): Detection | null {
+  let best: { id: string; score: number } | null = null;
   for (const [id, signatures] of Object.entries(CODE_SIGNATURES)) {
     let score = 0;
     for (const [pattern, weight] of signatures) {
@@ -2395,7 +2509,7 @@ function detectCodeSignatures(text) {
   };
 }
 
-function contextAllowed(language, text) {
+function contextAllowed(language: Language, text: string): boolean {
   if (language.id === "basic") {
     return (
       /\bBASIC\b/.test(text) ||
@@ -2420,7 +2534,7 @@ function contextAllowed(language, text) {
   return true;
 }
 
-function embeddedMention(text, index, length) {
+function embeddedMention(text: string, index: number, length: number): boolean {
   const lineStart = text.lastIndexOf("\n", index - 1) + 1;
   const newline = text.indexOf("\n", index);
   const lineEnd = newline === -1 ? text.length : newline;
@@ -2431,7 +2545,7 @@ function embeddedMention(text, index, length) {
   }
   const line = text.slice(lineStart, lineEnd);
   if (!/[=;:(){}[\],]/.test(line)) return false;
-  let quote = null;
+  let quote: string | null = null;
   for (let i = 0; i < before.length; i++) {
     const ch = before[i];
     if (quote) {
@@ -2443,7 +2557,10 @@ function embeddedMention(text, index, length) {
   return quote !== null;
 }
 
-function scanSection(text, { useFences = true } = {}) {
+function scanSection(
+  text: string,
+  { useFences = true }: { useFences?: boolean } = {},
+): Detection | null {
   if (useFences) {
     for (const match of text.matchAll(/```[ \t]*([\w+#./-]+)/g)) {
       const language = languageByFence(match[1]);
@@ -2453,7 +2570,7 @@ function scanSection(text, { useFences = true } = {}) {
     }
   }
 
-  const candidates = [];
+  const candidates: { language: Language; index: number; length: number }[] = [];
   for (const language of LANGUAGES) {
     if (language.contextOnly) {
       if (!contextAllowed(language, text)) continue;
@@ -2482,10 +2599,10 @@ function scanSection(text, { useFences = true } = {}) {
   if (candidates.length) {
     candidates.sort((a, b) => b.length - a.length || a.index - b.index);
     return {
-      language: candidates[0].language,
+      language: candidates[0]!.language,
       method: "mention",
       confidence: "high",
-      score: candidates[0].length,
+      score: candidates[0]!.length,
     };
   }
 
@@ -2504,11 +2621,11 @@ function scanSection(text, { useFences = true } = {}) {
   return null;
 }
 
-function earliestLanguage(text) {
-  let best = null;
+function earliestLanguage(text: string): Language | null {
+  let best: { language: Language; index: number; length: number } | null = null;
   for (const language of LANGUAGES) {
     for (const source of anyPatterns(language)) {
-      let match;
+      let match: RegExpExecArray | null;
       try {
         match = new RegExp(source, "i").exec(text);
       } catch {
@@ -2528,7 +2645,7 @@ function earliestLanguage(text) {
   return best?.language || null;
 }
 
-function frameworkByName(text) {
+function frameworkByName(text: string): ScoredFramework | null {
   const source = normalizeText(text);
   for (const framework of FRAMEWORKS) {
     const pattern = new RegExp(`(^|[^\\w])${escapeRegExp(framework.name)}([^\\w]|$)`, "i");
@@ -2537,14 +2654,22 @@ function frameworkByName(text) {
   return null;
 }
 
-function bestFramework(frameworks, language) {
+function bestFramework(
+  frameworks: ScoredFramework[],
+  language: Language | null,
+): ScoredFramework | null {
   for (const framework of frameworks) {
     if (frameworkApplies(framework, language)) return framework;
   }
   return null;
 }
 
-function frameworkPrecedesLanguage(text, framework, language) {
+function frameworkPrecedesLanguage(
+  text: string,
+  framework: Framework,
+  language: Language | null,
+): boolean {
+  if (!language) return false;
   const lower = text.toLowerCase();
   const frameworkIndex = lower.indexOf(framework.name.toLowerCase());
   if (frameworkIndex < 0) return false;
@@ -2556,7 +2681,7 @@ function frameworkPrecedesLanguage(text, framework, language) {
   return languageIndex < 0 || frameworkIndex < languageIndex;
 }
 
-export function detectLanguageDetailed(text) {
+export function detectLanguageDetailed(text: string): Detection | null {
   const source = normalizeText(text);
   if (!source.trim()) return null;
 
@@ -2564,7 +2689,7 @@ export function detectLanguageDetailed(text) {
     /\b(?:convert|port|rewrite|translate|migrate)\b[^.\n]{0,100}?\b(?:to|into|in)\b\s+(?:the\s+)?(?:language\s+)?([^.\n;]{1,80})/i,
   );
   if (conversion) {
-    const target = conversion[1];
+    const target = conversion[1] ?? "";
     const found = earliestLanguage(target);
     if (found) {
       const frameworks = detectFrameworks(source);
@@ -2629,11 +2754,11 @@ export function detectLanguageDetailed(text) {
   return null;
 }
 
-export function detectLanguage(text) {
+export function detectLanguage(text: string): Language | null {
   return detectLanguageDetailed(text)?.language || null;
 }
 
-export function detectTask(text) {
+export function detectTask(text: string): string {
   const source = expandShorthand(normalizeText(text)).toLowerCase();
   if (
     /\b(traceback|stack trace|exception|error|errno|segmentation fault|segfault|panic|failed to|does(?:n't| not) compile|won't compile|cannot compile|can't compile|does(?:n't| not) build|won't build|unhandled|uncaught|cannot read|typeerror|syntaxerror|nullpointer\w*|null pointer|exit code|core dumped|throws|throwing|blows up)\b/.test(
@@ -2684,10 +2809,21 @@ export function detectTask(text) {
   ) {
     return "setup";
   }
-  if (/\b(tests?|unit tests?|pytest|jest|junit|coverage|test this|test my)\b/.test(source)) return "tests";
-  if (/\b(optimi[sz]e|performance|slow|faster|memory usage|speed up|takes forever|too slow|laggy|reduce memory|too much memory)\b/.test(source)) return "optimize";
-  if (/\b(convert|port|rewrite|translate|migrate)\b[^.\n]*\b(?:to|into|in)\b/.test(source)) return "convert";
-  if (/\b(?:document(?:ation)?|docstrings?|jsdoc|readme|api docs?|add comments?|comment this code)\b/.test(source)) {
+  if (/\b(tests?|unit tests?|pytest|jest|junit|coverage|test this|test my)\b/.test(source))
+    return "tests";
+  if (
+    /\b(optimi[sz]e|performance|slow|faster|memory usage|speed up|takes forever|too slow|laggy|reduce memory|too much memory)\b/.test(
+      source,
+    )
+  )
+    return "optimize";
+  if (/\b(convert|port|rewrite|translate|migrate)\b[^.\n]*\b(?:to|into|in)\b/.test(source))
+    return "convert";
+  if (
+    /\b(?:document(?:ation)?|docstrings?|jsdoc|readme|api docs?|add comments?|comment this code)\b/.test(
+      source,
+    )
+  ) {
     return "document";
   }
   if (
@@ -2697,30 +2833,53 @@ export function detectTask(text) {
   ) {
     return "design";
   }
-  if (/\b(explain|what does|how does|walk me through|understand|what is|what are|what's|why does|meaning of|break (?:this|it) down|what(?:'s| is) happening)\b/.test(source)) return "explain";
+  if (
+    /\b(explain|what does|how does|walk me through|understand|what is|what are|what's|why does|meaning of|break (?:this|it) down|what(?:'s| is) happening)\b/.test(
+      source,
+    )
+  )
+    return "explain";
   return "write";
 }
 
-export function buildCodingPrompt({ languageId, taskId, userText }) {
-  const language = languageById(languageId) || (languageId === "auto" ? detectLanguage(userText) : null);
+export function buildCodingPrompt({
+  languageId,
+  taskId,
+  userText,
+}: {
+  languageId: string;
+  taskId: string;
+  userText: string;
+}): string {
+  const language =
+    languageById(languageId) || (languageId === "auto" ? detectLanguage(userText) : null);
   const resolvedTask = taskById(taskId === "auto" ? detectTask(userText) : taskId);
-  const parts = ["Coding context:"];
+  const parts: string[] = ["Coding context:"];
 
   if (language) {
     const version = language.version ? ` Target ${language.version}.` : "";
     parts.push(`Language: ${language.name}.${version} ${language.guidance}`);
-    if (language.toolchain) parts.push(`Assume ${language.toolchain} unless the user says otherwise.`);
+    if (language.toolchain)
+      parts.push(`Assume ${language.toolchain} unless the user says otherwise.`);
     if (language.kind === "markup") {
-      parts.push(`${language.name} is a markup language, not a general-purpose programming language. Produce valid ${language.name} and explain how it is used.`);
+      parts.push(
+        `${language.name} is a markup language, not a general-purpose programming language. Produce valid ${language.name} and explain how it is used.`,
+      );
     }
     if (language.kind === "data") {
-      parts.push(`${language.name} is a data format. Keep it valid and say which tool consumes it.`);
+      parts.push(
+        `${language.name} is a data format. Keep it valid and say which tool consumes it.`,
+      );
     }
     if (language.kind === "stylesheet") {
-      parts.push(`${language.name} is a stylesheet language. Answer with valid selectors and properties.`);
+      parts.push(
+        `${language.name} is a stylesheet language. Answer with valid selectors and properties.`,
+      );
     }
     if (language.kind === "visual") {
-      parts.push(`${language.name} is not written as ordinary text code. Describe the exact steps or blocks a user must create.`);
+      parts.push(
+        `${language.name} is not written as ordinary text code. Describe the exact steps or blocks a user must create.`,
+      );
     }
     if (language.kind === "educational") {
       parts.push(`${language.name} is an educational language. Favor short, readable examples.`);
@@ -2738,13 +2897,15 @@ export function buildCodingPrompt({ languageId, taskId, userText }) {
   }
 
   if (resolvedTask.instruction) {
-    parts.push(`Task: ${resolvedTask.instruction.replaceAll("{language}", language?.name || "the target language")}`);
+    parts.push(
+      `Task: ${resolvedTask.instruction.replaceAll("{language}", language?.name || "the target language")}`,
+    );
   }
 
   return parts.join("\n");
 }
 
-export function coderSuggestions() {
+export function coderSuggestions(): string[] {
   return [
     "Review this React component for security and accessibility",
     "Write a Django endpoint with input validation",

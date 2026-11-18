@@ -71,14 +71,12 @@ describe("buildDemoReply", () => {
     ).toContain("2 notes matching that");
   });
 
-  it("uses a mode-specific builder only in demo mode", () => {
+  it("uses a mode-specific builder when one is provided", () => {
     const custom = () => "custom coder answer";
-    expect(
-      buildDemoReply({ prompt: "write a C program", buildDemoReply: custom, modelKey: "demo" }),
-    ).toBe("custom coder answer");
-    expect(buildDemoReply({ prompt: "hello", buildDemoReply: custom, modelKey: "other" })).toMatch(
-      /quiet start/,
+    expect(buildDemoReply({ prompt: "write a C program", buildDemoReply: custom })).toBe(
+      "custom coder answer",
     );
+    expect(buildDemoReply({ prompt: "hello" })).toMatch(/quiet start/);
   });
 });
 

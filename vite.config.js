@@ -2,9 +2,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { defineConfig } from "vite";
 
 // GitHub Pages cannot set response headers, so the production CSP ships as a meta tag.
-// This build is model-free, so scripts and connections stay same-origin. Enabling the
-// dormant WebLLM/wllama backends again requires adding 'wasm-unsafe-eval' and the
-// Hugging Face/GitHub download origins back to this policy.
+// The app is model-free: scripts and connections stay same-origin, no WASM eval,
+// no external download origins.
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
@@ -54,14 +53,7 @@ export default defineConfig({
       },
     },
   ],
-  worker: {
-    format: "es",
-  },
   build: {
     target: "es2022",
-    chunkSizeWarningLimit: 8000,
-  },
-  optimizeDeps: {
-    exclude: ["@mlc-ai/web-llm"],
   },
 });

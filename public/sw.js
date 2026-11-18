@@ -1,5 +1,5 @@
 /* LocalMind service worker: caches the app shell and same-origin assets.
-   Model weights are handled by the browser caches and are never intercepted. */
+   The app is model-free; there are no weight downloads to intercept. */
 
 const VERSION = "localmind-v2";
 const SHELL = [

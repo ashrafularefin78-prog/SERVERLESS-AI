@@ -3,7 +3,7 @@ import DOMPurify from "dompurify";
 import { highlightToHtml } from "./coder/highlight.js";
 import { languageByFence } from "./coder/languages.js";
 
-const LANG_LABELS = {
+const LANG_LABELS: Record<string, string> = {
   js: "JavaScript",
   jsx: "JavaScript",
   javascript: "JavaScript",
@@ -153,17 +153,18 @@ const LANG_LABELS = {
   sb3: "Scratch",
 };
 
-function fenceLabel(fence) {
+function fenceLabel(fence: string) {
   const raw = String(fence || "")
     .trim()
     .toLowerCase();
   if (!raw) return "code";
-  if (LANG_LABELS[raw]) return LANG_LABELS[raw];
+  const label = LANG_LABELS[raw];
+  if (label) return label;
   const language = languageByFence(raw);
   return language ? language.name : raw;
 }
 
-function fenceLanguageId(fence) {
+function fenceLanguageId(fence: string) {
   const raw = String(fence || "")
     .trim()
     .toLowerCase();
@@ -187,7 +188,7 @@ function fenceLanguageId(fence) {
   return null;
 }
 
-function escapeHtml(value) {
+function escapeHtml(value: unknown) {
   return String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -232,9 +233,9 @@ marked.setOptions({
   async: false,
 });
 
-export function renderMarkdown(text) {
+export function renderMarkdown(text: string) {
   const source = typeof text === "string" ? text : "";
-  let raw;
+  let raw: string;
   try {
     raw = marked.parse(source, { gfm: true, breaks: true, async: false });
   } catch {
@@ -305,8 +306,8 @@ export function renderMarkdown(text) {
   return root.innerHTML;
 }
 
-function detectLanguage(code) {
+function detectLanguage(code: HTMLElement) {
   const className = code.getAttribute("class") || "";
   const match = className.match(/language-([\w+#-]+)/);
-  return match ? match[1] : "";
+  return match?.[1] ?? "";
 }

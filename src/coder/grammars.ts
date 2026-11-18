@@ -1,7 +1,9 @@
 // Grammars for languages highlight.js does not ship. Kept deliberately small:
 // they only need to color keywords, types, strings, numbers, and comments.
 
-export function zig(hljs) {
+import type { HLJSApi, Language } from "highlight.js";
+
+export function zig(hljs: HLJSApi): Language {
   return {
     name: "Zig",
     keywords: {
@@ -26,7 +28,7 @@ export function zig(hljs) {
   };
 }
 
-export function solidity(hljs) {
+export function solidity(hljs: HLJSApi): Language {
   return {
     name: "Solidity",
     keywords: {
@@ -51,7 +53,7 @@ export function solidity(hljs) {
   };
 }
 
-export function abap(hljs) {
+export function abap(hljs: HLJSApi): Language {
   return {
     name: "ABAP",
     case_insensitive: true,
@@ -73,7 +75,7 @@ export function abap(hljs) {
   };
 }
 
-export function cobol(hljs) {
+export function cobol(hljs: HLJSApi): Language {
   return {
     name: "COBOL",
     case_insensitive: true,
@@ -104,7 +106,7 @@ export function cobol(hljs) {
   };
 }
 
-export function logo(hljs) {
+export function logo(hljs: HLJSApi): Language {
   return {
     name: "Logo",
     case_insensitive: true,

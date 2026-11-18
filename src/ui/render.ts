@@ -1,20 +1,22 @@
-import { MODES } from "../config.js";
 import { renderMarkdown } from "../markdown.js";
-import { CPU_MODEL, GPU_MODELS, modelSizeLabel, modelVramLabel } from "../engine/catalog.js";
-import { deviceSummary, deviceTags } from "../engine/device.js";
+import type { ConversationSummary, EngineState, Message } from "../types.js";
 
-export function h(tag, attrs = {}, ...children) {
+export function h<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  attrs: Record<string, unknown> = {},
+  ...children: unknown[]
+): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
 
   for (const [key, value] of Object.entries(attrs || {})) {
     if (value === null || value === undefined || value === false) continue;
-    if (key === "class") node.className = value;
-    else if (key === "text") node.textContent = value;
-    else if (key === "html") node.innerHTML = value;
+    if (key === "class") node.className = value as string;
+    else if (key === "text") node.textContent = value as string;
+    else if (key === "html") node.innerHTML = value as string;
     else if (key === "dataset") Object.assign(node.dataset, value);
     else if (key === "style") Object.assign(node.style, value);
     else if (key.startsWith("on") && typeof value === "function") {
-      node.addEventListener(key.slice(2).toLowerCase(), value);
+      node.addEventListener(key.slice(2).toLowerCase(), value as EventListener);
     } else if (value === true) node.setAttribute(key, "");
     else node.setAttribute(key, String(value));
   }
@@ -23,14 +25,14 @@ export function h(tag, attrs = {}, ...children) {
   return node;
 }
 
-function appendChildren(node, children) {
+function appendChildren(node: HTMLElement, children: unknown[]) {
   for (const child of children.flat(Infinity)) {
     if (child === null || child === undefined || child === false) continue;
     node.append(child instanceof Node ? child : document.createTextNode(String(child)));
   }
 }
 
-export function icon(name, className = "") {
+export function icon(name: string, className = "") {
   return `<svg class="${className}" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
 }
 
@@ -42,7 +44,11 @@ export function iconLogo(className = "") {
    History
 --------------------------------------------------------------- */
 
-export function renderHistory(container, conversations, activeId) {
+export function renderHistory(
+  container: HTMLElement,
+  conversations: ConversationSummary[],
+  activeId: string | null,
+) {
   container.textContent = "";
 
   if (!conversations.length) {
@@ -91,12 +97,12 @@ export function renderHistory(container, conversations, activeId) {
   container.append(fragment);
 }
 
-function groupByDate(conversations) {
+function groupByDate(conversations: ConversationSummary[]) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const day = 86400000;
 
-  const buckets = new Map([
+  const buckets = new Map<string, ConversationSummary[]>([
     ["Today", []],
     ["Yesterday", []],
     ["Previous 7 days", []],
@@ -107,10 +113,10 @@ function groupByDate(conversations) {
     const stamp = new Date(conversation.updatedAt);
     const start = new Date(stamp.getFullYear(), stamp.getMonth(), stamp.getDate()).getTime();
     const age = (today - start) / day;
-    if (age <= 0) buckets.get("Today").push(conversation);
-    else if (age <= 1) buckets.get("Yesterday").push(conversation);
-    else if (age <= 7) buckets.get("Previous 7 days").push(conversation);
-    else buckets.get("Older").push(conversation);
+    if (age <= 0) buckets.get("Today")!.push(conversation);
+    else if (age <= 1) buckets.get("Yesterday")!.push(conversation);
+    else if (age <= 7) buckets.get("Previous 7 days")!.push(conversation);
+    else buckets.get("Older")!.push(conversation);
   }
 
   return [...buckets.entries()]
@@ -122,7 +128,10 @@ function groupByDate(conversations) {
    Messages
 --------------------------------------------------------------- */
 
-export function renderMessage(message, { canRegenerate = false } = {}) {
+export function renderMessage(
+  message: Message,
+  { canRegenerate = false, canEdit = false }: { canRegenerate?: boolean; canEdit?: boolean } = {},
+) {
   const isUser = message.role === "user";
   const article = h("article", {
     class: `msg ${isUser ? "user" : "assistant"}`,
@@ -172,6 +181,18 @@ export function renderMessage(message, { canRegenerate = false } = {}) {
         html: icon("copy"),
       }),
     );
+    if (isUser && canEdit && !message.streaming) {
+      actions.append(
+        h("button", {
+          class: "msg-action",
+          type: "button",
+          dataset: { action: "edit", messageId: message.id },
+          title: "Edit and resend",
+          "aria-label": "Edit and resend",
+          html: icon("edit"),
+        }),
+      );
+    }
   }
 
   if (!isUser && canRegenerate && !message.streaming) {
@@ -211,7 +232,7 @@ export function renderMessage(message, { canRegenerate = false } = {}) {
   return article;
 }
 
-export function streamText(node, text, autoScroll = true) {
+export function streamText(node: HTMLElement, text: string, autoScroll = true) {
   const content = node.querySelector("[data-content]");
   if (!content) return;
   content.classList.add("streaming");
@@ -221,7 +242,7 @@ export function streamText(node, text, autoScroll = true) {
   if (scroller) scroller.scrollTop = scroller.scrollHeight;
 }
 
-export function formatTime(timestamp) {
+export function formatTime(timestamp: number | string) {
   try {
     return new Intl.DateTimeFormat(undefined, {
       hour: "numeric",
@@ -233,10 +254,16 @@ export function formatTime(timestamp) {
 }
 
 /* ---------------------------------------------------------------
-   Welcome / model picker
+   Welcome
 --------------------------------------------------------------- */
 
-export function renderWelcome({ engine, suggestions }) {
+export function renderWelcome({
+  engine,
+  suggestions,
+}: {
+  engine: EngineState;
+  suggestions: string[];
+}) {
   const welcome = h("section", { class: "welcome" });
 
   welcome.append(h("p", { class: "eyebrow", text: "Private - on-device - no account" }));
@@ -276,107 +303,9 @@ export function renderWelcome({ engine, suggestions }) {
   return welcome;
 }
 
-export function renderDeviceCard(device) {
-  const card = h("div", { class: "device-card" });
-  const iconBox = h("div", { class: "device-icon", html: icon("spark") });
-  const text = h("div", { class: "device-text" });
-  text.append(h("strong", { text: deviceSummary(device) }));
-  const tags = deviceTags(device)
-    .map((tag) => tag.label)
-    .join(" - ");
-  text.append(h("small", { text: tags || "Device details unavailable" }));
-  const badge = h("span", {
-    class: `device-badge${device.webgpu ? " good" : ""}`,
-    text: device.webgpu ? "GPU ready" : "CPU mode",
-  });
-  card.append(iconBox, text, badge);
-  return card;
-}
-
-export function renderNotice(text, warn = false) {
+export function renderNotice(text: string, warn = false) {
   const notice = h("p", { class: `notice${warn ? " warn" : ""}` });
   notice.innerHTML = icon(warn ? "info" : "lock");
   notice.append(h("span", { text }));
   return notice;
-}
-
-export function pickerModels(device) {
-  return device.webgpu ? GPU_MODELS : [CPU_MODEL];
-}
-
-export function renderModelCard(model, { selected = false, device, currentKey = null } = {}) {
-  const disabled = Boolean(model.requiresF16 && !device?.shaderF16);
-  const card = h("button", {
-    class: `model-card${selected ? " selected" : ""}`,
-    type: "button",
-    dataset: { modelKey: model.key },
-    disabled,
-    title: disabled ? "This model needs WebGPU shader-f16 support." : model.description,
-    "aria-pressed": selected ? "true" : "false",
-  });
-
-  const top = h("span", { class: "model-top" });
-  top.append(h("span", { class: "model-name", text: model.name }));
-  if (currentKey === model.key) {
-    top.append(h("span", { class: "model-badge", text: "Loaded" }));
-  } else {
-    top.append(h("span", { class: "model-badge", text: model.tagline }));
-  }
-
-  card.append(top);
-  card.append(h("span", { class: "model-family", text: model.family }));
-  card.append(h("span", { class: "model-desc", text: model.description }));
-
-  const meta = h("span", { class: "model-meta" });
-  meta.append(h("span", { text: modelSizeLabel(model.downloadMB) }));
-  const vram = modelVramLabel(model.vramMB);
-  if (vram) meta.append(h("span", { text: vram }));
-  meta.append(h("span", { text: model.bestFor }));
-  card.append(meta);
-
-  return card;
-}
-
-export function renderModelDialogList(container, { device, currentKey, selectedKey }) {
-  container.textContent = "";
-  const models = device.webgpu ? [...GPU_MODELS, CPU_MODEL] : [CPU_MODEL];
-
-  for (const model of models) {
-    const disabled = Boolean(model.requiresF16 && !device.shaderF16);
-    const option = h("button", {
-      class: `model-option${model.key === (selectedKey || currentKey) ? " selected" : ""}`,
-      type: "button",
-      dataset: { modelKey: model.key },
-      disabled,
-      title: disabled ? "Needs shader-f16 support." : model.description,
-    });
-    option.append(h("strong", { text: `${model.name} - ${model.family}` }));
-    option.append(h("small", { text: model.description }));
-
-    const meta = h("span", { class: "model-meta" });
-    meta.append(h("span", { text: modelSizeLabel(model.downloadMB) }));
-    const vram = modelVramLabel(model.vramMB);
-    if (vram) meta.append(h("span", { text: vram }));
-    if (model.key === currentKey) meta.append(h("span", { text: "currently loaded" }));
-    option.append(meta);
-    container.append(option);
-  }
-}
-
-export function renderDeviceSummary(container, device) {
-  container.textContent = "";
-  for (const tag of deviceTags(device)) {
-    container.append(h("span", { class: tag.good ? "good" : "", text: tag.label }));
-  }
-  if (!deviceTags(device).length) {
-    container.append(h("span", { text: "No GPU details available" }));
-  }
-}
-
-export function modeOptions() {
-  return MODES.map((mode) => ({
-    value: mode.id,
-    label: mode.label,
-    hint: mode.hint,
-  }));
 }
