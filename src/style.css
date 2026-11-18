@@ -1553,7 +1553,8 @@ svg {
 
 .field select,
 .field textarea,
-.field input[type="text"] {
+.field input[type="text"],
+.field input[type="password"] {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--border);

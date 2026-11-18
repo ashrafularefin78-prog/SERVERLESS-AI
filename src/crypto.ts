@@ -4,7 +4,14 @@
 import type { EncryptedBlob } from "./types.js";
 
 export const MEMORY_VERIFIER = "localmind-memory-verifier-v1";
-const PBKDF2_ITERATIONS = 210_000;
+
+/** PBKDF2 parameters for the at-rest vault key. */
+export const KEY_DERIVATION = {
+  name: "PBKDF2",
+  iterations: 310_000,
+  hash: "SHA-256",
+  keyLength: 256,
+} as const;
 
 function toBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -32,9 +39,14 @@ export async function deriveMemoryKey(passphrase: string, salt: string): Promise
     ["deriveKey"],
   );
   return crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt: fromBase64(salt), iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
+    {
+      name: "PBKDF2",
+      salt: fromBase64(salt),
+      iterations: KEY_DERIVATION.iterations,
+      hash: KEY_DERIVATION.hash,
+    },
     material,
-    { name: "AES-GCM", length: 256 },
+    { name: "AES-GCM", length: KEY_DERIVATION.keyLength },
     false,
     ["encrypt", "decrypt"],
   );

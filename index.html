@@ -337,6 +337,21 @@
           </section>
 
           <section class="setting-section">
+            <h3>Encryption</h3>
+            <p class="memory-note">
+              Optionally encrypt chats and memory notes at rest with a passphrase (AES-256-GCM,
+              PBKDF2-SHA-256). The key stays in this tab and is never stored.
+            </p>
+            <p class="memory-note" id="vault-status"></p>
+            <div class="setting-actions">
+              <button class="btn subtle" id="vault-enable" type="button">Encrypt</button>
+              <button class="btn subtle" id="vault-unlock" type="button">Unlock</button>
+              <button class="btn subtle" id="vault-lock" type="button">Lock now</button>
+              <button class="btn subtle" id="vault-disable" type="button">Remove encryption</button>
+            </div>
+          </section>
+
+          <section class="setting-section">
             <h3>Your data</h3>
             <p class="muted small">Chats live in IndexedDB. Nothing is uploaded.</p>
             <div class="setting-actions">
@@ -364,6 +379,26 @@
         <div class="confirm-actions">
           <button class="btn ghost" id="confirm-cancel" type="button">Cancel</button>
           <button class="btn danger" id="confirm-ok" type="button">Confirm</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="modal" id="vault-dialog" aria-labelledby="vault-title">
+      <div class="modal-card confirm-card">
+        <h2 id="vault-title">Unlock chats</h2>
+        <p id="vault-sub"></p>
+        <label class="field">
+          <span class="field-label">Passphrase</span>
+          <input id="vault-pass" type="password" autocomplete="current-password" />
+        </label>
+        <label class="field" id="vault-confirm-field">
+          <span class="field-label">Confirm passphrase</span>
+          <input id="vault-confirm" type="password" autocomplete="new-password" />
+        </label>
+        <p class="memory-note" id="vault-hint"></p>
+        <div class="confirm-actions">
+          <button class="btn ghost" id="vault-cancel" type="button">Not now</button>
+          <button class="btn primary" id="vault-ok" type="button">Unlock</button>
         </div>
       </div>
     </dialog>

@@ -3,10 +3,11 @@
 A private AI chat that runs entirely in your browser. It ships with a **built-in rule assistant** that answers instantly and offline, and can optionally run a **real neural model on your GPU** through WebGPU. There is no backend, no API key, and no account. Nothing is uploaded.
 
 - **Built-in assistant:** natural small talk, on-device memory, language/task detection, and coding scaffolding. Replies come from local rules and templates. No download needed.
-- **On-device models (optional):** one click downloads a quantised 0.3B-1B chat model, verifies and caches it in the browser's private storage (OPFS), and runs inference in a Web Worker on WebGPU. Weights are fetched once from Hugging Face and never leave the device. Delete them at any time in Settings.
+- **On-device models (optional):** one click downloads a quantised 0.3B-1B chat model, verifies and caches it in the browser's private storage (OPFS), and runs inference in a Web Worker on WebGPU. Weights are fetched once from Hugging Face and never leave the device. Integrity comes from WebLLM's pinned `prebuiltAppConfig`: its SRI hashes for the config, WASM, and tokenizer are checked before load, and a mismatch aborts the model. Delete them at any time in Settings.
 - **Knowledge and retrieval (optional):** add text or markdown documents in Settings. They are chunked, embedded on-device with all-MiniLM-L6-v2 through Transformers.js, and stored as vectors in IndexedDB. Relevant passages are retrieved with a flat cosine index and injected into the prompt, and replies name the documents they used. Nothing is uploaded.
 - **UI:** vanilla JS + Vite, markdown and code rendering, streaming with stop/regenerate/copy, modes, dark/light theme, mobile layout.
-- **Storage:** chats and settings in IndexedDB. Nothing is uploaded.
+- **Storage:** chats, memory notes, and settings in IndexedDB. Nothing is uploaded.
+- **Encryption (optional):** set a passphrase in Settings to encrypt chats and memory notes at rest with AES-256-GCM. The key is derived with PBKDF2-SHA-256 (310,000 iterations), is non-extractable, and lives only in the open tab; locking hides everything until you unlock. There is no recovery if the passphrase is lost.
 - **Memory:** notes you ask it to remember ("remember ...", "forget ..."), kept on-device and carried into every chat. Manage them in Settings.
 - **Understanding:** cleans up messy input - smart quotes, zero-width characters, and chat shorthand ("pls", "doesnt", "idk") - while your chat history keeps the original wording and code blocks are left untouched. Vague messages ("it doesn't work") prompt one targeted clarifying question instead of a guess.
 - **Offline:** installable PWA. The app shell is cached after the first online visit.
@@ -152,8 +153,9 @@ The rule engine is the product, so it is covered by unit tests in `tests/unit/`:
 - language and task detection (`coder/languages.js`)
 - the demo engine, including streaming and cancellation (`engine/demo.js`)
 - retrieval internals: chunking, overlap, cosine ranking, and grounding-block formatting (`rag/`)
+- vault cryptography: key derivation parameters, round-trips, fresh IVs, wrong-passphrase rejection (`crypto.js`)
 
-Playwright tests in `tests/e2e/` cover the critical browser flows: sending a message, receiving a streamed reply, memory commands, clearing local data, and making no cross-origin requests. They run against both the dev server and the production build (`npm run build && npm run test:e2e:preview`). CI runs lint, formatting, unit tests with coverage thresholds, `npm audit --omit=dev`, the production build, a bundle-size budget, and both browser test modes on every push and pull request.
+Playwright tests in `tests/e2e/` cover the critical browser flows: sending a message, receiving a streamed reply, memory commands, enabling encryption and unlocking, clearing local data, and making no cross-origin requests. They run against both the dev server and the production build (`npm run build && npm run test:e2e:preview`). CI runs lint, formatting, unit tests with coverage thresholds, `npm audit --omit=dev`, the production build, a bundle-size budget, and both browser test modes on every push and pull request. It also generates a CycloneDX SBOM (`npm run sbom`) and uploads it as a build artifact for downstream supply-chain review.
 
 ### Model quality evals
 
@@ -178,6 +180,7 @@ Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md), follow the [
 - WebGPU support and GPU memory determine which models run. Settings reports the reason when a device cannot run them.
 - There is no internet access at reply time and no tools. Retrieval covers only the documents you add; it does not search the web.
 - Retrieval is small-scale by design: up to 20 documents, flat cosine search, top four passages, no reranking. A small local model may still ignore or misread the passages.
+- Encryption is opt-in and session-scoped. While the tab is unlocked, chats are plaintext in memory and readable by anything running on the page. Record ids, timestamps, and ciphertext sizes stay visible to someone with the profile files, and a weak passphrase can be guessed offline. Lost passphrases cannot be recovered.
 - Conversational prompts and local memory shape tone and continuity; they do not add reasoning ability.
 
 ## License

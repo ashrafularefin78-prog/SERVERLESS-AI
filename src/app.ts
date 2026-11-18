@@ -14,20 +14,30 @@ import {
   buildMemoryPrompt,
   parseMemoryCommand,
 } from "./memory.js";
+import {
+  MEMORY_VERIFIER,
+  checkVerifier,
+  decryptJson,
+  deriveMemoryKey,
+  encryptJson,
+  randomSalt,
+} from "./crypto.js";
 import { analyzeIntent, expandShorthand, normalizeText, understandingHint } from "./understand.js";
 import { compactHistory, formatCompactionNote } from "./context.js";
-import { encryptJson } from "./crypto.js";
 import * as engine from "./engine/manager.js";
 import {
   clearDatabase,
   createConversation,
   createMessage,
+  decryptStoredConversations,
   deleteConversation,
+  encryptStoredConversations,
   getConversation,
   getSettings,
   listConversations,
   saveConversation,
   saveSettings,
+  setVaultKey,
 } from "./storage/db.js";
 import { h, renderHistory, renderMessage, renderWelcome, streamText } from "./ui/render.js";
 import { buildCodingPrompt, coderSuggestions, demoCodingReply } from "./coder/languages.js";
@@ -98,6 +108,20 @@ interface Dom {
   "knowledge-add": HTMLButtonElement;
   "knowledge-file": HTMLInputElement;
   "knowledge-status": HTMLElement;
+  "vault-status": HTMLElement;
+  "vault-enable": HTMLButtonElement;
+  "vault-unlock": HTMLButtonElement;
+  "vault-lock": HTMLButtonElement;
+  "vault-disable": HTMLButtonElement;
+  "vault-dialog": HTMLDialogElement;
+  "vault-title": HTMLElement;
+  "vault-sub": HTMLElement;
+  "vault-pass": HTMLInputElement;
+  "vault-confirm": HTMLInputElement;
+  "vault-confirm-field": HTMLElement;
+  "vault-hint": HTMLElement;
+  "vault-ok": HTMLButtonElement;
+  "vault-cancel": HTMLButtonElement;
   "theme-select": HTMLSelectElement;
   "export-data": HTMLButtonElement;
   "clear-data": HTMLButtonElement;
@@ -130,6 +154,7 @@ interface State {
   modelCached: boolean | null;
   knowledge: KnowledgeDoc[];
   knowledgeBusy: boolean;
+  vaultMode: "enable" | "unlock" | null;
 }
 
 const $ = (id: string) => document.getElementById(id);
@@ -156,6 +181,7 @@ const state: State = {
   modelCached: null,
   knowledge: [],
   knowledgeBusy: false,
+  vaultMode: null,
 };
 
 export async function boot() {
@@ -163,10 +189,11 @@ export async function boot() {
   bindEvents();
   applyTheme();
 
-  const [settings, conversations] = await Promise.all([getSettings(), listConversations()]);
+  const settings = await getSettings();
   state.settings = { ...DEFAULT_SETTINGS, ...settings };
-  if (state.settings.memoryVault) state.settings.memory = [];
-  state.conversations = conversations;
+  const vaulted = Boolean(state.settings.memoryVault);
+  if (vaulted) state.settings.memory = [];
+  state.conversations = vaulted ? [] : await listConversations();
 
   applyTheme();
   syncSettingsForm();
@@ -186,6 +213,8 @@ export async function boot() {
 
   autoResize();
   updateComposerState();
+
+  if (vaulted) openVaultDialog("unlock");
 }
 
 function cacheDom() {
@@ -234,6 +263,20 @@ function cacheDom() {
     "knowledge-add",
     "knowledge-file",
     "knowledge-status",
+    "vault-status",
+    "vault-enable",
+    "vault-unlock",
+    "vault-lock",
+    "vault-disable",
+    "vault-dialog",
+    "vault-title",
+    "vault-sub",
+    "vault-pass",
+    "vault-confirm",
+    "vault-confirm-field",
+    "vault-hint",
+    "vault-ok",
+    "vault-cancel",
     "theme-select",
     "export-data",
     "clear-data",
@@ -334,6 +377,19 @@ function bindEvents() {
     );
     if (button) void deleteKnowledge(button.dataset.knowledgeId ?? "");
   });
+
+  dom["vault-enable"].addEventListener("click", () => openVaultDialog("enable"));
+  dom["vault-unlock"].addEventListener("click", () => openVaultDialog("unlock"));
+  dom["vault-lock"].addEventListener("click", () => lockVault());
+  dom["vault-disable"].addEventListener("click", () => void disableEncryption());
+  dom["vault-ok"].addEventListener("click", () => void confirmVault());
+  dom["vault-cancel"].addEventListener("click", () => closeDialog(dom["vault-dialog"]));
+  dom["vault-pass"].addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void confirmVault();
+    }
+  });
   dom["model-select"].addEventListener("change", () => {
     void applyModelChoice();
   });
@@ -427,6 +483,13 @@ function renderAll() {
 --------------------------------------------------------------- */
 
 function renderSidebar() {
+  if (vaultLocked()) {
+    dom.history.textContent = "";
+    dom.history.append(
+      h("p", { class: "history-empty", text: "Chats are encrypted. Unlock to read them." }),
+    );
+    return;
+  }
   renderHistory(dom.history, state.conversations, state.conversation?.id ?? null);
 }
 
@@ -555,6 +618,7 @@ function syncSettingsForm() {
   updateModeSelect();
   updateComposerPlaceholder();
   renderMemoryList();
+  renderVaultControls();
 }
 
 function renderMemoryList() {
@@ -562,12 +626,9 @@ function renderMemoryList() {
   list.textContent = "";
   const memory = state.settings.memory || [];
 
-  if (memoryLocked()) {
+  if (vaultLocked()) {
     list.append(
-      h("li", {
-        class: "memory-empty",
-        text: "This device holds an older encrypted memory store that this build cannot unlock.",
-      }),
+      h("li", { class: "memory-empty", text: "Memory is encrypted. Unlock to view notes." }),
     );
     return;
   }
@@ -595,8 +656,153 @@ function renderMemoryList() {
   }
 }
 
-function memoryLocked(): boolean {
+function vaultLocked(): boolean {
   return Boolean(state.settings.memoryVault) && !state.memoryKey;
+}
+
+function renderVaultControls() {
+  const vault = state.settings.memoryVault;
+  const locked = vaultLocked();
+
+  dom["vault-status"].textContent = vault
+    ? locked
+      ? "Encrypted on this device. Locked until you unlock it."
+      : "Encrypted on this device. Unlocked for this tab only."
+    : "Not encrypted: chats and notes are stored as plain records in this browser.";
+
+  dom["vault-enable"].hidden = Boolean(vault);
+  dom["vault-unlock"].hidden = !locked;
+  dom["vault-lock"].hidden = !vault || locked;
+  dom["vault-disable"].hidden = !vault || locked;
+}
+
+function openVaultDialog(mode: "enable" | "unlock") {
+  const enabling = mode === "enable";
+  state.vaultMode = mode;
+
+  dom["vault-title"].textContent = enabling ? "Encrypt chats and memory" : "Unlock encrypted chats";
+  dom["vault-sub"].textContent = enabling
+    ? "Choose a passphrase. Chats and memory notes are encrypted with AES-256-GCM before they are saved."
+    : "Enter the passphrase you set on this device.";
+  dom["vault-confirm-field"].hidden = !enabling;
+  dom["vault-hint"].textContent = enabling
+    ? "There is no recovery: if you forget the passphrase, the encrypted data cannot be read. Use at least 8 characters."
+    : "The passphrase is never stored. It unlocks data for this tab only.";
+  dom["vault-ok"].textContent = enabling ? "Encrypt" : "Unlock";
+  dom["vault-pass"].value = "";
+  dom["vault-confirm"].value = "";
+
+  if (!dom["vault-dialog"].open) dom["vault-dialog"].showModal();
+  dom["vault-pass"].focus();
+}
+
+async function confirmVault() {
+  const mode = state.vaultMode;
+  const pass = dom["vault-pass"].value;
+  if (!mode) return;
+
+  if (mode === "enable") {
+    if (pass.length < 8) {
+      toast("Use a passphrase of at least 8 characters.");
+      return;
+    }
+    if (pass !== dom["vault-confirm"].value) {
+      toast("Passphrases do not match.");
+      return;
+    }
+
+    try {
+      const salt = randomSalt();
+      const key = await deriveMemoryKey(pass, salt);
+      state.memoryKey = key;
+      setVaultKey(key);
+
+      const vault: MemoryVault = {
+        salt,
+        verifier: await encryptJson(key, MEMORY_VERIFIER),
+        notes: await encryptJson(key, state.settings.memory || []),
+      };
+      const encrypted = await encryptStoredConversations();
+
+      state.settings.memoryVault = vault;
+      state.settings.memory = [];
+      await saveSettings({ memoryVault: vault, memory: [] });
+      closeDialog(dom["vault-dialog"]);
+      await refreshVaultState();
+      toast(
+        encrypted
+          ? `Encrypted ${encrypted} chat${encrypted === 1 ? "" : "s"} on this device.`
+          : "Encryption enabled.",
+      );
+    } catch (error) {
+      console.error("Could not enable encryption", error);
+      toast("Could not enable encryption.");
+    }
+    return;
+  }
+
+  const vault = state.settings.memoryVault;
+  if (!vault) return;
+
+  try {
+    const key = await deriveMemoryKey(pass, vault.salt);
+    if (!(await checkVerifier(key, vault.verifier))) {
+      toast("Wrong passphrase.");
+      return;
+    }
+
+    state.memoryKey = key;
+    setVaultKey(key);
+    state.settings.memory = await decryptJson<MemoryNote[]>(key, vault.notes);
+    closeDialog(dom["vault-dialog"]);
+    await refreshVaultState();
+    toast("Unlocked for this tab.");
+  } catch (error) {
+    console.error("Could not unlock", error);
+    toast("Could not unlock.");
+  }
+}
+
+async function refreshVaultState() {
+  state.conversations = await listConversations();
+  state.conversation = await initialConversation();
+  renderAll();
+  syncSettingsForm();
+}
+
+function lockVault() {
+  setVaultKey(null);
+  state.memoryKey = null;
+  state.settings.memory = [];
+  state.conversations = [];
+  state.conversation = createConversation({ mode: state.settings.mode });
+  closeDialog(dom["vault-dialog"]);
+  renderAll();
+  syncSettingsForm();
+  toast("Locked. Encrypted chats are hidden until you unlock.");
+}
+
+async function disableEncryption() {
+  const ok = await confirmDialog({
+    title: "Remove encryption?",
+    body: "Chats and memory notes will be stored as plain records in this browser.",
+    confirmLabel: "Remove encryption",
+  });
+  if (!ok) return;
+
+  try {
+    const notes = state.settings.memory || [];
+    await decryptStoredConversations();
+    setVaultKey(null);
+    state.settings.memoryVault = null;
+    state.memoryKey = null;
+    await saveSettings({ memoryVault: null, memory: notes });
+    await refreshVaultState();
+    toast("Encryption removed.");
+  } catch (error) {
+    console.error("Could not remove encryption", error);
+    toast("Could not remove encryption.");
+  }
 }
 
 async function commitMemory(notes: MemoryNote[]) {
@@ -617,7 +823,7 @@ async function commitMemory(notes: MemoryNote[]) {
 }
 
 async function addMemoryFromInput() {
-  if (memoryLocked()) {
+  if (vaultLocked()) {
     toast("Memory is locked. Unlock it to add notes.");
     return;
   }
@@ -966,6 +1172,11 @@ function closeSidebar() {
 }
 
 async function newChat() {
+  if (vaultLocked()) {
+    toast("Unlock your encrypted chats in Settings first.");
+    openVaultDialog("unlock");
+    return;
+  }
   cancelEdit();
   await stopAndWait();
   await saveCurrent();
@@ -1162,6 +1373,11 @@ async function clearAllData() {
 
 function handleSend() {
   if (state.generating) return;
+  if (vaultLocked()) {
+    toast("Unlock your encrypted chats in Settings first.");
+    openVaultDialog("unlock");
+    return;
+  }
   const text = dom.input.value.trim();
   if (!text) return;
 
@@ -1221,7 +1437,7 @@ function cancelEdit() {
 
 async function sendUserMessage(text: string) {
   const command = parseMemoryCommand(text);
-  if (command && memoryLocked()) {
+  if (command && vaultLocked()) {
     toast("Memory is locked. Unlock it in Settings to change notes.");
     return;
   }

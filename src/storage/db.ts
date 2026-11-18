@@ -1,7 +1,30 @@
 import { DEFAULT_SETTINGS, STORAGE } from "../config.js";
-import type { Conversation, Message, Role, Settings } from "../types.js";
+import { decryptJson, encryptJson } from "../crypto.js";
+import type { Conversation, EncryptedBlob, Message, Role, Settings } from "../types.js";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
+
+// The vault key lives only in this module, only for this tab's lifetime.
+// Nothing writes it to disk, and it is non-extractable once derived.
+let vaultKey: CryptoKey | null = null;
+
+interface StoredConversation {
+  id: string;
+  updatedAt: number;
+  encrypted?: EncryptedBlob;
+  title?: string;
+  createdAt?: number;
+  mode?: string;
+  messages?: Message[];
+}
+
+export function setVaultKey(key: CryptoKey | null): void {
+  vaultKey = key;
+}
+
+export function hasVaultKey(): boolean {
+  return vaultKey !== null;
+}
 
 const REQUIRED_STORES = ["conversations", "settings", "knowledge", "knowledgeChunks"] as const;
 
@@ -82,12 +105,32 @@ export function transactionDone(tx: IDBTransaction): Promise<void> {
   });
 }
 
+async function decodeConversation(
+  row: StoredConversation | undefined,
+): Promise<Conversation | null> {
+  if (!row) return null;
+  if (!row.encrypted) return row as unknown as Conversation;
+  if (!vaultKey) return null;
+  try {
+    return await decryptJson<Conversation>(vaultKey, row.encrypted);
+  } catch {
+    console.warn("Could not decrypt a stored conversation");
+    return null;
+  }
+}
+
 export async function listConversations(): Promise<Conversation[]> {
   const db = await openDb();
   const tx = db.transaction("conversations", "readonly");
   const items = await requestToPromise(tx.objectStore("conversations").getAll());
   await transactionDone(tx);
-  return (items as Conversation[]).sort((a, b) => b.updatedAt - a.updatedAt);
+
+  const conversations: Conversation[] = [];
+  for (const row of items as StoredConversation[]) {
+    const conversation = await decodeConversation(row);
+    if (conversation) conversations.push(conversation);
+  }
+  return conversations.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function getConversation(id: string): Promise<Conversation | null> {
@@ -95,15 +138,89 @@ export async function getConversation(id: string): Promise<Conversation | null> 
   const tx = db.transaction("conversations", "readonly");
   const item = await requestToPromise(tx.objectStore("conversations").get(id));
   await transactionDone(tx);
-  return (item as Conversation | undefined) ?? null;
+  return decodeConversation(item as StoredConversation | undefined);
 }
 
 export async function saveConversation(conversation: Conversation): Promise<Conversation> {
   const db = await openDb();
   const tx = db.transaction("conversations", "readwrite");
-  tx.objectStore("conversations").put(conversation);
+
+  if (vaultKey) {
+    const encrypted = await encryptJson(vaultKey, conversation);
+    tx.objectStore("conversations").put({
+      id: conversation.id,
+      updatedAt: conversation.updatedAt,
+      encrypted,
+    });
+  } else {
+    tx.objectStore("conversations").put(conversation);
+  }
+
   await transactionDone(tx);
   return conversation;
+}
+
+/**
+ * Re-encrypt every plaintext conversation with the current vault key.
+ * Encryption happens before the write transaction so the transaction never
+ * auto-commits while a WebCrypto promise is pending.
+ */
+export async function encryptStoredConversations(): Promise<number> {
+  const key = vaultKey;
+  if (!key) throw new Error("Unlock the vault first.");
+
+  const db = await openDb();
+  const readTx = db.transaction("conversations", "readonly");
+  const rows = await requestToPromise(readTx.objectStore("conversations").getAll());
+  await transactionDone(readTx);
+
+  const updates: StoredConversation[] = [];
+  for (const row of rows as StoredConversation[]) {
+    if (row.encrypted) continue;
+    updates.push({
+      id: row.id,
+      updatedAt: row.updatedAt,
+      encrypted: await encryptJson(key, row),
+    });
+  }
+
+  if (updates.length) {
+    const tx = db.transaction("conversations", "readwrite");
+    for (const update of updates) tx.objectStore("conversations").put(update);
+    await transactionDone(tx);
+  }
+
+  return updates.length;
+}
+
+/** Rewrite every encrypted conversation as plaintext before encryption is removed. */
+export async function decryptStoredConversations(): Promise<number> {
+  const key = vaultKey;
+  if (!key) throw new Error("Unlock the vault first.");
+
+  const db = await openDb();
+  const readTx = db.transaction("conversations", "readonly");
+  const rows = await requestToPromise(readTx.objectStore("conversations").getAll());
+  await transactionDone(readTx);
+
+  const plaintext: Conversation[] = [];
+  for (const row of rows as StoredConversation[]) {
+    if (!row.encrypted) continue;
+    try {
+      plaintext.push(await decryptJson<Conversation>(key, row.encrypted));
+    } catch {
+      // Leave records this key cannot read untouched rather than deleting them.
+      console.warn("Skipped a conversation that this key cannot decrypt");
+    }
+  }
+
+  if (plaintext.length) {
+    const tx = db.transaction("conversations", "readwrite");
+    for (const conversation of plaintext) tx.objectStore("conversations").put(conversation);
+    await transactionDone(tx);
+  }
+
+  return plaintext.length;
 }
 
 export async function deleteConversation(id: string): Promise<void> {

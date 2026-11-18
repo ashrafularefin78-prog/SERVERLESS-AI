@@ -44,6 +44,54 @@ test("remembers and forgets a note through chat and settings", async ({ page }) 
   await expect(page.locator("#memory-list")).toContainText("Nothing remembered yet.");
 });
 
+test("encrypts chats at rest and requires the passphrase after reload", async ({ page }) => {
+  await page.goto("/");
+
+  await page.locator("#input").fill("remember the vault code is amber-42");
+  await page.locator("#send").click();
+  await expect(page.locator(".msg.assistant .msg-text").last()).not.toHaveClass(/streaming/);
+
+  await page.locator("#open-settings").click();
+  await page.locator("#vault-enable").click();
+  await page.locator("#vault-pass").fill("test passphrase 123");
+  await page.locator("#vault-confirm").fill("test passphrase 123");
+  await page.locator("#vault-ok").click();
+  await expect(page.locator("#vault-status")).toContainText("Encrypted on this device");
+
+  const leaked = await page.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("localmind");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const rows = await new Promise((resolve, reject) => {
+      const request = db
+        .transaction("conversations", "readonly")
+        .objectStore("conversations")
+        .getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return JSON.stringify(rows).includes("amber-42");
+  });
+  expect(leaked).toBe(false);
+
+  await page.reload();
+  await expect(page.locator("#vault-dialog")).toHaveAttribute("open", "");
+  await expect(page.locator("#history")).toContainText("Chats are encrypted");
+
+  await page.locator("#vault-pass").fill("wrong passphrase");
+  await page.locator("#vault-ok").click();
+  await expect(page.locator("#toast")).toHaveText("Wrong passphrase.");
+  await expect(page.locator("#vault-dialog")).toHaveAttribute("open", "");
+
+  await page.locator("#vault-pass").fill("test passphrase 123");
+  await page.locator("#vault-ok").click();
+  await expect(page.locator("#vault-dialog")).not.toHaveAttribute("open", "");
+  await expect(page.locator("#history")).toContainText("vault code is amber-42");
+});
+
 test("clears chats and settings from the browser", async ({ page }) => {
   await page.goto("/");
 

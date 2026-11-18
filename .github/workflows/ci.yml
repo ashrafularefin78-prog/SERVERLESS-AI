@@ -32,6 +32,12 @@ jobs:
       - run: npm run evals:model
       - run: npm run build
       - run: npm run check:size
+      - run: npm run sbom > sbom.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cdx.json
+          retention-days: 30
 
   e2e:
     name: Playwright

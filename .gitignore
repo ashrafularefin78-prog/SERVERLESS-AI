@@ -3,6 +3,7 @@ dist/
 .cache/
 coverage/
 playwright-report/
+sbom.cdx.json
 test-results/
 .DS_Store
 *.log

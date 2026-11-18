@@ -56,16 +56,25 @@ Stop and regenerate are handled with the run identifier and abort signal. A late
 
 IndexedDB database `localmind`, version 2:
 
-| Store             | Key   | Contents                                                                |
-| ----------------- | ----- | ----------------------------------------------------------------------- |
-| `conversations`   | `id`  | Title, timestamps, mode, messages, and grounding sources                |
-| `settings`        | `key` | One row per setting key (theme, memory, custom instructions, and so on) |
-| `knowledge`       | `id`  | Document title, size, timestamp, and chunk count                        |
-| `knowledgeChunks` | `id`  | Chunk text, owning document id, and a 384-dimension `Float32Array`      |
+| Store             | Key   | Contents                                                                        |
+| ----------------- | ----- | ------------------------------------------------------------------------------- |
+| `conversations`   | `id`  | Title, timestamps, mode, messages, and grounding sources                        |
+| `settings`        | `key` | One row per setting key (theme, memory or encrypted vault, custom instructions) |
+| `knowledge`       | `id`  | Document title, size, timestamp, and chunk count                                |
+| `knowledgeChunks` | `id`  | Chunk text, owning document id, and a 384-dimension `Float32Array`              |
 
 The v1 to v2 upgrade is additive: existing conversations and settings are read unchanged, and the two knowledge stores are created on demand. `openDb()` also verifies every required store after opening and, if one is missing (an older profile, an interrupted upgrade), reopens at version + 1 to run the same idempotent creation path. It always opens the existing version first, so a profile that already moved past the configured version does not throw `VersionError`. This is the migration pattern to extend for future stores; never renumber or reuse a version.
 
 `settings` rows are merged over `DEFAULT_SETTINGS`, so missing keys get safe defaults. Conversations are sorted by `updatedAt` for the sidebar. "Clear all data" closes and deletes the database, clears caches and web storage, unregisters service workers, and reloads.
+
+### Encrypted vault
+
+Encryption is optional and applies to conversations and memory notes. `crypto.ts` derives a non-extractable AES-256-GCM key from the passphrase with PBKDF2-SHA-256 (310,000 iterations) and a random salt; a verifier blob lets the app reject a wrong passphrase without storing it. `storage/db.ts` holds the key in a module-level variable for the tab's lifetime (`setVaultKey`), never in IndexedDB.
+
+- When a key is set, `saveConversation()` writes `{ id, updatedAt, encrypted: { iv, data } }`; the encrypted payload is the whole conversation. `listConversations()` and `getConversation()` decrypt on read and return nothing while locked.
+- Enabling encryption rewrites existing plaintext conversations. Removing it decrypts them and clears the vault key. Both paths encrypt/decrypt before opening the write transaction, because an IndexedDB transaction auto-commits if it has no pending requests while WebCrypto is awaited.
+- Memory notes are encrypted into the `memoryVault` settings row (`{ salt, verifier, notes }`), with the plaintext `memory` row emptied. Unlock decrypts notes into app state; lock drops the key, empties memory and chats from the UI, and leaves the ciphertext in place.
+- On boot with a vault present, the unlock dialog opens before any chat is loaded, and sending is blocked until the vault is unlocked.
 
 ## Reply engine
 
