@@ -13,6 +13,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "evals": "vitest run tests/evals",
+    "evals:model": "node scripts/model-eval.mjs",
+    "evals:model:record": "node scripts/model-eval.mjs --record --update-baseline",
     "test:e2e": "playwright test",
     "test:e2e:preview": "node scripts/e2e-preview.mjs",
     "check:size": "node scripts/check-size.mjs",

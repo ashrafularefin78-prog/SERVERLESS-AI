@@ -40,6 +40,14 @@ npm run test:e2e:preview
 
 The preview suite exercises the production CSP, service worker, and hashed assets.
 
+If you change model defaults, system prompts, or generation settings, also run the model quality replay:
+
+```bash
+npm run evals:model
+```
+
+It replays `tests/evals/model/recorded.json` and fails on property failures or drift from `baseline.json`. On a machine with WebGPU, capture a new recording and baseline with `npm run evals:model:record`; commit both files with the prompt or model change that motivated them.
+
 If formatting fails, run `npm run format` and review the diff.
 
 ## Project layout

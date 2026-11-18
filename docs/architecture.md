@@ -32,7 +32,7 @@ Dependencies point downward: UI code may import engine and storage modules, but 
 2. `app.ts` caches DOM nodes, binds events, applies the theme, and loads settings and conversation summaries from IndexedDB.
 3. The model panel renders from the static catalogue and probes WebGPU (`navigator.gpu.requestAdapter()`); this does not download anything.
 4. `engine.init({ modelId })` marks the built-in engine ready immediately. If a model was chosen previously and its weights are already cached, it loads in the background and the UI switches over when ready.
-4. The welcome screen or the most recent conversation is rendered.
+5. The welcome screen or the most recent conversation is rendered.
 
 If boot fails, `main.ts` shows a self-contained error overlay with a reload action.
 
@@ -117,5 +117,6 @@ The code-generation cluster under `src/coder/` (`ir.js`, `emit/*`, `recipes/*`, 
 
 - Vitest covers pure logic: normalization, memory, reply rules, language detection, and the demo engine.
 - A golden eval suite (`tests/evals/cases.json` + `evals.test.js`) asserts reply properties, deterministic repeatability (fixed clock), and a per-case latency budget. Run it with `npm run evals`; it also runs inside `npm test`.
+- A model eval harness (`tests/evals/model/cases.json` + `scripts/model-eval.mjs`) scores recorded WebGPU replies against property checks and gates on drift from `baseline.json` (pass rate, per-case flip, p95 latency, verbosity, model id). `npm run evals:model:record` captures a real run through Playwright; `npm run evals:model` replays it without a GPU. CI replays; it skips with an explicit message until a recording is committed.
 - Playwright covers the browser flows and asserts that a chat makes no cross-origin requests.
 - GitHub Actions runs typecheck, lint, formatting, unit tests, evals, build, and Playwright on pushes and pull requests.

@@ -58,7 +58,12 @@ scope.onmessage = (event: MessageEvent) => {
           data.op === "has"
             ? await hasModelInCache(data.modelId, appConfig)
             : (await deleteModelAllInfoInCache(data.modelId, appConfig), true);
-        const response: CacheResponse = { kind: "localmind:cache-result", id: data.id, ok: true, value };
+        const response: CacheResponse = {
+          kind: "localmind:cache-result",
+          id: data.id,
+          ok: true,
+          value,
+        };
         scope.postMessage(response);
       } catch (error) {
         const response: CacheResponse = {

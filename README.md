@@ -36,15 +36,16 @@ The production build is a static site in `dist/`. Serve it from any static host.
 
 The built-in engine is model-free and answers immediately. If you want neural replies, open Settings, pick a model, and press **Download and load**:
 
-| Model               | Size (about) | Notes                                          |
-| ------------------- | ------------ | ---------------------------------------------- |
-| SmolLM2 360M        | 260 MB       | Fastest, fine for short chat                   |
-| Qwen2.5 0.5B        | 340 MB       | Balanced default                               |
-| Llama 3.2 1B        | 690 MB       | Best quality here, needs a more capable GPU    |
+| Model        | Size (about) | Notes                                       |
+| ------------ | ------------ | ------------------------------------------- |
+| SmolLM2 360M | 260 MB       | Fastest, fine for short chat                |
+| Qwen2.5 0.5B | 340 MB       | Balanced default                            |
+| Llama 3.2 1B | 690 MB       | Best quality here, needs a more capable GPU |
 
 How the model path is built:
 
 - **WebLLM** (`@mlc-ai/web-llm`) compiles the model with WebGPU. Model records, compatible binaries and integrity data come from its pinned `prebuiltAppConfig` rather than being hand-copied.
+- **Integrity:** before an artifact is cached, WebLLM verifies it against the pinned SHA-256 SRI hash for that file. A hash mismatch aborts the load instead of running unexpected weights or code. Downloads are origin-locked to `huggingface.co`, its CDN subdomains and the model-library host in the CSP.
 - **Web Worker:** the engine lives in `src/engine/model-worker.ts`, so tokenisation, shader compilation and decoding never block the UI. The page talks to it through `WebWorkerMLCEngine`.
 - **OPFS storage:** weights are cached in the Origin Private File System (`cacheBackend: "opfs"`), not IndexedDB. `navigator.storage.persist()` is requested before a download so the browser is less likely to evict them.
 - **No precache:** the service worker never touches model weights. They are fetched only after you press the button, and only from the pinned model hosts.
@@ -136,6 +137,16 @@ The rule engine is the product, so it is covered by unit tests in `tests/unit/`:
 - the demo engine, including streaming and cancellation (`engine/demo.js`)
 
 Playwright tests in `tests/e2e/` cover the critical browser flows: sending a message, receiving a streamed reply, memory commands, clearing local data, and making no cross-origin requests. They run against both the dev server and the production build (`npm run build && npm run test:e2e:preview`). CI runs lint, formatting, unit tests with coverage thresholds, `npm audit --omit=dev`, the production build, a bundle-size budget, and both browser test modes on every push and pull request.
+
+### Model quality evals
+
+Rule-engine evals (`tests/evals/cases.json`) assert exact properties of deterministic code. Model output is different: it varies run to run, so the model path uses **property-based golden cases** (`tests/evals/model/cases.json`) instead of string equality. Each case checks lengths, language, formatting, arithmetic, and refusal behaviour that should survive a prompt, model, or quantisation change.
+
+- `npm run evals:model:record` drives the real WebGPU engine through Playwright, sends every golden prompt in a fresh chat, and writes `tests/evals/model/recorded.json` plus a baseline (model id, pass rate, mean/p95 latency, mean reply length, per-case results). It downloads the model once into a persistent profile under `.cache/`.
+- `npm run evals:model` replays the recording with no GPU and no network. It fails on a property failure, a case that flipped from pass to fail, a lower pass rate, a p95 latency regression beyond 1.5x, replies longer than 1.4x, or a model id that changed without re-recording.
+- CI runs the replay. Until a recording exists it prints that the gate is armed but inactive and exits 0, so the pipeline stays honest instead of pretending to test a model it never ran.
+
+The harness itself is covered by unit tests (`tests/unit/model-eval.test.js`), including the regression gate.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the local workflow.
 

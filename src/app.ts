@@ -485,8 +485,7 @@ function engineStatus(snapshot: EngineState) {
     return {
       tone: snapshot.phase === "generating" ? "generating" : "ready",
       label: model.label,
-      sub:
-        snapshot.phase === "generating" ? "Writing a reply..." : "On-device - WebGPU - offline",
+      sub: snapshot.phase === "generating" ? "Writing a reply..." : "On-device - WebGPU - offline",
       chip: snapshot.phase === "generating" ? "Writing..." : model.label,
     };
   }
