@@ -3,7 +3,14 @@ import { ATOM, Emitter, UNARY, snake } from "./base.js";
 
 const SCAN = { int: "%d", long: "%lld", double: "%lf", char: " %c" };
 const ORDER = ["stdio.h", "stdlib.h", "string.h", "ctype.h", "math.h", "stdbool.h"];
-const CTYPE = { isDigit: "isdigit", isAlpha: "isalpha", isUpper: "isupper", isLower: "islower", isSpace: "isspace", isAlnum: "isalnum" };
+const CTYPE = {
+  isDigit: "isdigit",
+  isAlpha: "isalpha",
+  isUpper: "isupper",
+  isLower: "islower",
+  isSpace: "isspace",
+  isAlnum: "isalnum",
+};
 
 export function formatText(text) {
   return String(text)
@@ -28,7 +35,8 @@ export class CEmitter extends Emitter {
   }
 
   s_let(s) {
-    const copy = this.cStrings && s.type === "string" && s.value !== undefined && s.value.k !== "str";
+    const copy =
+      this.cStrings && s.type === "string" && s.value !== undefined && s.value.k !== "str";
     if (copy && !this.lookup(s.name)) {
       super.s_let({ ...s, value: undefined });
       this.s_set({ target: { k: "var", name: s.name }, value: s.value });
@@ -157,11 +165,14 @@ export class CEmitter extends Emitter {
       case "abs": {
         const type = this.typeOf(a);
         this.needs.add(type === "double" ? "math.h" : "stdlib.h");
-        return atom(`${type === "double" ? "fabs" : type === "long" ? "llabs" : "abs"}(${first()})`);
+        return atom(
+          `${type === "double" ? "fabs" : type === "long" ? "llabs" : "abs"}(${first()})`,
+        );
       }
       case "upper":
       case "lower":
-        if (this.typeOf(a) === "string") throw new Error("C converts strings one character at a time");
+        if (this.typeOf(a) === "string")
+          throw new Error("C converts strings one character at a time");
         this.needs.add("ctype.h");
         return atom(`to${e.name}(${first()})`);
       case "isVowel":
@@ -200,7 +211,8 @@ export class CEmitter extends Emitter {
         args.push(`${this.expr(part.e, 1, true)} ? "true" : "false"`);
         continue;
       }
-      format += { double: `%.${part.dp ?? 2}f`, long: "%lld", char: "%c", string: "%s" }[type] || "%d";
+      format +=
+        { double: `%.${part.dp ?? 2}f`, long: "%lld", char: "%c", string: "%s" }[type] || "%d";
       args.push(this.expr(part.e));
     }
     if (newline) format += "\\n";

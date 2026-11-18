@@ -1,0 +1,72 @@
+name: Bug report
+description: Report a reproducible problem in LocalMind
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please do not include passwords, private keys, or other secrets.
+        Security vulnerabilities should be reported privately as described in SECURITY.md.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps that lead to the problem.
+      placeholder: |
+        1. Open the app
+        2. Type "..."
+        3. Click ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the exact reply, error, or screenshot if useful.
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      placeholder: "Chrome 142, Firefox 145, Safari 18"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and OS
+      placeholder: "Windows 11 desktop, iPhone 15 / iOS 18"
+  - type: dropdown
+    id: install
+    attributes:
+      label: How are you running it?
+      options:
+        - Development server (npm run dev)
+        - Production build or static host
+        - Installed PWA
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: console
+    attributes:
+      label: Console errors
+      description: Paste any errors from the browser console. Remove sensitive text first.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I am not reporting a security vulnerability publicly.
+          required: true

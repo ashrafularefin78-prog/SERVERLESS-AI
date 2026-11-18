@@ -9,16 +9,16 @@ import {
   UNDERSTANDING_SKILLS,
   modeById,
 } from "./config.js";
-import { MAX_MEMORIES, applyMemoryCommand, buildMemoryPrompt, parseMemoryCommand } from "./memory.js";
+import {
+  MAX_MEMORIES,
+  applyMemoryCommand,
+  buildMemoryPrompt,
+  parseMemoryCommand,
+} from "./memory.js";
 import { analyzeIntent, expandShorthand, normalizeText, understandingHint } from "./understand.js";
 import * as engine from "./engine/manager.js";
 import { detectDevice, requestPersistentStorage } from "./engine/device.js";
-import {
-  isCpuModel,
-  modelByKey,
-  modelSizeLabel,
-  recommendedModelKey,
-} from "./engine/catalog.js";
+import { isCpuModel, modelByKey, modelSizeLabel, recommendedModelKey } from "./engine/catalog.js";
 import {
   clearDatabase,
   createConversation,
@@ -30,20 +30,8 @@ import {
   saveConversation,
   saveSettings,
 } from "./storage/db.js";
-import {
-  h,
-  renderDeviceSummary,
-  renderHistory,
-  renderMessage,
-  renderModelDialogList,
-  renderWelcome,
-  streamText,
-} from "./ui/render.js";
-import {
-  buildCodingPrompt,
-  coderSuggestions,
-  demoCodingReply,
-} from "./coder/languages.js";
+import { h, renderHistory, renderMessage, renderWelcome, streamText } from "./ui/render.js";
+import { buildCodingPrompt, coderSuggestions, demoCodingReply } from "./coder/languages.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -399,8 +387,7 @@ function renderConversation({ scroll = true } = {}) {
     );
   } else {
     const last = conversation.messages.at(-1);
-    const canRegenerate =
-      last?.role === "assistant" && !last.streaming && !last.error;
+    const canRegenerate = last?.role === "assistant" && !last.streaming && !last.error;
     for (const message of conversation.messages) {
       dom.messages.append(
         renderMessage(message, {
@@ -767,10 +754,6 @@ function upsertSummary(conversation) {
    Model loading
 --------------------------------------------------------------- */
 
-function openModelDialog() {
-  toast("The built-in assistant is active. No setup needed.");
-}
-
 async function handleModelChoice(key) {
   if (DEMO_MODE) {
     closeDialog(dom["model-dialog"]);
@@ -1131,9 +1114,7 @@ async function runGeneration(assistantId) {
       if (chunk.text) {
         accumulated += chunk.text;
         state.partialText = accumulated;
-        const node = dom.messages.querySelector(
-          `[data-message-id="${cssEscape(assistantId)}"]`,
-        );
+        const node = dom.messages.querySelector(`[data-message-id="${cssEscape(assistantId)}"]`);
         if (node) streamText(node, accumulated, state.autoScroll);
 
         if (performance.now() - lastSave > 2500) {
@@ -1198,8 +1179,7 @@ function buildEngineMessages(conversation, excludeId) {
     [...conversation.messages]
       .reverse()
       .find(
-        (message) =>
-          message.role === "user" && message.id !== excludeId && message.content?.trim(),
+        (message) => message.role === "user" && message.id !== excludeId && message.content?.trim(),
       )?.content || "";
 
   let systemPrompt = `${mode.prompt}\n\n${CONVERSATION_SKILLS}\n\n${UNDERSTANDING_SKILLS}\n\n${SYSTEM_GUARDRAIL}`;
@@ -1368,7 +1348,9 @@ function onMessagesClick(event) {
 --------------------------------------------------------------- */
 
 function deriveTitle(text) {
-  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  const clean = String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!clean) return "New chat";
   return clean.length > 52 ? `${clean.slice(0, 49).trimEnd()}...` : clean;
 }
@@ -1451,12 +1433,7 @@ function toast(message) {
 
 let activeConfirm = null;
 
-function confirmDialog({
-  title,
-  body,
-  confirmLabel = "Confirm",
-  tone = "danger",
-}) {
+function confirmDialog({ title, body, confirmLabel = "Confirm", tone = "danger" }) {
   if (activeConfirm) activeConfirm(false);
 
   return new Promise((resolve) => {

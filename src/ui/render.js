@@ -1,12 +1,6 @@
 import { MODES } from "../config.js";
 import { renderMarkdown } from "../markdown.js";
-import {
-  CPU_MODEL,
-  GPU_MODELS,
-  modelByKey,
-  modelSizeLabel,
-  modelVramLabel,
-} from "../engine/catalog.js";
+import { CPU_MODEL, GPU_MODELS, modelSizeLabel, modelVramLabel } from "../engine/catalog.js";
 import { deviceSummary, deviceTags } from "../engine/device.js";
 
 export function h(tag, attrs = {}, ...children) {
@@ -196,15 +190,14 @@ export function renderMessage(message, { canRegenerate = false } = {}) {
   if (actions.childElementCount) meta.append(actions);
 
   if (message.createdAt) {
-    meta.append(
-      h("span", { class: "msg-time", text: formatTime(message.createdAt) }),
-    );
+    meta.append(h("span", { class: "msg-time", text: formatTime(message.createdAt) }));
   }
 
   if (message.stats) {
     const bits = [];
     if (message.stats.tokens) bits.push(`${message.stats.tokens} tok`);
-    if (message.stats.tokensPerSecond) bits.push(`${message.stats.tokensPerSecond.toFixed(1)} tok/s`);
+    if (message.stats.tokensPerSecond)
+      bits.push(`${message.stats.tokensPerSecond.toFixed(1)} tok/s`);
     if (!bits.length && message.stats.seconds) bits.push(`${message.stats.seconds.toFixed(1)}s`);
     if (bits.length) meta.append(h("span", { class: "msg-stats", text: bits.join(" - ") }));
   }
@@ -247,15 +240,7 @@ export function renderWelcome({ engine, suggestions }) {
   const welcome = h("section", { class: "welcome" });
 
   welcome.append(h("p", { class: "eyebrow", text: "Private - on-device - no account" }));
-  welcome.append(
-    h(
-      "h2",
-      {},
-      "Your own AI,",
-      h("br"),
-      h("span", { text: "running in this tab." }),
-    ),
-  );
+  welcome.append(h("h2", {}, "Your own AI,", h("br"), h("span", { text: "running in this tab." })));
   welcome.append(
     h("p", {
       class: "welcome-lede",

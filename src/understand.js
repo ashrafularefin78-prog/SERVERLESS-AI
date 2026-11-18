@@ -27,19 +27,31 @@ const SHORTHAND = [
   [/\bthats\b/gi, "that's"],
 ];
 
+/**
+ * Clean up user input before it reaches the reply engine: strip invisible
+ * characters, normalize smart punctuation and line endings, and trim
+ * redundant whitespace. Chat history keeps the original text.
+ *
+ * @param {unknown} text
+ * @returns {string}
+ */
 export function normalizeText(text) {
   // The character classes below hold invisible literals: zero-width chars,
   // smart quotes, ellipsis, and en/em dashes.
-  return String(text ?? "")
-    .replace(/[​‌‍﻿]/g, "")
-    .replace(/[‘’‛]/g, "'")
-    .replace(/[“”‟]/g, '"')
-    .replace(/…/g, "...")
-    .replace(/[–—]/g, "-")
-    .replace(/\r\n?/g, "\n")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return (
+    String(text ?? "")
+      // The class below intentionally contains invisible literal characters.
+      // eslint-disable-next-line no-irregular-whitespace, no-misleading-character-class
+      .replace(/[​‌‍﻿]/g, "")
+      .replace(/[‘’‛]/g, "'")
+      .replace(/[“”‟]/g, '"')
+      .replace(/…/g, "...")
+      .replace(/[–—]/g, "-")
+      .replace(/\r\n?/g, "\n")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
 }
 
 // Fenced blocks and inline code spans are left untouched so identifiers and
@@ -51,6 +63,12 @@ function mapProse(text, fn) {
     .join("");
 }
 
+/**
+ * Expand common chat shorthand outside fenced and inline code.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
 export function expandShorthand(text) {
   return mapProse(text, (prose) => {
     let out = prose;
@@ -59,46 +77,76 @@ export function expandShorthand(text) {
   });
 }
 
+/**
+ * Classify the latest message and flag messages that point at a problem
+ * without enough detail to answer well.
+ *
+ * @param {string} text
+ * @returns {{ kind: "smalltalk" | "emotion" | "bug" | "question" | "request", vague: boolean }}
+ */
 export function analyzeIntent(text) {
   const raw = String(text ?? "");
   const t = expandShorthand(normalizeText(raw)).toLowerCase();
   const words = t.split(/\s+/).filter(Boolean);
   const hasCode = /```/.test(raw) || /`[^`\n]+`/.test(raw);
   const hasDetail =
-    /```|\b[a-z_]+\.(py|js|ts|c|cpp|go|rs|java|rb|php|sql|sh)\b|\b(typeerror|syntaxerror|referenceerror|nullpointer|segfault|segmentation fault|traceback|exception|errno|exit code|panic)\b|:\s*\S/.test(t);
+    /```|\b[a-z_]+\.(py|js|ts|c|cpp|go|rs|java|rb|php|sql|sh)\b|\b(typeerror|syntaxerror|referenceerror|nullpointer|segfault|segmentation fault|traceback|exception|errno|exit code|panic)\b|:\s*\S/.test(
+      t,
+    );
 
   if (
-    /^(hi|hiya|hello|hey|yo|howdy|thanks|thank you|thx|bye|goodbye|good (morning|afternoon|evening|night))\b/.test(t) ||
+    /^(hi|hiya|hello|hey|yo|howdy|thanks|thank you|thx|bye|goodbye|good (morning|afternoon|evening|night))\b/.test(
+      t,
+    ) ||
     /\bhow are you\b/.test(t)
   ) {
     return { kind: "smalltalk", vague: false };
   }
 
   if (
-    /\b(i'm|i am|feeling|feel) (sad|down|stressed|anxious|exhausted|tired|upset|happy|excited|thrilled)\b|\brough (day|week|morning|night)\b|\bbad day\b|\bgood news\b/.test(t)
+    /\b(i'm|i am|feeling|feel) (sad|down|stressed|anxious|exhausted|tired|upset|happy|excited|thrilled)\b|\brough (day|week|morning|night)\b|\bbad day\b|\bgood news\b/.test(
+      t,
+    )
   ) {
     return { kind: "emotion", vague: false };
   }
 
   const bareHelp = /^(?:please\s+)?(?:help|fix it|fix this)\s*[.!?]*$/.test(t);
   const referential = /^(?:please\s+)?(?:it|this|that|the code|my code)\b/.test(t);
-  const problem = /\b(broken|wrong|fails?|failing|doesn't work|does not work|won't work|not working|crash\w*|bug\w*|errors?)\b/.test(t);
+  const problem =
+    /\b(broken|wrong|fails?|failing|doesn't work|does not work|won't work|not working|crash\w*|bug\w*|errors?)\b/.test(
+      t,
+    );
 
   if (bareHelp || (referential && problem && words.length <= 9 && !hasCode && !hasDetail)) {
     return { kind: problem || /\bfix(?:es|ing)?\b/.test(t) ? "bug" : "request", vague: true };
   }
 
-  if (/\b(error|exception|traceback|crash\w*|segfault|panic|bug|broken|doesn't work|not working|wrong output|fails?)\b/.test(t)) {
+  if (
+    /\b(error|exception|traceback|crash\w*|segfault|panic|bug|broken|doesn't work|not working|wrong output|fails?)\b/.test(
+      t,
+    )
+  ) {
     return { kind: "bug", vague: false };
   }
 
-  if (/\?\s*$/.test(t) || /^(what|why|how|when|where|who|which|is|are|does|do|should|can|could)\b/.test(t)) {
+  if (
+    /\?\s*$/.test(t) ||
+    /^(what|why|how|when|where|who|which|is|are|does|do|should|can|could)\b/.test(t)
+  ) {
     return { kind: "question", vague: false };
   }
 
   return { kind: "request", vague: false };
 }
 
+/**
+ * Turn an intent into one short system-prompt hint, or null when the message
+ * is clear enough to answer directly.
+ *
+ * @param {{ vague?: boolean } | null | undefined} intent
+ * @returns {string | null}
+ */
 export function understandingHint(intent) {
   if (intent?.vague) {
     return "The latest message is underspecified: it points at a problem without giving code, an error, or a concrete goal. Ask one short, targeted question to get what you need before guessing.";

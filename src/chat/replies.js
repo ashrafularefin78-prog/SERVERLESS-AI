@@ -9,7 +9,7 @@ import {
 
 const JOKES = [
   "Why do programmers prefer dark mode? Because light attracts bugs.",
-  "I told my computer I needed a break. It said, \"No problem, I'll go to sleep.\"",
+  'I told my computer I needed a break. It said, "No problem, I\'ll go to sleep."',
   "Why was the math book sad? It had too many problems.",
   "What do you call a fake noodle? An impasta.",
   "I asked the gym for a membership. They said I had to work out first.",
@@ -24,14 +24,15 @@ const FACTS = [
 ];
 
 const STORIES = [
-  "A librarian found a note tucked inside a returned book: \"If you get to page 40, you'll know why I kept this one.\" On page 40, someone had underlined one line: *It is not too late to start over.* The librarian left the note in place for the next reader.",
-  "A man bought a secondhand kettle and found a tiny letter inside the box. It said, \"This kettle made tea for thirty years of good mornings. Please keep the habit.\" He used it every morning after that, and always made one extra cup for whoever might visit.",
-  "A small bakery put a sign outside: \"Free bread for anyone who has had a difficult week.\" By noon the tray was empty, but a line of people had started leaving notes about neighbors who might need it. The baker kept the sign up permanently.",
+  'A librarian found a note tucked inside a returned book: "If you get to page 40, you\'ll know why I kept this one." On page 40, someone had underlined one line: *It is not too late to start over.* The librarian left the note in place for the next reader.',
+  'A man bought a secondhand kettle and found a tiny letter inside the box. It said, "This kettle made tea for thirty years of good mornings. Please keep the habit." He used it every morning after that, and always made one extra cup for whoever might visit.',
+  'A small bakery put a sign outside: "Free bread for anyone who has had a difficult week." By noon the tray was empty, but a line of people had started leaving notes about neighbors who might need it. The baker kept the sign up permanently.',
 ];
 
 const RIDDLES = [
   {
-    question: "I speak without a mouth and hear without ears. I have no body, but I come alive with wind. What am I?",
+    question:
+      "I speak without a mouth and hear without ears. I have no body, but I come alive with wind. What am I?",
     answer: "echo",
   },
   {
@@ -49,70 +50,120 @@ const RIDDLES = [
 ];
 
 const NAME_STOPWORDS = new Set([
-  "sad", "happy", "tired", "okay", "ok", "fine", "good", "great", "here",
-  "back", "sorry", "not", "so", "really", "just", "bored", "angry", "stressed",
-  "anxious", "excited", "confused", "lost", "done", "ready", "busy", "free",
-  "hungry", "thirsty", "cold", "hot", "new", "old", "sure", "curious", "glad",
-  "upset", "afraid", "scared", "worried", "lonely", "sleepy", "awake", "on",
-  "off", "in", "out", "working", "trying", "thinking", "going", "doing",
-  "exhausted", "drained", "overwhelmed", "depressed", "heartbroken",
-  "devastated", "miserable", "furious", "annoyed", "frustrated", "panicking",
-  "numb", "empty", "sick", "ill", "hurt", "pregnant", "hungover",
+  "sad",
+  "happy",
+  "tired",
+  "okay",
+  "ok",
+  "fine",
+  "good",
+  "great",
+  "here",
+  "back",
+  "sorry",
+  "not",
+  "so",
+  "really",
+  "just",
+  "bored",
+  "angry",
+  "stressed",
+  "anxious",
+  "excited",
+  "confused",
+  "lost",
+  "done",
+  "ready",
+  "busy",
+  "free",
+  "hungry",
+  "thirsty",
+  "cold",
+  "hot",
+  "new",
+  "old",
+  "sure",
+  "curious",
+  "glad",
+  "upset",
+  "afraid",
+  "scared",
+  "worried",
+  "lonely",
+  "sleepy",
+  "awake",
+  "on",
+  "off",
+  "in",
+  "out",
+  "working",
+  "trying",
+  "thinking",
+  "going",
+  "doing",
+  "exhausted",
+  "drained",
+  "overwhelmed",
+  "depressed",
+  "heartbroken",
+  "devastated",
+  "miserable",
+  "furious",
+  "annoyed",
+  "frustrated",
+  "panicking",
+  "numb",
+  "empty",
+  "sick",
+  "ill",
+  "hurt",
+  "pregnant",
+  "hungover",
 ]);
 
 const EXPLANATIONS = [
   {
     match: /\btransformers?\b|\bhow (?:do|does) (?:a )?transformers? work\b/,
-    text:
-      "Think of a transformer as a room full of readers who can all glance at every word at once. Each word gathers context from the other words around it, a process called attention, then passes an updated meaning to the next layer. Stack enough layers and the model becomes good at predicting what fits next. That prediction, repeated at enormous scale, is what produces fluent text.",
+    text: "Think of a transformer as a room full of readers who can all glance at every word at once. Each word gathers context from the other words around it, a process called attention, then passes an updated meaning to the next layer. Stack enough layers and the model becomes good at predicting what fits next. That prediction, repeated at enormous scale, is what produces fluent text.",
   },
   {
     match: /\bcompound interest\b/,
-    text:
-      "Compound interest is interest earning interest. If you leave $100 at 5% a year, you get $5 after the first year; in year two, the 5% applies to $105, not $100. The gap starts small and grows because each payout joins the base. That is why time can matter more than a slightly higher rate.",
+    text: "Compound interest is interest earning interest. If you leave $100 at 5% a year, you get $5 after the first year; in year two, the 5% applies to $105, not $100. The gap starts small and grows because each payout joins the base. That is why time can matter more than a slightly higher rate.",
   },
   {
     match: /\btcp\b[\s\S]*\budp\b|\budp\b[\s\S]*\btcp\b/,
-    text:
-      "TCP is the reliable courier: it opens a connection, numbers the packets, resends missing ones, and preserves order. UDP is the quick postcard: no handshake and no delivery guarantee, but much less delay. Use TCP for pages, files, and anything that must arrive intact; use UDP for live voice, games, and streams where late data is useless.",
+    text: "TCP is the reliable courier: it opens a connection, numbers the packets, resends missing ones, and preserves order. UDP is the quick postcard: no handshake and no delivery guarantee, but much less delay. Use TCP for pages, files, and anything that must arrive intact; use UDP for live voice, games, and streams where late data is useless.",
   },
   {
     match: /\bwebassembly\b|\bwasm\b/,
-    text:
-      "WebAssembly is a compact binary format that browsers can run near-native speed. You write code in another language, compile it to Wasm, and the browser executes it inside the same sandbox as JavaScript. It is useful for heavy computation, games, and porting existing software to the web; it does not replace HTML, CSS, or JavaScript.",
+    text: "WebAssembly is a compact binary format that browsers can run near-native speed. You write code in another language, compile it to Wasm, and the browser executes it inside the same sandbox as JavaScript. It is useful for heavy computation, games, and porting existing software to the web; it does not replace HTML, CSS, or JavaScript.",
   },
 ];
 
 const OPINIONS = [
   {
     match: /\brain(?:y|ing)? days?\b/,
-    text:
-      "Rainy days are underrated. They give you permission to slow down, and the sound is good company for reading or thinking. What do you usually do on them?",
+    text: "Rainy days are underrated. They give you permission to slow down, and the sound is good company for reading or thinking. What do you usually do on them?",
   },
   {
     match: /\bmonday s?\b/,
-    text:
-      "Mondays get a bad reputation, but they are really just a reset button with paperwork. I like the idea of starting with one clear win instead of a perfect plan. What does your Monday usually look like?",
+    text: "Mondays get a bad reputation, but they are really just a reset button with paperwork. I like the idea of starting with one clear win instead of a perfect plan. What does your Monday usually look like?",
   },
   {
     match: /\bcoffee\b/,
-    text:
-      "Coffee is a useful alarm clock, but I think the ritual matters more than the caffeine: the pause, the warm cup, the excuse to think for a minute. How do you take yours?",
+    text: "Coffee is a useful alarm clock, but I think the ritual matters more than the caffeine: the pause, the warm cup, the excuse to think for a minute. How do you take yours?",
   },
   {
     match: /\bmusic\b/,
-    text:
-      "Music can change a room faster than almost anything else. I do not have ears, but I like the idea of jazz for thinking and lo-fi for focus. What have you had on repeat lately?",
+    text: "Music can change a room faster than almost anything else. I do not have ears, but I like the idea of jazz for thinking and lo-fi for focus. What have you had on repeat lately?",
   },
   {
     match: /\bmornings?\b/,
-    text:
-      "Mornings are a fresh start, but they are also overrated as a personality test. A slow start can still be a good day. Are you a morning person, or do you just tolerate it?",
+    text: "Mornings are a fresh start, but they are also overrated as a personality test. A slow start can still be a good day. Are you a morning person, or do you just tolerate it?",
   },
   {
     match: /\bme\b/,
-    text:
-      "From this short chat, you seem curious enough to test a local assistant instead of assuming it works. That is a good sign. What would you like me to know about you?",
+    text: "From this short chat, you seem curious enough to test a local assistant instead of assuming it works. That is a good sign. What would you like me to know about you?",
   },
 ];
 
@@ -228,7 +279,8 @@ function readHistory(messages) {
 
   const prior = currentIndex >= 0 ? turns.slice(0, currentIndex) : turns;
   const priorUsers = prior.filter((message) => message.role === "user");
-  const previousAssistant = [...prior].reverse().find((message) => message.role === "assistant") || null;
+  const previousAssistant =
+    [...prior].reverse().find((message) => message.role === "assistant") || null;
   const previousUser = priorUsers.at(-1) || null;
 
   return { prior, priorUsers, previousAssistant, previousUser, turnCount: priorUsers.length };
@@ -288,7 +340,7 @@ function memoryQuestion(lower, notes) {
     )
   ) {
     if (!notes.length) {
-      return "I don't have any notes about you yet. Tell me \"remember ...\" whenever you want me to keep something across chats.";
+      return 'I don\'t have any notes about you yet. Tell me "remember ..." whenever you want me to keep something across chats.';
     }
     const list = notes.map((note) => `- ${escapeInline(note)}`).join("\n");
     return `I have ${notes.length} note${notes.length === 1 ? "" : "s"}, stored only on this device:\n\n${list}\n\nYou can remove them in Settings, Memory.`;
@@ -299,11 +351,17 @@ function memoryQuestion(lower, notes) {
 
 function timeOrDateReply(lower, now) {
   if (/\bwhat(?:'s| is)? (?:the )?time\b|\bwhat time is it\b|\bcurrent time\b/.test(lower)) {
-    const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(now);
+    const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(
+      now,
+    );
     return `It's ${time} on this device.`;
   }
 
-  if (/\bwhat(?:'s| is)? (?:the )?(?:date|day)\b|\bwhat day is (?:it|today)\b|\btoday'?s date\b/.test(lower)) {
+  if (
+    /\bwhat(?:'s| is)? (?:the )?(?:date|day)\b|\bwhat day is (?:it|today)\b|\btoday'?s date\b/.test(
+      lower,
+    )
+  ) {
     const date = new Intl.DateTimeFormat(undefined, {
       weekday: "long",
       month: "long",
@@ -325,7 +383,9 @@ function isWeatherQuestion(lower) {
 
 function tryMath(text) {
   const lower = text.toLowerCase();
-  const direct = lower.match(/^(?:what(?:'s| is)|calculate|compute|evaluate|solve)\s+(.+?)\s*\??$/i);
+  const direct = lower.match(
+    /^(?:what(?:'s| is)|calculate|compute|evaluate|solve)\s+(.+?)\s*\??$/i,
+  );
   let expression = direct ? direct[1].trim() : "";
   if (!expression && /^\d[\d\s.+\-*/%^()]*$/.test(lower)) expression = lower;
   if (!expression) {
@@ -355,10 +415,7 @@ function tryMath(text) {
     return `That's ${formatNumber(value)}.`;
   }
 
-  expression = expression.replace(
-    /(\d+(?:\.\d+)?)\s*%\s*of\s*(\d+(?:\.\d+)?)/g,
-    "($1/100*$2)",
-  );
+  expression = expression.replace(/(\d+(?:\.\d+)?)\s*%\s*of\s*(\d+(?:\.\d+)?)/g, "($1/100*$2)");
 
   if (!/\d/.test(expression) || /[a-z]/i.test(expression)) return null;
   if (!/[+\-*/%^()]/.test(expression)) return null;
@@ -374,7 +431,11 @@ function tryMath(text) {
 
 function isCodeRequest(text) {
   if (!/\b(?:program|code|function|script|snippet|class)\b/.test(text)) return false;
-  if (/\b(?:write|create|make|generate|build|implement|show|give|need|want|can|could|would|please)\b/.test(text)) {
+  if (
+    /\b(?:write|create|make|generate|build|implement|show|give|need|want|can|could|would|please)\b/.test(
+      text,
+    )
+  ) {
     return true;
   }
   return /^\s*(?:[a-z+#]{1,12}\s+)?(?:program|code|function|script|snippet|class)\b/.test(text);
@@ -400,7 +461,8 @@ function codeRequestReply(original) {
   }
 
   const codeish =
-    language || /\b(?:code|program|function|script|syntax|compile|compiler|bug|error|debug)\b/.test(text);
+    language ||
+    /\b(?:code|program|function|script|syntax|compile|compiler|bug|error|debug)\b/.test(text);
   if (!codeish) return null;
 
   if (taskId === "write") {
@@ -507,7 +569,10 @@ function riddleAnswer(previousAssistant, lower) {
 
   if (/^(?:another|one more|more|again|next)\b/.test(lower)) return null;
 
-  const normalized = lower.replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
+  const normalized = lower
+    .replace(/[^a-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   if (normalized.includes(riddle.answer)) {
     return `Exactly: **${riddle.answer}**. Nicely done.`;
   }
@@ -525,7 +590,8 @@ function riddleAnswer(previousAssistant, lower) {
 
 function isJokeRequest(lower) {
   return (
-    /\bjokes?\b/.test(lower) && /\b(?:tell|share|say|give|got|know|hear|another|more)\b/.test(lower) ||
+    (/\bjokes?\b/.test(lower) &&
+      /\b(?:tell|share|say|give|got|know|hear|another|more)\b/.test(lower)) ||
     /\bmake me laugh\b|\bsomething funny\b/.test(lower)
   );
 }
@@ -537,10 +603,8 @@ function jokeReply(history) {
 }
 
 function isFactRequest(lower) {
-  return (
-    /\b(?:fun|interesting|random|strange|weird|useless)\s+fact\b|\btell me something (?:interesting|strange|weird)\b|\bknow any facts\b/.test(
-      lower,
-    )
+  return /\b(?:fun|interesting|random|strange|weird|useless)\s+fact\b|\btell me something (?:interesting|strange|weird)\b|\bknow any facts\b/.test(
+    lower,
   );
 }
 
@@ -585,11 +649,13 @@ function motivationReply(history) {
 
 function emotionalReply(lower, history) {
   const ventFollowUp =
-    /\bvent\b|\btalk it through\b|\btalk about it\b/.test(history.previousAssistant?.content?.toLowerCase() || "") &&
-    /\b(?:vent|talk|yes|yeah|please)\b/.test(lower);
+    /\bvent\b|\btalk it through\b|\btalk about it\b/.test(
+      history.previousAssistant?.content?.toLowerCase() || "",
+    ) && /\b(?:vent|talk|yes|yeah|please)\b/.test(lower);
   const distractionFollowUp =
-    /\b(?:distraction|something fun)\b/.test(history.previousAssistant?.content?.toLowerCase() || "") &&
-    /\b(?:distraction|something fun|yes|yeah|please)\b/.test(lower);
+    /\b(?:distraction|something fun)\b/.test(
+      history.previousAssistant?.content?.toLowerCase() || "",
+    ) && /\b(?:distraction|something fun|yes|yeah|please)\b/.test(lower);
 
   if (distractionFollowUp) {
     return "Deal. Pick one: a terrible joke, a strange fact, a two-minute story, or a riddle.";
@@ -643,28 +709,48 @@ function identityReply(lower, notes) {
   if (/\bare you (?:a )?(?:human|real|person)\b|\bare you alive\b/.test(lower)) {
     return "I'm not a person. I'm LocalMind's built-in rule engine, running inside this browser tab. I can still keep you company, but I won't pretend to be human.";
   }
-  if (/\bare you (?:chatgpt|openai|gpt|an ai|a robot|a bot)\b|\bwhich (?:ai|model) are you\b/.test(lower)) {
+  if (
+    /\bare you (?:chatgpt|openai|gpt|an ai|a robot|a bot)\b|\bwhich (?:ai|model) are you\b/.test(
+      lower,
+    )
+  ) {
     return "I'm not ChatGPT, and I'm not connected to a cloud model. I'm the small local assistant built into LocalMind; my replies come from rules in this app.";
   }
-  if (/\b(?:do you have|can you feel) (?:feelings|emotions|consciousness)\b|\bare you conscious\b|\bdo you feel\b/.test(lower)) {
+  if (
+    /\b(?:do you have|can you feel) (?:feelings|emotions|consciousness)\b|\bare you conscious\b|\bdo you feel\b/.test(
+      lower,
+    )
+  ) {
     return "I don't have feelings or consciousness, so I won't claim an inner life. I can still respond warmly and take your feelings seriously.";
   }
-  if (/\bwho (?:are|r) you\b|\bwhat are you(?:\s+exactly)?\s*[?.!]*$|\bwhat(?:'s| is) your name\b|\bintroduce yourself\b|\btell me about yourself\b/.test(lower)) {
+  if (
+    /\bwho (?:are|r) you\b|\bwhat are you(?:\s+exactly)?\s*[?.!]*$|\bwhat(?:'s| is) your name\b|\bintroduce yourself\b|\btell me about yourself\b/.test(
+      lower,
+    )
+  ) {
     return "I'm **LocalMind**, a private assistant running entirely in this browser tab. I use built-in rules rather than an external AI model, so I can chat, remember notes you explicitly save, do simple math and planning, and help with code in Coder mode. Nothing leaves this device.";
   }
   if (/\bwho made you\b|\bwhere do your answers come from\b|\bhow do you work\b/.test(lower)) {
     return "I'm built into this LocalMind app as a set of local rules. I don't call a server or a model, and I don't learn on my own. When you ask me to remember something, that note stays in your browser.";
   }
-  if (/\bcan you (?:see|access|read) (?:my )?(?:files?|screen|computer|camera|microphone)\b|\bare you (?:watching|recording|spying)\b/.test(lower)) {
+  if (
+    /\bcan you (?:see|access|read) (?:my )?(?:files?|screen|computer|camera|microphone)\b|\bare you (?:watching|recording|spying)\b/.test(
+      lower,
+    )
+  ) {
     return "No. I can't see your screen or files, and I don't record you. Everything in this chat stays in this browser unless you export it.";
   }
-  if (/\bcan you (?:browse|search) (?:the )?(?:internet|web)\b|\bdo you have internet\b|\bare you online\b/.test(lower)) {
+  if (
+    /\bcan you (?:browse|search) (?:the )?(?:internet|web)\b|\bdo you have internet\b|\bare you online\b/.test(
+      lower,
+    )
+  ) {
     return "No, I can't browse or search the web. I answer from local rules and the notes you save, so I'll tell you when something needs a live source.";
   }
   if (/\bdo you (?:learn|remember)\b|\bcan you learn\b/.test(lower)) {
     return notes.length
       ? "I don't learn from the conversation on my own. I only keep the notes you explicitly ask me to remember, and I can show or forget them any time."
-      : "I don't learn on my own. If you want me to keep something, say \"remember ...\"; it stays on this device until you remove it.";
+      : 'I don\'t learn on my own. If you want me to keep something, say "remember ..."; it stays on this device until you remove it.';
   }
   if (/\bwhere are you\b|\bare you local\b|\bdo you use the cloud\b/.test(lower)) {
     return "I live inside this browser tab, on your device. There is no cloud model behind me and no upload of your messages.";
@@ -701,12 +787,19 @@ function opinionReply(text, lower) {
   if (known) return known.text;
   if (!topic) return null;
 
-  const readable = text.slice(text.toLowerCase().indexOf(topic), text.toLowerCase().indexOf(topic) + topic.length);
+  const readable = text.slice(
+    text.toLowerCase().indexOf(topic),
+    text.toLowerCase().indexOf(topic) + topic.length,
+  );
   return `My honest take: ${readable} has a time and a place, and it usually comes down to whether it leaves you with more energy afterward. What's your take?`;
 }
 
 function explanationReply(lower) {
-  if (!/\b(?:explain|what is|what are|what'?s|how does|how do|summarize|summary|tell me about)\b/.test(lower)) {
+  if (
+    !/\b(?:explain|what is|what are|what'?s|how does|how do|summarize|summary|tell me about)\b/.test(
+      lower,
+    )
+  ) {
     return null;
   }
   const found = EXPLANATIONS.find((item) => item.match.test(lower));
@@ -714,10 +807,16 @@ function explanationReply(lower) {
 }
 
 function planningReply(lower) {
-  if (/\b(?:meeting|project update|standup)\b/.test(lower) && /\b(?:prepare|before|quick|checklist|20 minutes)\b/.test(lower)) {
+  if (
+    /\b(?:meeting|project update|standup)\b/.test(lower) &&
+    /\b(?:prepare|before|quick|checklist|20 minutes)\b/.test(lower)
+  ) {
     return "Use a three-minute prep: pick one headline, write down two or three numbers that support it, name one risk, and decide on one ask. Then rehearse your opening sentence once. That is usually enough to sound prepared.";
   }
-  if (/\bstudy\b|\bexam\b|\brevision\b/.test(lower) && /\b(?:plan|30|twenty|25|session|schedule)\b/.test(lower)) {
+  if (
+    /\bstudy\b|\bexam\b|\brevision\b/.test(lower) &&
+    /\b(?:plan|30|twenty|25|session|schedule)\b/.test(lower)
+  ) {
     return "Try a 30-minute block: five minutes reviewing what you already know, twenty minutes on one focused problem with notifications off, then five minutes recalling it without notes. Finish by writing the next small task for tomorrow.";
   }
   if (/\bplan (?:my|the) day\b|\bdaily plan\b|\bplan my week\b/.test(lower)) {
@@ -730,7 +829,11 @@ function planningReply(lower) {
 }
 
 function decisionReply(lower) {
-  if (!/\bshould i\b|\bwhat should i do\b|\bcan'?t decide\b|\bi need to decide\b|\bhelp me decide\b/.test(lower)) {
+  if (
+    !/\bshould i\b|\bwhat should i do\b|\bcan'?t decide\b|\bi need to decide\b|\bhelp me decide\b/.test(
+      lower,
+    )
+  ) {
     return null;
   }
   return "I can't make the call for you, but a useful test is: which option would you regret not trying, which one is reversible if it goes wrong, and what would you choose if nobody was watching? Tell me the two options and I'll help you compare them.";
@@ -742,24 +845,37 @@ function followUpReply(lower, history) {
   const lastLower = last.toLowerCase();
 
   if (/^(?:another|one more|more|again)\b|\banother (?:joke|fact|story|riddle)\b/.test(lower)) {
-    if (isJokeRequest(lastLower) || JOKES.some((joke) => last.includes(joke))) return jokeReply(history);
-    if (isFactRequest(lastLower) || FACTS.some((fact) => last.includes(fact))) return factReply(history);
-    if (isStoryRequest(lastLower) || STORIES.some((story) => last.includes(story))) return storyReply(history);
-    if (isRiddleRequest(lastLower) || RIDDLES.some((riddle) => last.includes(riddle.question))) return riddleReply(history);
+    if (isJokeRequest(lastLower) || JOKES.some((joke) => last.includes(joke)))
+      return jokeReply(history);
+    if (isFactRequest(lastLower) || FACTS.some((fact) => last.includes(fact)))
+      return factReply(history);
+    if (isStoryRequest(lastLower) || STORIES.some((story) => last.includes(story)))
+      return storyReply(history);
+    if (isRiddleRequest(lastLower) || RIDDLES.some((riddle) => last.includes(riddle.question)))
+      return riddleReply(history);
     return "I can keep going. Do you want a joke, a strange fact, a short story, or a riddle?";
   }
 
-  if (/^(?:yes|yeah|yep|sure|please|ok|okay)\b/.test(lower) && /\banother\b|\bwant (?:another|more)\b/.test(lastLower)) {
+  if (
+    /^(?:yes|yeah|yep|sure|please|ok|okay)\b/.test(lower) &&
+    /\banother\b|\bwant (?:another|more)\b/.test(lastLower)
+  ) {
     if (JOKES.some((joke) => last.includes(joke))) return jokeReply(history);
     if (FACTS.some((fact) => last.includes(fact))) return factReply(history);
     if (STORIES.some((story) => last.includes(story))) return storyReply(history);
     if (RIDDLES.some((riddle) => last.includes(riddle.question))) return riddleReply(history);
   }
 
-  if (/^(?:distraction|something fun|surprise me)\b/.test(lower) && /\bdistraction\b|\bvent\b/.test(lastLower)) {
+  if (
+    /^(?:distraction|something fun|surprise me)\b/.test(lower) &&
+    /\bdistraction\b|\bvent\b/.test(lastLower)
+  ) {
     return "Deal. Pick one: a terrible joke, a strange fact, a two-minute story, or a riddle.";
   }
-  if (/^(?:vent|talk|talk it through|i need to vent)\b/.test(lower) && /\bvent\b|\btalk it through\b/.test(lastLower)) {
+  if (
+    /^(?:vent|talk|talk it through|i need to vent)\b/.test(lower) &&
+    /\bvent\b|\btalk it through\b/.test(lastLower)
+  ) {
     return "I'm listening. Start wherever it is loudest, and take your time.";
   }
 
@@ -804,18 +920,26 @@ function greetingReply(lower, history, notes, now) {
   if (!greetingOnly) return null;
 
   const name = nameFromNotes(notes);
-  const previousGreetings = countMatching(
-    history.priorUsers,
-    (content) =>
-      /^(?:hi|hiya|hello|hey|yo|sup|howdy|good (?:morning|afternoon|evening|night))\b/.test(content),
+  const previousGreetings = countMatching(history.priorUsers, (content) =>
+    /^(?:hi|hiya|hello|hey|yo|sup|howdy|good (?:morning|afternoon|evening|night))\b/.test(content),
   );
   if (previousGreetings > 0) {
-    return pick(["Hey again. I'm still here. What's up?", "Hello again. Where were we?", "Back for more? Good."], history.turnCount);
+    return pick(
+      [
+        "Hey again. I'm still here. What's up?",
+        "Hello again. Where were we?",
+        "Back for more? Good.",
+      ],
+      history.turnCount,
+    );
   }
   if (/good night|goodnight/.test(lower)) return "Good night! Get some real rest.";
-  if (/good morning/.test(lower)) return `Good morning${name ? `, ${name}` : ""}! What's the plan for today?`;
-  if (/good afternoon/.test(lower)) return `Good afternoon${name ? `, ${name}` : ""}! What's on your mind?`;
-  if (/good evening/.test(lower)) return `Good evening${name ? `, ${name}` : ""}! How did the day treat you?`;
+  if (/good morning/.test(lower))
+    return `Good morning${name ? `, ${name}` : ""}! What's the plan for today?`;
+  if (/good afternoon/.test(lower))
+    return `Good afternoon${name ? `, ${name}` : ""}! What's on your mind?`;
+  if (/good evening/.test(lower))
+    return `Good evening${name ? `, ${name}` : ""}! How did the day treat you?`;
   if (/^sup\b/.test(lower)) return "Not much on my side. What's up with you?";
 
   const hour = now.getHours();
@@ -832,7 +956,10 @@ function isHowAreYou(lower) {
 function howAreYouReply(lower, history) {
   if (/\bwhat'?s up\b|\bwassup\b|\bwhat'?s new\b/.test(lower)) {
     return pick(
-      ["Not much on my side. What's up with you?", "Just waiting for a good conversation. What's new?"],
+      [
+        "Not much on my side. What's up with you?",
+        "Just waiting for a good conversation. What's new?",
+      ],
       history.turnCount,
     );
   }
@@ -899,7 +1026,8 @@ function isInvitation(lower) {
 function invitationReply(lower) {
   if (/are you there|you there|hello\?/.test(lower)) return "Right here. What's up?";
   if (/guess what/.test(lower)) return "I'm listening. What happened?";
-  if (/i have (?:news|something to tell you)/.test(lower)) return "Tell me. Good or bad, I'm listening.";
+  if (/i have (?:news|something to tell you)/.test(lower))
+    return "Tell me. Good or bad, I'm listening.";
   if (/i'?m back|i am back/.test(lower)) return "Welcome back. What's on your mind?";
   return "Of course. Go ahead.";
 }
@@ -926,7 +1054,7 @@ function helpReply(lower) {
       lower,
     )
   ) {
-    return "I want to get this right instead of guessing. What is \"it\", and what happens versus what you expected?";
+    return 'I want to get this right instead of guessing. What is "it", and what happens versus what you expected?';
   }
   return null;
 }
@@ -977,14 +1105,19 @@ function acknowledgementReply(lower, history) {
 
 function statementReply(text, lower, history) {
   const positiveEvent =
-    /\b(?:good|great|fun|amazing|awesome|nice|lovely|worked|won|passed|finished|promoted)\b/.test(lower) ||
+    /\b(?:good|great|fun|amazing|awesome|nice|lovely|worked|won|passed|finished|promoted)\b/.test(
+      lower,
+    ) ||
     /\bi (?:just |finally )?(?:got|landed) (?:a |an )?(?:new )?(?:job|promotion|offer|role)\b|\bi (?:just |finally )?(?:finished|passed|won|booked|bought|started|met)\b/.test(
       lower,
     );
   if (positiveEvent && /^(?:i|we|my|today|this)\b/.test(lower)) {
     return "That sounds good. What was the best part?";
   }
-  if (/\b(?:bad|awful|terrible|hard|annoying|weird|failed|lost|messed up)\b/.test(lower) && /^(?:i|we|my|today|this)\b/.test(lower)) {
+  if (
+    /\b(?:bad|awful|terrible|hard|annoying|weird|failed|lost|messed up)\b/.test(lower) &&
+    /^(?:i|we|my|today|this)\b/.test(lower)
+  ) {
     return "That sounds rough. What happened?";
   }
   if (/\bi (?:like|love|enjoy)\b/.test(lower)) return "What do you like most about it?";
@@ -992,7 +1125,11 @@ function statementReply(text, lower, history) {
   if (/\bi (?:think|believe)\b/.test(lower)) return "What's behind that view?";
   if (/^(?:i|we|my|today|tonight|yesterday|this (?:morning|afternoon|evening))\b/.test(lower)) {
     return pick(
-      ["Tell me more. What happened?", "How did that go?", "I'm following. What's the part that stuck with you?"],
+      [
+        "Tell me more. What happened?",
+        "How did that go?",
+        "I'm following. What's the part that stuck with you?",
+      ],
       history.turnCount,
     );
   }
@@ -1012,7 +1149,10 @@ function fallbackReply(text, lower, history, seed) {
   if (/^(?:write|draft|compose)\b/.test(lower)) {
     return "I can help shape it, though my local rules are better at structure than full creative writing. Tell me what it is for, who will read it, and how long it should be.";
   }
-  if (/\?$/.test(text) || /^(?:what|why|how|when|where|who|which|can|could|should|would|is|are|do|does)\b/.test(lower)) {
+  if (
+    /\?$/.test(text) ||
+    /^(?:what|why|how|when|where|who|which|can|could|should|would|is|are|do|does)\b/.test(lower)
+  ) {
     return pick(
       [
         "I don't want to invent an answer I can't back up. My local rules are strongest on everyday conversation, simple math, planning, and code. Give me the angle that matters to you and I'll take a real run at it.",

@@ -61,7 +61,12 @@ export const let_ = (name, type, value, extra = {}) => ({
   ...extra,
 });
 export const set = (target, value) => ({ k: "set", target: E(target), value: E(value) });
-export const op = (target, operator, value) => ({ k: "op", target: E(target), op: operator, value: E(value) });
+export const op = (target, operator, value) => ({
+  k: "op",
+  target: E(target),
+  op: operator,
+  value: E(value),
+});
 export const inc = (target, by = 1) => op(target, "+", by);
 export const dec = (target, by = 1) => op(target, "-", by);
 export const read = (name, type, prompt) => ({ k: "read", name, type, prompt });
@@ -93,11 +98,21 @@ export const doWhile = (body, c) => ({ k: "do", body, c: E(c) });
 export const ret = (e) => ({ k: "ret", e: E(e) });
 export const brk = () => ({ k: "break" });
 export const callStmt = (name, ...args) => ({ k: "expr", e: call(name, ...args) });
-export const switch_ = (value, cases, otherwise) => ({ k: "switch", value: E(value), cases, otherwise });
+export const switch_ = (value, cases, otherwise) => ({
+  k: "switch",
+  value: E(value),
+  cases,
+  otherwise,
+});
 export const kase = (values, body) => ({ values: values.map(E), body });
 export const gap = () => ({ k: "gap" });
 export const swap = (a, b, type = "int") => ({ k: "swap", a: E(a), b: E(b), type });
-export const sortArray = (name, size, desc = false) => ({ k: "sort", arr: E(name), size: E(size), desc });
+export const sortArray = (name, size, desc = false) => ({
+  k: "sort",
+  arr: E(name),
+  size: E(size),
+  desc,
+});
 
 export const param = (name, type, extra = {}) => ({ name, type, ...extra });
 export const func = (name, params, returns, body) => ({ name, params, returns, body });
@@ -133,7 +148,25 @@ export function exprNodes(root) {
   const visit = (e) => {
     if (!e || typeof e !== "object") return;
     found.push(e);
-    for (const key of ["l", "r", "e", "a", "b", "i", "s", "c", "t", "f", "value", "target", "from", "to", "coll", "size", "arr"]) {
+    for (const key of [
+      "l",
+      "r",
+      "e",
+      "a",
+      "b",
+      "i",
+      "s",
+      "c",
+      "t",
+      "f",
+      "value",
+      "target",
+      "from",
+      "to",
+      "coll",
+      "size",
+      "arr",
+    ]) {
       if (e[key] && typeof e[key] === "object") visit(e[key]);
     }
     for (const list of [e.args, e.values, e.parts]) {

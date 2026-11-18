@@ -114,7 +114,8 @@ export class CSharpEmitter extends Emitter {
   }
 
   prompt(prompt) {
-    if (prompt) this.line(`Console.Write(${this.interpolated(Array.isArray(prompt) ? prompt : [prompt])});`);
+    if (prompt)
+      this.line(`Console.Write(${this.interpolated(Array.isArray(prompt) ? prompt : [prompt])});`);
   }
 
   readText(type) {
@@ -149,7 +150,9 @@ export class CSharpEmitter extends Emitter {
   }
 
   signature(f) {
-    const params = this.visibleParams(f).map((p) => `${this.scalar(p.type)} ${p.name}`).join(", ");
+    const params = this.visibleParams(f)
+      .map((p) => `${this.scalar(p.type)} ${p.name}`)
+      .join(", ");
     const returns = !f.returns || f.returns === "void" ? "void" : this.scalar(f.returns);
     return `static ${returns} ${this.fnName(f.name)}(${params})`;
   }

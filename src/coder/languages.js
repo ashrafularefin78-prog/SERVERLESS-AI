@@ -1,6 +1,7 @@
 // Programming language support for Coder mode. Each entry drives prompt
 // guidance, fence labels, auto-detection, and highlighting.
 // `tier: "specialized"` marks languages where small models need a warning.
+/* eslint-disable no-useless-escape -- detection regexes escape [ and / inside character classes for readability */
 
 import { expandShorthand, normalizeText } from "../understand.js";
 import {
@@ -1696,7 +1697,7 @@ function companionLanguages(text, detection, framework) {
   return extras.slice(0, 2);
 }
 
-export function demoCodingReply({ prompt, systemPrompt = "" }) {
+export function demoCodingReply({ prompt, systemPrompt: _systemPrompt = "" }) {
   const detection = detectLanguageDetailed(prompt);
   const language = detection?.language || null;
   const framework = detection?.framework || null;
@@ -2507,7 +2508,7 @@ function earliestLanguage(text) {
   let best = null;
   for (const language of LANGUAGES) {
     for (const source of anyPatterns(language)) {
-      let match = null;
+      let match;
       try {
         match = new RegExp(source, "i").exec(text);
       } catch {

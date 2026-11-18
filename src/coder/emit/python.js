@@ -80,7 +80,8 @@ export class PythonEmitter extends Emitter {
   binaryOp(e) {
     if (e.op === "&&") return "and";
     if (e.op === "||") return "or";
-    if (e.op === "/" && this.isIntegral(this.typeOf(e.l)) && this.isIntegral(this.typeOf(e.r))) return "//";
+    if (e.op === "/" && this.isIntegral(this.typeOf(e.l)) && this.isIntegral(this.typeOf(e.r)))
+      return "//";
     return e.op;
   }
 
@@ -91,7 +92,10 @@ export class PythonEmitter extends Emitter {
   }
 
   conditional(e) {
-    return { t: `${this.expr(e.t, 1)} if ${this.expr(e.c, 1)} else ${this.expr(e.f, 0.5)}`, p: 0.5 };
+    return {
+      t: `${this.expr(e.t, 1)} if ${this.expr(e.c, 1)} else ${this.expr(e.f, 0.5)}`,
+      p: 0.5,
+    };
   }
 
   arrayLiteral(e) {
@@ -111,14 +115,18 @@ export class PythonEmitter extends Emitter {
     if (e.to === "char") return atom(`chr(${this.expr(inner)})`);
     if (e.to === "double") return atom(`float(${this.expr(inner)})`);
     if (e.to === "long" && this.isIntegral(this.typeOf(inner))) return this.render(inner);
-    if (inner.k === "fn" && inner.name === "pow" && inner.args.every((x) => this.isIntegral(this.typeOf(x)))) {
+    if (
+      inner.k === "fn" &&
+      inner.name === "pow" &&
+      inner.args.every((x) => this.isIntegral(this.typeOf(x)))
+    ) {
       return this.render(inner);
     }
     return atom(`int(${this.expr(inner)})`);
   }
 
   builtin(e) {
-    const [a, b] = e.args;
+    const [a] = e.args;
     const first = () => this.expr(a);
     const recv = () => this.expr(a, ATOM);
     switch (e.name) {
@@ -151,7 +159,8 @@ export class PythonEmitter extends Emitter {
 
   fstring(parts) {
     const items = this.printParts(parts);
-    if (items.every((part) => part.lit !== undefined)) return quote(items.map((part) => part.lit).join(""));
+    if (items.every((part) => part.lit !== undefined))
+      return quote(items.map((part) => part.lit).join(""));
     if (items.length === 1 && this.typeOf(items[0].e) !== "double") return this.expr(items[0].e);
     let body = "";
     for (const part of items) {
@@ -191,8 +200,14 @@ export class PythonEmitter extends Emitter {
   }
 
   s_readArray(s) {
-    const prompt = [`Enter ${s.label} `, { k: "bin", op: "+", l: { k: "var", name: "i" }, r: { k: "num", value: 1, type: "int" } }, ": "];
-    this.line(`${this.name(s.name)} = [${this.inputText(s.elem, prompt)} for i in range(${this.expr(s.size)})]`);
+    const prompt = [
+      `Enter ${s.label} `,
+      { k: "bin", op: "+", l: { k: "var", name: "i" }, r: { k: "num", value: 1, type: "int" } },
+      ": ",
+    ];
+    this.line(
+      `${this.name(s.name)} = [${this.inputText(s.elem, prompt)} for i in range(${this.expr(s.size)})]`,
+    );
     this.declare(s.name, `${s.elem}[]`);
   }
 
@@ -214,7 +229,8 @@ export class PythonEmitter extends Emitter {
   }
 
   s_op(s) {
-    const integral = this.isIntegral(this.typeOf(s.target)) && this.isIntegral(this.typeOf(s.value));
+    const integral =
+      this.isIntegral(this.typeOf(s.target)) && this.isIntegral(this.typeOf(s.value));
     const operator = s.op === "/" && integral ? "//" : s.op;
     this.line(`${this.expr(s.target)} ${operator}= ${this.expr(s.value)}`);
   }
@@ -297,7 +313,9 @@ export class PythonEmitter extends Emitter {
   }
 
   signature(f) {
-    return `def ${this.fnName(f.name)}(${this.visibleParams(f).map((p) => this.name(p.name)).join(", ")})`;
+    return `def ${this.fnName(f.name)}(${this.visibleParams(f)
+      .map((p) => this.name(p.name))
+      .join(", ")})`;
   }
 
   emit() {
@@ -310,10 +328,20 @@ export class PythonEmitter extends Emitter {
     this.lines = [];
     this.emitMainBody();
     sections.push({ fn: false, text: this.text() });
-    if (this.needs.size) sections.unshift({ fn: false, text: [...this.needs].sort().map((m) => `import ${m}`).join("\n") });
+    if (this.needs.size)
+      sections.unshift({
+        fn: false,
+        text: [...this.needs]
+          .sort()
+          .map((m) => `import ${m}`)
+          .join("\n"),
+      });
     return sections
       .filter((section) => section.text)
-      .map((section, index, list) => (index === 0 ? "" : section.fn || list[index - 1].fn ? "\n\n\n" : "\n\n") + section.text)
+      .map(
+        (section, index, list) =>
+          (index === 0 ? "" : section.fn || list[index - 1].fn ? "\n\n\n" : "\n\n") + section.text,
+      )
       .join("");
   }
 }

@@ -147,8 +147,6 @@ const LANG_LABELS = {
   st: "Smalltalk",
   smalltalk: "Smalltalk",
   prolog: "Prolog",
-  pl: "Prolog",
-  vhd: "VHDL",
   vi: "LabVIEW",
   labview: "LabVIEW",
   scratch: "Scratch",
@@ -156,7 +154,9 @@ const LANG_LABELS = {
 };
 
 function fenceLabel(fence) {
-  const raw = String(fence || "").trim().toLowerCase();
+  const raw = String(fence || "")
+    .trim()
+    .toLowerCase();
   if (!raw) return "code";
   if (LANG_LABELS[raw]) return LANG_LABELS[raw];
   const language = languageByFence(raw);
@@ -164,7 +164,9 @@ function fenceLabel(fence) {
 }
 
 function fenceLanguageId(fence) {
-  const raw = String(fence || "").trim().toLowerCase();
+  const raw = String(fence || "")
+    .trim()
+    .toLowerCase();
   const language = languageByFence(raw);
   if (language) return language.id;
   if (["js", "jsx"].includes(raw)) return "javascript";
@@ -232,7 +234,7 @@ marked.setOptions({
 
 export function renderMarkdown(text) {
   const source = typeof text === "string" ? text : "";
-  let raw = "";
+  let raw;
   try {
     raw = marked.parse(source, { gfm: true, breaks: true, async: false });
   } catch {

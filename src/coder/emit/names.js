@@ -92,7 +92,8 @@ export function identifierNames(prog) {
   const visit = (x, isFn = false) => {
     if (Array.isArray(x)) return x.forEach((item) => visit(item));
     if (!x || typeof x !== "object") return;
-    if (typeof x.name === "string" && x.k !== "fn") names.set(x.name, isFn || x.k === "call" || names.get(x.name) === true);
+    if (typeof x.name === "string" && x.k !== "fn")
+      names.set(x.name, isFn || x.k === "call" || names.get(x.name) === true);
     for (const value of Object.values(x)) visit(value);
   };
   prog.functions.forEach((f) => visit(f, true));
@@ -123,7 +124,12 @@ export function renameReserved(prog, langId) {
     if (!reserved.has(render(name, isFn))) continue;
     const base = NICE[name] || `${name}Value`;
     let candidate = base;
-    for (let n = 2; reserved.has(render(candidate, isFn)) || taken.has(render(candidate, isFn)); n++) candidate = `${base}${n}`;
+    for (
+      let n = 2;
+      reserved.has(render(candidate, isFn)) || taken.has(render(candidate, isFn));
+      n++
+    )
+      candidate = `${base}${n}`;
     taken.add(render(candidate, isFn));
     map.set(name, candidate);
   }

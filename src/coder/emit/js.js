@@ -12,7 +12,12 @@ const TESTS = {
 const atom = (t) => ({ t, p: ATOM });
 
 function templateText(text) {
-  return String(text).replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${").replace(/\n/g, "\\n").replace(/\t/g, "\\t");
+  return String(text)
+    .replace(/\\/g, "\\\\")
+    .replace(/`/g, "\\`")
+    .replace(/\$\{/g, "\\${")
+    .replace(/\n/g, "\\n")
+    .replace(/\t/g, "\\t");
 }
 
 export class JsEmitter extends Emitter {
@@ -92,7 +97,11 @@ export class JsEmitter extends Emitter {
     if (e.to === "double") return this.render(inner);
     if (e.to === "long" && this.isIntegral(this.typeOf(inner))) return this.render(inner);
     if (e.to === "char") return atom(`String.fromCharCode(${this.expr(inner)})`);
-    if (inner.k === "fn" && inner.name === "pow" && inner.args.every((x) => this.isIntegral(this.typeOf(x)))) {
+    if (
+      inner.k === "fn" &&
+      inner.name === "pow" &&
+      inner.args.every((x) => this.isIntegral(this.typeOf(x)))
+    ) {
       return this.render(inner);
     }
     return atom(`Math.trunc(${this.expr(inner)})`);
@@ -130,8 +139,10 @@ export class JsEmitter extends Emitter {
 
   template(parts, forceString = false) {
     const items = this.printParts(parts);
-    if (items.every((part) => part.lit !== undefined)) return quote(items.map((part) => part.lit).join(""));
-    if (!forceString && items.length === 1 && this.typeOf(items[0].e) !== "double") return this.expr(items[0].e);
+    if (items.every((part) => part.lit !== undefined))
+      return quote(items.map((part) => part.lit).join(""));
+    if (!forceString && items.length === 1 && this.typeOf(items[0].e) !== "double")
+      return this.expr(items[0].e);
     let body = "";
     for (const part of items) {
       if (part.lit !== undefined) body += templateText(part.lit);
@@ -170,7 +181,11 @@ export class JsEmitter extends Emitter {
 
   s_op(s) {
     const target = this.expr(s.target);
-    if (s.op === "/" && this.isIntegral(this.typeOf(s.target)) && this.isIntegral(this.typeOf(s.value))) {
+    if (
+      s.op === "/" &&
+      this.isIntegral(this.typeOf(s.target)) &&
+      this.isIntegral(this.typeOf(s.value))
+    ) {
       this.line(`${target} = Math.trunc(${target} / ${this.expr(s.value, 6, true)});`);
       return;
     }
@@ -202,7 +217,9 @@ export class JsEmitter extends Emitter {
   }
 
   signature(f) {
-    const params = this.visibleParams(f).map((p) => `${p.name}${this.ts ? `: ${this.tsType(p.type)}` : ""}`);
+    const params = this.visibleParams(f).map(
+      (p) => `${p.name}${this.ts ? `: ${this.tsType(p.type)}` : ""}`,
+    );
     const returns = this.ts ? `: ${this.tsType(f.returns || "void")}` : "";
     return `function ${f.name}(${params.join(", ")})${returns}`;
   }
@@ -210,7 +227,9 @@ export class JsEmitter extends Emitter {
   header() {
     const ts = this.ts;
     return [
-      ts ? 'import * as readline from "node:readline";' : 'const readline = require("node:readline");',
+      ts
+        ? 'import * as readline from "node:readline";'
+        : 'const readline = require("node:readline");',
       "",
       "const rl = readline.createInterface({ input: process.stdin });",
       "const inputLines = rl[Symbol.asyncIterator]();",

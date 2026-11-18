@@ -1,9 +1,27 @@
 import { elemType } from "../ir.js";
-import { ATOM, UNARY, quote } from "./base.js";
+import { ATOM, quote } from "./base.js";
 import { CEmitter } from "./c.js";
 
-const ORDER = ["iostream", "string", "vector", "algorithm", "functional", "utility", "cmath", "cstdlib", "cctype", "iomanip"];
-const CTYPE = { isDigit: "isdigit", isAlpha: "isalpha", isUpper: "isupper", isLower: "islower", isSpace: "isspace", isAlnum: "isalnum" };
+const ORDER = [
+  "iostream",
+  "string",
+  "vector",
+  "algorithm",
+  "functional",
+  "utility",
+  "cmath",
+  "cstdlib",
+  "cctype",
+  "iomanip",
+];
+const CTYPE = {
+  isDigit: "isdigit",
+  isAlpha: "isalpha",
+  isUpper: "isupper",
+  isLower: "islower",
+  isSpace: "isspace",
+  isAlnum: "isalnum",
+};
 const atom = (t) => ({ t, p: ATOM });
 
 export class CppEmitter extends CEmitter {
@@ -91,7 +109,8 @@ export class CppEmitter extends CEmitter {
       case "upper":
       case "lower": {
         this.needs.add("cctype");
-        if (this.typeOf(a) !== "string") return atom(`static_cast<char>(std::to${e.name}(${first()}))`);
+        if (this.typeOf(a) !== "string")
+          return atom(`static_cast<char>(std::to${e.name}(${first()}))`);
         const helper = e.name === "upper" ? "toUpperCase" : "toLowerCase";
         this.needs.add("string");
         this.helper(helper, [
@@ -175,7 +194,8 @@ export class CppEmitter extends CEmitter {
 
   s_readItem(s) {
     this.prompt(s.prompt);
-    if (s.type === "string") this.line(`std::getline(std::cin >> std::ws, ${this.expr(s.target)});`);
+    if (s.type === "string")
+      this.line(`std::getline(std::cin >> std::ws, ${this.expr(s.target)});`);
     else this.line(`std::cin >> ${this.expr(s.target)};`);
   }
 
@@ -208,7 +228,9 @@ export class CppEmitter extends CEmitter {
   }
 
   signature(f) {
-    const params = this.visibleParams(f).map((p) => this.paramText(p)).join(", ");
+    const params = this.visibleParams(f)
+      .map((p) => this.paramText(p))
+      .join(", ");
     return `${this.returnType(f.returns)} ${f.name}(${params})`;
   }
 

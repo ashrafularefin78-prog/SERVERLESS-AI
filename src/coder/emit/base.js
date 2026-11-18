@@ -1,6 +1,32 @@
-import { add, elemType, exprNodes, idx, isArrayType, isNumeric, num, programNodes, v } from "../ir.js";
+import {
+  add,
+  elemType,
+  exprNodes,
+  idx,
+  isArrayType,
+  isNumeric,
+  num,
+  programNodes,
+  v,
+} from "../ir.js";
 
-export const PREC = { "||": 1, "&&": 2, "^": 2.5, "&": 2.75, "==": 3, "!=": 3, "<": 4, "<=": 4, ">": 4, ">=": 4, "+": 5, "-": 5, "*": 6, "/": 6, "%": 6 };
+export const PREC = {
+  "||": 1,
+  "&&": 2,
+  "^": 2.5,
+  "&": 2.75,
+  "==": 3,
+  "!=": 3,
+  "<": 4,
+  "<=": 4,
+  ">": 4,
+  ">=": 4,
+  "+": 5,
+  "-": 5,
+  "*": 6,
+  "/": 6,
+  "%": 6,
+};
 export const COMPARE = new Set(["==", "!=", "<", "<=", ">", ">="]);
 const FLIP = { "==": "!=", "!=": "==", "<": ">=", "<=": ">", ">": "<=", ">=": "<" };
 export const ATOM = 10;
@@ -243,7 +269,8 @@ export class Emitter {
   }
 
   number(e) {
-    if (e.type === "double") return Number.isInteger(e.value) ? e.value.toFixed(1) : String(e.value);
+    if (e.type === "double")
+      return Number.isInteger(e.value) ? e.value.toFixed(1) : String(e.value);
     return String(e.value);
   }
 
@@ -267,7 +294,10 @@ export class Emitter {
     const p = this.prec(e.op);
     const compare = COMPARE.has(e.op);
     // Parenthesize `&&` inside `||` so the grouping is explicit (and compilers don't warn).
-    const side = (child, strict) => (e.op === "||" && child.k === "bin" && child.op === "&&" ? this.expr(child, this.prec("&&"), true) : this.expr(child, p, strict));
+    const side = (child, strict) =>
+      e.op === "||" && child.k === "bin" && child.op === "&&"
+        ? this.expr(child, this.prec("&&"), true)
+        : this.expr(child, p, strict);
     const left = side(e.l, compare);
     const right = side(e.r, true);
     return { t: `${left} ${this.binaryOp(e)} ${right}`, p };
@@ -283,7 +313,9 @@ export class Emitter {
   }
 
   callText(e) {
-    return `${this.fnName(e.name)}(${this.callArgs(e).map((arg) => this.expr(arg)).join(", ")})`;
+    return `${this.fnName(e.name)}(${this.callArgs(e)
+      .map((arg) => this.expr(arg))
+      .join(", ")})`;
   }
 
   // ---- blocks
@@ -321,7 +353,8 @@ export class Emitter {
   block(stmts) {
     const list = stmts || [];
     list.forEach((s, index) => {
-      if (this.groupReads && s.k === "read" && list[index - 1]?.k !== "read") this.declareReads(list, index);
+      if (this.groupReads && s.k === "read" && list[index - 1]?.k !== "read")
+        this.declareReads(list, index);
       this.stmt(s);
     });
   }
@@ -330,7 +363,8 @@ export class Emitter {
     const byType = new Map();
     for (let j = start; j < list.length && list[j].k === "read"; j += 1) {
       const s = list[j];
-      if (this.lookup(s.name) || [...byType.values()].some((names) => names.includes(s.name))) continue;
+      if (this.lookup(s.name) || [...byType.values()].some((names) => names.includes(s.name)))
+        continue;
       if (!byType.has(s.type)) byType.set(s.type, []);
       byType.get(s.type).push(s.name);
     }
@@ -436,7 +470,12 @@ export class Emitter {
   loopUpdate(s) {
     const v = { k: "var", name: s.name };
     const by = Math.abs(s.step);
-    return { k: "op", target: v, op: s.step > 0 ? "+" : "-", value: { k: "num", value: by, type: "int" } };
+    return {
+      k: "op",
+      target: v,
+      op: s.step > 0 ? "+" : "-",
+      value: { k: "num", value: by, type: "int" },
+    };
   }
 
   styleFor(s) {
@@ -462,7 +501,11 @@ export class Emitter {
     }
     // A do-while always runs once, so guard it unless the literal bounds make the first pass certain.
     const { from, to } = s;
-    const certain = from?.k === "num" && to?.k === "num" && (s.step > 0 ? from.value <= to.value : from.value >= to.value) && (s.inclusive || from.value !== to.value);
+    const certain =
+      from?.k === "num" &&
+      to?.k === "num" &&
+      (s.step > 0 ? from.value <= to.value : from.value >= to.value) &&
+      (s.inclusive || from.value !== to.value);
     const loop = { k: "do", c: this.loopCondition(s), body };
     if (certain) this.s_do(loop);
     else this.stmt({ k: "if", c: this.loopCondition(s), then: [loop] });
@@ -524,7 +567,11 @@ export class Emitter {
     if (!this.dropLengthParams) return;
     for (const p of f.params) {
       if (p.lengthOf) {
-        this.s_let({ name: p.name, type: "int", value: { k: "len", e: { k: "var", name: p.lengthOf } } });
+        this.s_let({
+          name: p.name,
+          type: "int",
+          value: { k: "len", e: { k: "var", name: p.lengthOf } },
+        });
       }
     }
   }
@@ -536,7 +583,8 @@ export class Emitter {
   emitFunction(f) {
     this.currentFn = f;
     this.blockStart(this.signature(f));
-    for (const p of this.visibleParams(f)) this.declare(p.name, p.type, { param: true, mutates: p.mutates });
+    for (const p of this.visibleParams(f))
+      this.declare(p.name, p.type, { param: true, mutates: p.mutates });
     this.functionPrologue(f);
     this.block(f.body);
     this.blockEnd();
@@ -557,7 +605,11 @@ export class Emitter {
   }
 
   readsType(test) {
-    return this.stmtsWhere((s) => (s.k === "read" && test(s.type)) || (s.k === "readArray" && test(s.elem))).length > 0;
+    return (
+      this.stmtsWhere(
+        (s) => (s.k === "read" && test(s.type)) || (s.k === "readArray" && test(s.elem)),
+      ).length > 0
+    );
   }
 
   usesNode(test) {
@@ -579,11 +631,26 @@ export class Emitter {
       array: s.name,
       prompt: [`Enter ${s.label} `, add(v("i"), num(1)), ": "],
     };
-    this.s_for({ k: "for", name: "i", from: num(0), to: s.size, body: [item], step: 1, inclusive: false, fixed: true });
+    this.s_for({
+      k: "for",
+      name: "i",
+      from: num(0),
+      to: s.size,
+      body: [item],
+      step: 1,
+      inclusive: false,
+      fixed: true,
+    });
   }
 
   printParts(parts) {
-    return parts.map((part) => (typeof part === "string" ? { lit: part } : part.k === "fmt" ? { e: part.e, dp: part.dp } : { e: part }));
+    return parts.map((part) =>
+      typeof part === "string"
+        ? { lit: part }
+        : part.k === "fmt"
+          ? { e: part.e, dp: part.dp }
+          : { e: part },
+    );
   }
 
   promptParts(prompt) {

@@ -97,7 +97,7 @@ export function resolveGpuModel(key, device) {
   if (!model) return null;
   const supportsF16 = Boolean(device?.shaderF16);
   if (model.requiresF16 && !supportsF16) return null;
-  const modelId = supportsF16 ? model.ids.f16 ?? model.ids.f32 : model.ids.f32 ?? model.ids.f16;
+  const modelId = supportsF16 ? (model.ids.f16 ?? model.ids.f32) : (model.ids.f32 ?? model.ids.f16);
   return modelId ? { ...model, modelId, precision: supportsF16 ? "f16" : "f32" } : null;
 }
 

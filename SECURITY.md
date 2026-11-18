@@ -26,13 +26,14 @@ This is a small project, not an audited product.
 **Threat:** The model emits `<img onerror=...>`, a `javascript:` link, or an event handler that runs in the page and reads chats or sends them elsewhere.
 
 **Mitigation:**
+
 - Output is parsed with marked, then sanitized with DOMPurify.
 - Dangerous tags are forbidden (script, iframe, object, embed, form controls, media, SVG, MathML, template, style, link, meta).
 - `style`, `srcset`, and `formaction` attributes are forbidden.
 - Links are rewritten to `target="_blank"` with `rel="noopener noreferrer"`; links with schemes other than `http(s)` and `mailto` are replaced with plain text.
 - Images are not rendered, so image-based tracking and `onerror` payloads do not run.
 - Streaming text is inserted with `textContent`; markdown parsing happens only after the reply finishes.
-- A CSP forbids inline scripts, eval (except WebAssembly compilation), and non-self scripts.
+- A CSP forbids inline scripts, eval, WebAssembly compilation, non-self scripts, and non-self connections in the model-free build. Enabling the dormant model loaders requires widening the policy; update this document in the same change.
 
 **Residual risk:** Sanitizer bypasses are possible. Keep DOMPurify updated; do not add raw HTML rendering paths.
 
@@ -65,7 +66,9 @@ This is a small project, not an audited product.
 **Threat:** A compromised npm package injects code at build time or runtime.
 
 **Mitigation:**
+
 - `package.json` pins exact versions; `package-lock.json` records the full tree.
+- Dependabot monitors npm packages and GitHub Actions weekly. Review lockfile diffs and `npm audit --omit=dev` before merging an update.
 - Production dependencies are small: WebLLM, wllama, marked, DOMPurify.
 - No CDN scripts, no analytics, no remote fonts.
 - The build injects a CSP and the app ships a service worker only in production.
@@ -112,6 +115,25 @@ Even though prompts stay local, the first model download reveals your IP address
 - Pin dependency versions and review upgrades.
 - Re-run the XSS and privacy checks in [TEST_PROMPTS.md](TEST_PROMPTS.md) after changes.
 - Publish releases from a clean build and keep the lockfile in version control.
+
+## Automated checks
+
+- Unit tests cover input normalization, memory, reply rules, language detection, and the demo engine.
+- Playwright tests exercise chat, memory, and data clearing in a real browser, and assert that a chat makes no cross-origin requests.
+- CI runs lint, Prettier, unit tests, the production build, and the Playwright suite on every push and pull request.
+- DOMPurify, marked, and the build toolchain are kept current through Dependabot. These checks reduce risk; they do not replace a manual review of sanitizer and CSP changes.
+
+## Keeping this document current
+
+Review this threat model when any of the following changes:
+
+- a new network request, remote API, or model download path is added;
+- a feature stores new personal data or changes retention;
+- the CSP, service worker, or sanitizer configuration changes;
+- a new dependency runs in the page or at build time;
+- a security report or near miss is resolved.
+
+The description of the app must stay honest. If a future version enables model downloads or optional tools, update the trust boundaries, asset list, and network metadata sections in the same change.
 
 ## Reporting
 

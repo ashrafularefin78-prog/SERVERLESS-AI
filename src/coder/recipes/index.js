@@ -38,13 +38,22 @@ const REFERENCE_LANGS = new Set(["cpp", "csharp"]);
 function caveats(spec, lang) {
   const { flags } = spec;
   const notes = [];
-  if (flags.ternary && lang === "go") notes.push("Go has no ternary operator, so the choice is written as an if-else statement.");
-  if (flags.loop === "do-while" && lang === "python") notes.push("Python has no do-while loop, so this uses `while True` with a `break` at the end.");
-  if (flags.loop === "do-while" && lang === "go") notes.push("Go has no do-while loop, so this uses `for` with a `break` at the end.");
-  if (flags.loop === "while" && lang === "go") notes.push("Go writes a while loop as `for condition { ... }`.");
-  if (flags.pointer && !POINTER_LANGS.has(lang)) notes.push("Pointers are only used in the C and C++ versions; this language works with the values directly.");
+  if (flags.ternary && lang === "go")
+    notes.push("Go has no ternary operator, so the choice is written as an if-else statement.");
+  if (flags.loop === "do-while" && lang === "python")
+    notes.push("Python has no do-while loop, so this uses `while True` with a `break` at the end.");
+  if (flags.loop === "do-while" && lang === "go")
+    notes.push("Go has no do-while loop, so this uses `for` with a `break` at the end.");
+  if (flags.loop === "while" && lang === "go")
+    notes.push("Go writes a while loop as `for condition { ... }`.");
+  if (flags.pointer && !POINTER_LANGS.has(lang))
+    notes.push(
+      "Pointers are only used in the C and C++ versions; this language works with the values directly.",
+    );
   if (flags.byRef && !flags.pointer && !POINTER_LANGS.has(lang) && !REFERENCE_LANGS.has(lang)) {
-    notes.push("This language passes plain values by value, so the result is returned or updated in place instead.");
+    notes.push(
+      "This language passes plain values by value, so the result is returned or updated in place instead.",
+    );
   }
   return notes;
 }

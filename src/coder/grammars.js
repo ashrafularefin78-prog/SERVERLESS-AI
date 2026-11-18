@@ -17,7 +17,11 @@ export function zig(hljs) {
       hljs.QUOTE_STRING_MODE,
       hljs.APOS_STRING_MODE,
       { className: "built_in", begin: /@[A-Za-z_]\w*/ },
-      { className: "number", begin: /\b(?:0x[0-9a-fA-F_]+|0b[01_]+|0o[0-7_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d+)?)\b/ },
+      {
+        className: "number",
+        begin:
+          /\b(?:0x[0-9a-fA-F_]+|0b[01_]+|0o[0-7_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d+)?)\b/,
+      },
     ],
   };
 }
@@ -31,7 +35,8 @@ export function solidity(hljs) {
         "contract library interface is function modifier event emit constructor fallback receive returns return if else for while do break continue try catch revert require assert new delete mapping memory storage calldata payable public private internal external pure view virtual override abstract immutable constant unchecked assembly let using struct enum import from as error type this super",
       type: "address bool string bytes byte uint int uint8 uint16 uint32 uint64 uint128 uint256 int8 int16 int32 int64 int128 int256 bytes1 bytes2 bytes4 bytes8 bytes16 bytes32 fixed ufixed",
       literal: "true false wei gwei ether seconds minutes hours days weeks",
-      built_in: "msg block tx abi keccak256 sha256 ripemd160 ecrecover addmod mulmod selfdestruct blockhash gasleft now",
+      built_in:
+        "msg block tx abi keccak256 sha256 ripemd160 ecrecover addmod mulmod selfdestruct blockhash gasleft now",
     },
     contains: [
       hljs.COMMENT("///", "$"),
@@ -76,13 +81,21 @@ export function cobol(hljs) {
       $pattern: /[A-Za-z][\w-]*/,
       keyword:
         "ACCEPT ADD ALTER CALL CANCEL CLOSE COMPUTE CONTINUE DELETE DISPLAY DIVIDE ELSE EVALUATE EXIT GO GOBACK IF INITIALIZE INSPECT INVOKE MERGE MOVE MULTIPLY OPEN PERFORM READ RECEIVE RETURN REWRITE SEARCH SET SORT START STOP STRING SUBTRACT UNSTRING WRITE WHEN OTHER NOT ON SIZE ERROR END-ACCEPT END-ADD END-CALL END-COMPUTE END-DELETE END-DIVIDE END-EVALUATE END-IF END-MULTIPLY END-PERFORM END-READ END-RETURN END-REWRITE END-SEARCH END-START END-STRING END-SUBTRACT END-UNSTRING END-WRITE",
-      literal: "ZERO ZEROS ZEROES SPACE SPACES HIGH-VALUE HIGH-VALUES LOW-VALUE LOW-VALUES NULL NULLS TRUE FALSE",
+      literal:
+        "ZERO ZEROS ZEROES SPACE SPACES HIGH-VALUE HIGH-VALUES LOW-VALUE LOW-VALUES NULL NULLS TRUE FALSE",
     },
     contains: [
       hljs.COMMENT(/\*>/, /$/),
       { className: "comment", begin: /^\s*\*/, end: /$/ },
-      { className: "section", begin: /\b(?:IDENTIFICATION|ENVIRONMENT|DATA|PROCEDURE)\s+DIVISION\b/ },
-      { className: "section", begin: /\b(?:FILE|WORKING-STORAGE|LOCAL-STORAGE|LINKAGE|CONFIGURATION|INPUT-OUTPUT)\s+SECTION\b/ },
+      {
+        className: "section",
+        begin: /\b(?:IDENTIFICATION|ENVIRONMENT|DATA|PROCEDURE)\s+DIVISION\b/,
+      },
+      {
+        className: "section",
+        begin:
+          /\b(?:FILE|WORKING-STORAGE|LOCAL-STORAGE|LINKAGE|CONFIGURATION|INPUT-OUTPUT)\s+SECTION\b/,
+      },
       { className: "type", begin: /\b(?:PIC|PICTURE)(?:\s+IS)?\s+[SXP9AZV0-9()V.,+\-*BCRZ]+/ },
       hljs.APOS_STRING_MODE,
       hljs.QUOTE_STRING_MODE,

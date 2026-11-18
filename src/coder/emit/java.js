@@ -10,7 +10,13 @@ const CHARS = {
   isSpace: "isWhitespace",
   isAlnum: "isLetterOrDigit",
 };
-const SCAN = { int: "nextInt()", long: "nextLong()", double: "nextDouble()", char: "next().charAt(0)", string: "nextLine()" };
+const SCAN = {
+  int: "nextInt()",
+  long: "nextLong()",
+  double: "nextDouble()",
+  char: "next().charAt(0)",
+  string: "nextLine()",
+};
 const atom = (t) => ({ t, p: ATOM });
 
 export class JavaEmitter extends Emitter {
@@ -64,7 +70,7 @@ export class JavaEmitter extends Emitter {
   }
 
   builtin(e) {
-    const [a, b] = e.args;
+    const [a] = e.args;
     const first = () => this.expr(a);
     const string = () => this.typeOf(a) === "string";
     switch (e.name) {
@@ -75,9 +81,13 @@ export class JavaEmitter extends Emitter {
       case "min":
         return atom(`Math.${e.name}(${e.args.map((x) => this.expr(x)).join(", ")})`);
       case "upper":
-        return atom(string() ? `${this.expr(a, ATOM)}.toUpperCase()` : `Character.toUpperCase(${first()})`);
+        return atom(
+          string() ? `${this.expr(a, ATOM)}.toUpperCase()` : `Character.toUpperCase(${first()})`,
+        );
       case "lower":
-        return atom(string() ? `${this.expr(a, ATOM)}.toLowerCase()` : `Character.toLowerCase(${first()})`);
+        return atom(
+          string() ? `${this.expr(a, ATOM)}.toLowerCase()` : `Character.toLowerCase(${first()})`,
+        );
       case "isVowel":
         return { t: `"aeiouAEIOU".indexOf(${first()}) != -1`, p: 3 };
       case "code":
@@ -105,13 +115,16 @@ export class JavaEmitter extends Emitter {
           continue;
         }
         const type = this.typeOf(part.e);
-        format += { double: `%.${part.dp ?? 2}f`, char: "%c", string: "%s", bool: "%b" }[type] || "%d";
+        format +=
+          { double: `%.${part.dp ?? 2}f`, char: "%c", string: "%s", bool: "%b" }[type] || "%d";
         args.push(this.expr(part.e));
       }
       if (newline) format += "%n";
       return `System.out.printf(${[quote(format), ...args].join(", ")});`;
     }
-    const pieces = items.map((part) => (part.lit !== undefined ? quote(part.lit) : this.expr(part.e, ATOM)));
+    const pieces = items.map((part) =>
+      part.lit !== undefined ? quote(part.lit) : this.expr(part.e, ATOM),
+    );
     if (items.length > 1 && items[0].e && items[1].e) pieces.unshift('""');
     return `System.out.${newline ? "println" : "print"}(${pieces.join(" + ")});`;
   }
@@ -160,7 +173,9 @@ export class JavaEmitter extends Emitter {
     if (!s.desc) return;
     const elem = this.scalar(elemType(this.typeOf(s.arr)));
     const [left, right, temp] = ["left", "right", "temp"].map((name) => this.unused(name));
-    this.blockStart(`for (int ${left} = 0, ${right} = ${n}.length - 1; ${left} < ${right}; ${left}++, ${right}--)`);
+    this.blockStart(
+      `for (int ${left} = 0, ${right} = ${n}.length - 1; ${left} < ${right}; ${left}++, ${right}--)`,
+    );
     this.line(`${elem} ${temp} = ${n}[${left}];`);
     this.line(`${n}[${left}] = ${n}[${right}];`);
     this.line(`${n}[${right}] = ${temp};`);
@@ -175,7 +190,9 @@ export class JavaEmitter extends Emitter {
   }
 
   signature(f) {
-    const params = this.visibleParams(f).map((p) => `${this.scalar(p.type)} ${p.name}`).join(", ");
+    const params = this.visibleParams(f)
+      .map((p) => `${this.scalar(p.type)} ${p.name}`)
+      .join(", ");
     const returns = !f.returns || f.returns === "void" ? "void" : this.scalar(f.returns);
     return `static ${returns} ${f.name}(${params})`;
   }

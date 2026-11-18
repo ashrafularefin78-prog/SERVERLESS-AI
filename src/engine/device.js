@@ -77,7 +77,8 @@ export function deviceTags(device) {
   if (device.webgpu) {
     tags.push({ label: "WebGPU", good: true });
     if (device.shaderF16) tags.push({ label: "shader-f16", good: true });
-    if (device.maxBufferSize) tags.push({ label: `max buffer ${formatMemory(device.maxBufferSize)}` });
+    if (device.maxBufferSize)
+      tags.push({ label: `max buffer ${formatMemory(device.maxBufferSize)}` });
   } else {
     tags.push({ label: "CPU / WASM", good: false });
   }

@@ -1,16 +1,57 @@
 import { expandShorthand, normalizeText } from "../../understand.js";
 
 const UNITS = {
-  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
-  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
+  zero: 0,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+  thirteen: 13,
+  fourteen: 14,
+  fifteen: 15,
+  sixteen: 16,
+  seventeen: 17,
+  eighteen: 18,
+  nineteen: 19,
 };
-const TENS = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+const TENS = {
+  twenty: 20,
+  thirty: 30,
+  forty: 40,
+  fifty: 50,
+  sixty: 60,
+  seventy: 70,
+  eighty: 80,
+  ninety: 90,
+};
 const SCALES = { hundred: 100, thousand: 1000, million: 1000000 };
 const WORD = `(?:${[...Object.keys(UNITS), ...Object.keys(TENS), ...Object.keys(SCALES)].join("|")})`;
-const NUMBER_WORDS = new RegExp(`\\b${WORD}(?:(?:[\\s-]+|(?<=hundred|thousand)\\s+and\\s+)${WORD})*\\b`, "g");
-const ORDINAL_WORDS = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10 };
+const NUMBER_WORDS = new RegExp(
+  `\\b${WORD}(?:(?:[\\s-]+|(?<=hundred|thousand)\\s+and\\s+)${WORD})*\\b`,
+  "g",
+);
+const ORDINAL_WORDS = {
+  first: 1,
+  second: 2,
+  third: 3,
+  fourth: 4,
+  fifth: 5,
+  sixth: 6,
+  seventh: 7,
+  eighth: 8,
+  ninth: 9,
+  tenth: 10,
+};
 
-const QUOTED = /(^|[\s(\[{:=,])(["'`])((?:(?!\2)[^\n])+?)\2(?=$|[\s)\]}.,!?:;])/g;
+const QUOTED = /(^|[\s([{:=,])(["'`])((?:(?!\2)[^\n])+?)\2(?=$|[\s)\]}.,!?:;])/g;
 const VERSIONS = [
   /\b(?:python|py|java|jdk|jre|node(?:\.?js)?|golang|go|typescript|ts|kotlin|swift|php|ruby|perl|dart|scala|rust|es|ecmascript|csharp|dotnet|net)\s*v?\d+(?:\.\d+)*\b/g,
   /(?:\.net|c#)\s*\d+(?:\.\d+)*/g,
@@ -24,7 +65,9 @@ const N = String.raw`(-?\d+(?:\.\d+)?|n)`;
 export const COUNT_NOUN = String.raw`(?:(?:different|given|random|positive|negative|natural|whole|real|decimal|floating(?:[\s-]point)?|prime|odd|even|fibonacci|armstrong|perfect|integer)\s+)*(numbers?|nums?|integers?|ints?|values?|elements?|items?|terms?|digits?|floats?|decimals?|doubles?|marks|scores?|subjects?|students?|rows?|lines?|names?|strings?|words?|inputs?|entries|entry|times|primes|multiples|tables?)\b`;
 const COUNT_AFTER = new RegExp(`^${COUNT_NOUN}`);
 const RANGE_LEAD = /(?:\bfrom|\bbetween|\brange(?:\s+of)?|\bin)$/;
-const RANGE_JOIN = new RegExp(String.raw`^(?:to|and|till|until|through|thru|up\s*to|upto|-|\.\.)\s*${N}(?![\w.])`);
+const RANGE_JOIN = new RegExp(
+  String.raw`^(?:to|and|till|until|through|thru|up\s*to|upto|-|\.\.)\s*${N}(?![\w.])`,
+);
 const BARE_JOIN = new RegExp(String.raw`^(?:to|till|until|through|thru|-|\.\.)\s*${N}(?![\w.])`);
 const LIMIT_LEAD =
   /(?:\bup\s*to|\bupto|\btill|\buntil|\bthrough|\bthru|\bbelow|\bunder|\bless\s+than|\blesser\s+than|\bsmaller\s+than|\bnot\s+exceeding|\bnot\s+more\s+than|\bwithin|\blimit(?:\s+of)?|<=?|≤)$/;
@@ -41,7 +84,8 @@ function convertNumberWords(text) {
     if (run === "one") {
       const before = whole.slice(Math.max(0, offset - 12), offset);
       const after = whole.slice(offset + 3, offset + 14);
-      if (/\b(?:the|this|that|which|each|every|any|no|some|only|a|another)\s+$/.test(before)) return run;
+      if (/\b(?:the|this|that|which|each|every|any|no|some|only|a|another)\s+$/.test(before))
+        return run;
       if (/^(?:\s+(?:by|of|another|after|more|line)\b|-liner)/.test(after)) return run;
     }
     const out = [];
@@ -57,7 +101,8 @@ function convertNumberWords(text) {
     for (const word of run.split(/[\s-]+/)) {
       if (word === "and") continue;
       if (word in UNITS) {
-        if (last === "unit" || (last === "tens" && (UNITS[word] >= 10 || UNITS[word] === 0))) flush();
+        if (last === "unit" || (last === "tens" && (UNITS[word] >= 10 || UNITS[word] === 0)))
+          flush();
         current += UNITS[word];
         last = "unit";
       } else if (word in TENS) {
@@ -119,7 +164,9 @@ function ordinalOf(numeric) {
   const digits = numeric.match(/\b(\d+)(?:st|nd|rd|th)\b/);
   if (digits) return Number(digits[1]);
   if (/\bnth\b|\bkth\b/.test(numeric)) return "n";
-  const word = numeric.match(/\b(second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+(?:largest|smallest|highest|lowest|biggest|greatest|maximum|minimum|term|number|element|prime)/);
+  const word = numeric.match(
+    /\b(second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+(?:largest|smallest|highest|lowest|biggest|greatest|maximum|minimum|term|number|element|prime)/,
+  );
   return word ? ORDINAL_WORDS[word[1]] : null;
 }
 

@@ -1,9 +1,24 @@
 import wasmUrl from "@wllama/wllama/esm/wasm/wllama.wasm?url";
-import { demoChatReply } from "../chat/replies.js";
 import { DEMO_MODE } from "../config.js";
-import { parseMemoryCommand } from "../memory.js";
 import { CPU_MODEL, isCpuModel, modelByKey, resolveGpuModel } from "./catalog.js";
+import { generateDemo } from "./demo.js";
 import { formatCount } from "./device.js";
+
+/**
+ * @typedef {Object} EngineState
+ * @property {"demo" | "webgpu" | "wasm" | null} backend
+ * @property {string | null} modelKey
+ * @property {string | null} modelName
+ * @property {string | null} modelFamily
+ * @property {string | null} modelId
+ * @property {"idle" | "loading" | "ready" | "generating" | "error"} phase
+ * @property {number} progress
+ * @property {string} progressText
+ * @property {string | null} error
+ * @property {boolean} generating
+ * @property {boolean} loaded
+ * @property {boolean} [demo]
+ */
 
 const state = {
   backend: null,
@@ -27,12 +42,22 @@ let loadAbort = null;
 
 const listeners = new Set();
 
+/**
+ * Subscribe to engine state changes. The listener fires immediately with the
+ * current snapshot.
+ *
+ * @param {(state: EngineState) => void} listener
+ * @returns {() => void} Unsubscribe function.
+ */
 export function subscribe(listener) {
   listeners.add(listener);
   listener(getState());
   return () => listeners.delete(listener);
 }
 
+/**
+ * @returns {EngineState} A snapshot safe to hand to the UI.
+ */
 export function getState() {
   return { ...state, loaded: state.phase === "ready" || state.phase === "generating" };
 }
@@ -64,6 +89,13 @@ function resetRuntime() {
   generationController = null;
 }
 
+/**
+ * Select and initialize a backend. The model-free build immediately selects
+ * the built-in demo engine; the model branches remain for future use.
+ *
+ * @param {{ modelKey: string, device?: object }} options
+ * @returns {Promise<void>}
+ */
 export async function loadModel({ modelKey, device }) {
   if (DEMO_MODE || modelKey === "demo") {
     resetRuntime();
@@ -155,20 +187,16 @@ async function loadWebGpu({ token, resolved, signal }) {
 
   try {
     const instance = await Promise.race([
-      webllm.CreateWebWorkerMLCEngine(
-        localWorker,
-        resolved.modelId,
-        {
-          initProgressCallback: (report) => {
-            if (token !== loadToken) return;
-            const progress = Number.isFinite(report?.progress) ? report.progress : 0;
-            patch({
-              progress: Math.max(0, Math.min(1, progress)),
-              progressText: report?.text || "Loading model...",
-            });
-          },
+      webllm.CreateWebWorkerMLCEngine(localWorker, resolved.modelId, {
+        initProgressCallback: (report) => {
+          if (token !== loadToken) return;
+          const progress = Number.isFinite(report?.progress) ? report.progress : 0;
+          patch({
+            progress: Math.max(0, Math.min(1, progress)),
+            progressText: report?.text || "Loading model...",
+          });
         },
-      ),
+      }),
       aborted,
     ]);
 
@@ -247,6 +275,17 @@ async function loadWasm({ token, signal }) {
   });
 }
 
+/**
+ * Stream a reply from the active backend.
+ *
+ * @param {Object} options
+ * @param {Array<{ role: string, content: string }>} options.messages
+ * @param {number} [options.temperature]
+ * @param {number} [options.maxTokens]
+ * @param {AbortSignal} [options.signal]
+ * @param {Object} [options.demo] Demo-only options (memory and reply builder).
+ * @yields {{ text?: string, usage?: object }}
+ */
 export async function* generate({ messages, temperature, maxTokens, signal, demo }) {
   if (state.phase !== "ready" && state.phase !== "generating") {
     throw new Error("No model is loaded yet.");
@@ -256,7 +295,7 @@ export async function* generate({ messages, temperature, maxTokens, signal, demo
 
   try {
     if (state.backend === "demo") {
-      yield* generateDemo(messages, signal, demo);
+      yield* generateDemo(messages, signal, demo, { modelKey: state.modelKey });
       return;
     }
 
@@ -320,6 +359,11 @@ async function* generateWasm({ messages, temperature, maxTokens, signal }) {
   }
 }
 
+/**
+ * Abort the current generation and return the engine to `ready`.
+ *
+ * @returns {Promise<void>}
+ */
 export async function stop() {
   generationController?.abort();
   generationController = null;
@@ -337,6 +381,9 @@ export async function stop() {
   }
 }
 
+/**
+ * Cancel an in-flight model load and release runtime resources.
+ */
 export function abortLoad() {
   loadToken += 1;
   loadAbort?.abort();
@@ -352,6 +399,11 @@ export function abortLoad() {
   });
 }
 
+/**
+ * Stop generation, release the backend, and return to `idle`.
+ *
+ * @returns {Promise<void>}
+ */
 export async function unload() {
   loadToken += 1;
   await stop();
@@ -383,12 +435,20 @@ export async function unload() {
   });
 }
 
+/**
+ * Cancel any previous run and create a fresh signal for a new one.
+ *
+ * @returns {AbortSignal}
+ */
 export function newGenerationSignal() {
   generationController?.abort();
   generationController = new AbortController();
   return generationController.signal;
 }
 
+/**
+ * @returns {boolean} True when a backend can accept a reply request.
+ */
 export function isReady() {
   return state.phase === "ready" || state.phase === "generating";
 }
@@ -404,64 +464,4 @@ function normalizeError(error) {
     return "WebGPU is not available on this device. Use the CPU fallback model.";
   }
   return message;
-}
-
-function sleep(milliseconds) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-async function* generateDemo(messages, signal, demo = null) {
-  const lastUser = [...messages].reverse().find((message) => message.role === "user");
-  const prompt = lastUser?.content?.trim() || "your message";
-  const commandReply = memoryCommandReply(prompt, demo?.memoryOutcome);
-  const reply =
-    commandReply ??
-    (state.modelKey === "demo" && demo && typeof demo.buildDemoReply === "function"
-      ? demo.buildDemoReply({ prompt, messages, systemPrompt: messages[0]?.content || "" })
-      : demoChatReply({
-          prompt,
-          messages,
-          memory: demo?.memory || [],
-        }));
-  const chunks = reply.match(/\S+\s*/g) || [reply];
-
-  for (const chunk of chunks) {
-    if (signal?.aborted) return;
-    yield { text: chunk };
-    await sleep(14 + Math.random() * 26);
-  }
-
-  yield { usage: { completion_tokens: chunks.length, total_tokens: chunks.length } };
-}
-
-function memoryCommandReply(prompt, memoryOutcome = null) {
-  const command = parseMemoryCommand(prompt);
-  if (!command) return null;
-
-  if (command.type === "add") {
-    const name = command.text.match(/^The user's name is ([A-Za-z][A-Za-z' -]{0,39})\.$/);
-    if (name && memoryOutcome?.added) {
-      return `Nice to meet you, ${escapeMarkdown(name[1])}. I'll remember your name on this device.`;
-    }
-    if (memoryOutcome?.added) {
-      return `Got it, I'll remember that ${escapeMarkdown(command.text)}\n\nIt stays on this device and will follow you into later chats. You can view or remove it under Settings, Memory.`;
-    }
-    if (memoryOutcome?.duplicate) return "I already have that note, so nothing new was saved. Settings, Memory shows what I know.";
-    if (memoryOutcome?.full) return "My memory is full, so I couldn't save that. Forget an old note first, then ask me again.";
-  }
-
-  if (command.type === "forget" || command.type === "forget-all") {
-    if (memoryOutcome?.removed) {
-      return command.type === "forget-all"
-        ? "Done, I've forgotten everything I had noted about you."
-        : `Done, I forgot ${memoryOutcome.removed} note${memoryOutcome.removed === 1 ? "" : "s"} matching that.`;
-    }
-    return "I looked, but no note matched that, so there was nothing to forget.";
-  }
-
-  return null;
-}
-
-function escapeMarkdown(text) {
-  return text.replace(/[\\`*_{}[\]()#+\-.!|>]/g, "\\$&");
 }

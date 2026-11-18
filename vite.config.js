@@ -2,14 +2,16 @@ import { readFile, writeFile } from "node:fs/promises";
 import { defineConfig } from "vite";
 
 // GitHub Pages cannot set response headers, so the production CSP ships as a meta tag.
-// Hosts: model weights come from Hugging Face, compiled kernels from GitHub raw.
+// This build is model-free, so scripts and connections stay same-origin. Enabling the
+// dormant WebLLM/wllama backends again requires adding 'wasm-unsafe-eval' and the
+// Hugging Face/GitHub download origins back to this policy.
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'wasm-unsafe-eval'",
+  "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co https://*.xethub.hf.co https://raw.githubusercontent.com",
+  "connect-src 'self'",
   "worker-src 'self' blob:",
   "child-src 'self' blob:",
   "manifest-src 'self'",

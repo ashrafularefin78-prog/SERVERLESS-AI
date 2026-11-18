@@ -1,9 +1,31 @@
 import { chr, elemType, sub } from "../ir.js";
 import { ATOM, COMPARE, Emitter, PREC, negate, quote } from "./base.js";
 
-const UNICODE = { isDigit: "IsDigit", isAlpha: "IsLetter", isUpper: "IsUpper", isLower: "IsLower", isSpace: "IsSpace" };
+const UNICODE = {
+  isDigit: "IsDigit",
+  isAlpha: "IsLetter",
+  isUpper: "IsUpper",
+  isLower: "IsLower",
+  isSpace: "IsSpace",
+};
 const ARITH = new Set(["+", "-", "*", "/", "%"]);
-const GO_PREC = { "||": 1, "&&": 2, "==": 3, "!=": 3, "<": 3, "<=": 3, ">": 3, ">=": 3, "+": 4, "-": 4, "*": 5, "/": 5, "%": 5, "&": 5, "^": 4 };
+const GO_PREC = {
+  "||": 1,
+  "&&": 2,
+  "==": 3,
+  "!=": 3,
+  "<": 3,
+  "<=": 3,
+  ">": 3,
+  ">=": 3,
+  "+": 4,
+  "-": 4,
+  "*": 5,
+  "/": 5,
+  "%": 5,
+  "&": 5,
+  "^": 4,
+};
 const atom = (t) => ({ t, p: ATOM });
 const negative = (x) => x.k === "neg" || (x.k === "num" && x.value < 0);
 
@@ -72,7 +94,9 @@ export class GoEmitter extends Emitter {
   }
 
   leftWrapped(e, l) {
-    return l.k === "bin" && (PREC[l.op] < PREC[e.op] || (COMPARE.has(e.op) && PREC[l.op] === PREC[e.op]));
+    return (
+      l.k === "bin" && (PREC[l.op] < PREC[e.op] || (COMPARE.has(e.op) && PREC[l.op] === PREC[e.op]))
+    );
   }
 
   walkBinary(e) {
@@ -134,7 +158,11 @@ export class GoEmitter extends Emitter {
     if (e.k === "bin" && ARITH.has(e.op)) {
       const lt = super.typeOf(e.l);
       const rt = super.typeOf(e.r);
-      if ((lt === "char" && (rt === "char" || e.r.k === "num")) || (rt === "char" && e.l.k === "num")) return "char";
+      if (
+        (lt === "char" && (rt === "char" || e.r.k === "num")) ||
+        (rt === "char" && e.l.k === "num")
+      )
+        return "char";
     }
     return super.typeOf(e);
   }
@@ -157,12 +185,16 @@ export class GoEmitter extends Emitter {
 
   cast(e) {
     if (e.to === "long" && this.isIntegral(this.typeOf(e.e))) return this.render(e.e);
-    const type = { double: "float64", int: "int", long: "int", char: "rune", string: "string" }[e.to];
+    const type = { double: "float64", int: "int", long: "int", char: "rune", string: "string" }[
+      e.to
+    ];
     return atom(`${type}(${this.expr(e.e)})`);
   }
 
   float(x) {
-    return this.isIntegral(this.typeOf(x)) && x.k !== "num" ? `float64(${this.expr(x)})` : this.expr(x);
+    return this.isIntegral(this.typeOf(x)) && x.k !== "num"
+      ? `float64(${this.expr(x)})`
+      : this.expr(x);
   }
 
   helper(name, lines, ...packages) {
@@ -186,7 +218,14 @@ export class GoEmitter extends Emitter {
           this.needs.add("math");
           return atom(`math.Abs(${first()})`);
         }
-        this.helper("abs", ["func abs(x int) int {", "\tif x < 0 {", "\t\treturn -x", "\t}", "\treturn x", "}"]);
+        this.helper("abs", [
+          "func abs(x int) int {",
+          "\tif x < 0 {",
+          "\t\treturn -x",
+          "\t}",
+          "\treturn x",
+          "}",
+        ]);
         return atom(`abs(${first()})`);
       case "upper":
       case "lower": {
@@ -233,7 +272,11 @@ export class GoEmitter extends Emitter {
     const valueType = this.typeOf(value);
     if (type === "double" && value.k === "num") return this.number({ ...value, type: "double" });
     if (type === "double" && this.isIntegral(valueType)) return `float64(${this.expr(value)})`;
-    if (this.isIntegral(type) && (valueType === "double" || valueType === "char") && value.k !== "num") {
+    if (
+      this.isIntegral(type) &&
+      (valueType === "double" || valueType === "char") &&
+      value.k !== "num"
+    ) {
       return `int(${this.expr(value)})`;
     }
     if (type === "string" && valueType === "char") return `string(${this.expr(value)})`;
@@ -253,8 +296,14 @@ export class GoEmitter extends Emitter {
   }
 
   condIf(target, c) {
-    const assign = (x) => (x.k === "cond" ? [this.condIf(target, x)] : [{ k: "set", target, value: x }]);
-    return { k: "if", c: c.c, then: assign(c.t), otherwise: c.f.k === "cond" ? this.condIf(target, c.f) : assign(c.f) };
+    const assign = (x) =>
+      x.k === "cond" ? [this.condIf(target, x)] : [{ k: "set", target, value: x }];
+    return {
+      k: "if",
+      c: c.c,
+      then: assign(c.t),
+      otherwise: c.f.k === "cond" ? this.condIf(target, c.f) : assign(c.f),
+    };
   }
 
   s_let(s) {
@@ -278,7 +327,8 @@ export class GoEmitter extends Emitter {
   s_op(s) {
     const one = s.value.k === "num" && s.value.value === 1 && (s.op === "+" || s.op === "-");
     if (one) this.line(`${this.expr(s.target)}${s.op}${s.op}`);
-    else this.line(`${this.expr(s.target)} ${s.op}= ${this.coerce(this.typeOf(s.target), s.value)}`);
+    else
+      this.line(`${this.expr(s.target)} ${s.op}= ${this.coerce(this.typeOf(s.target), s.value)}`);
   }
 
   printText(parts, newline) {
@@ -298,7 +348,10 @@ export class GoEmitter extends Emitter {
         continue;
       }
       const type = this.typeOf(part.e);
-      format += type === "double" ? `%.${part.dp ?? 2}f` : { char: "%c", string: "%s", bool: "%t" }[type] || "%d";
+      format +=
+        type === "double"
+          ? `%.${part.dp ?? 2}f`
+          : { char: "%c", string: "%s", bool: "%t" }[type] || "%d";
       exprs.push(part.e);
     }
     const args = this.args(exprs.length + 1, () => exprs.map((x) => this.expr(x)).join(", "));
@@ -318,7 +371,12 @@ export class GoEmitter extends Emitter {
   lineRead(type) {
     this.helper(
       "readLine",
-      ["func readLine(reader *bufio.Reader) string {", "\tline, _ := reader.ReadString('\\n')", "\treturn strings.TrimSpace(line)", "}"],
+      [
+        "func readLine(reader *bufio.Reader) string {",
+        "\tline, _ := reader.ReadString('\\n')",
+        "\treturn strings.TrimSpace(line)",
+        "}",
+      ],
       "bufio",
       "os",
       "strings",
@@ -359,7 +417,9 @@ export class GoEmitter extends Emitter {
   }
 
   declareArray(s) {
-    this.line(`${s.name} := make(${this.goType(`${s.elem}[]`)}, ${this.args(2, () => this.expr(s.size))})`);
+    this.line(
+      `${s.name} := make(${this.goType(`${s.elem}[]`)}, ${this.args(2, () => this.expr(s.size))})`,
+    );
   }
 
   loopVarDecl(name) {
@@ -369,7 +429,9 @@ export class GoEmitter extends Emitter {
   forLoop(s) {
     const declared = Boolean(this.lookup(s.name));
     const update = this.updateText(s);
-    this.blockStart(`for ${s.name} ${declared ? "=" : ":="} ${this.expr(s.from)}; ${this.expr(this.loopCondition(s))}; ${update}`);
+    this.blockStart(
+      `for ${s.name} ${declared ? "=" : ":="} ${this.expr(s.from)}; ${this.expr(this.loopCondition(s))}; ${update}`,
+    );
     this.declare(s.name, "int");
     this.block(s.body);
     this.blockEnd();
@@ -400,7 +462,9 @@ export class GoEmitter extends Emitter {
       this.pop();
       this.depth -= 1;
     };
-    s.cases.forEach((item) => section(`case ${item.values.map((x) => this.expr(x)).join(", ")}:`, item.body));
+    s.cases.forEach((item) =>
+      section(`case ${item.values.map((x) => this.expr(x)).join(", ")}:`, item.body),
+    );
     if (s.otherwise) section("default:", s.otherwise);
     this.line("}");
   }
@@ -418,12 +482,15 @@ export class GoEmitter extends Emitter {
     this.needs.add("sort");
     const n = this.expr(s.arr);
     const double = elemType(this.typeOf(s.arr)) === "double";
-    if (s.desc) this.line(`sort.Sort(sort.Reverse(sort.${double ? "Float64Slice" : "IntSlice"}(${n})))`);
+    if (s.desc)
+      this.line(`sort.Sort(sort.Reverse(sort.${double ? "Float64Slice" : "IntSlice"}(${n})))`);
     else this.line(`sort.${double ? "Float64s" : "Ints"}(${n})`);
   }
 
   signature(f) {
-    const params = this.visibleParams(f).map((p) => `${p.name} ${this.goType(p.type)}`).join(", ");
+    const params = this.visibleParams(f)
+      .map((p) => `${p.name} ${this.goType(p.type)}`)
+      .join(", ");
     const returns = !f.returns || f.returns === "void" ? "" : ` ${this.goType(f.returns)}`;
     return `func ${f.name}(${params})${returns}`;
   }
@@ -441,7 +508,10 @@ export class GoEmitter extends Emitter {
     this.blockEnd();
     const main = this.lines;
     const packages = [...this.needs].sort();
-    const imports = packages.length === 1 ? [`import "${packages[0]}"`] : ["import (", ...packages.map((p) => `\t"${p}"`), ")"];
+    const imports =
+      packages.length === 1
+        ? [`import "${packages[0]}"`]
+        : ["import (", ...packages.map((p) => `\t"${p}"`), ")"];
     const helpers = [...this.helpers.values()].flatMap((lines) => [...lines, ""]);
     this.lines = ["package main", "", ...imports, "", ...helpers, ...functions, "", ...main];
     return this.text();

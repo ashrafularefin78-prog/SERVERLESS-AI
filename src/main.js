@@ -34,7 +34,8 @@ function showFatalError(error) {
 
   const hint = document.createElement("p");
   hint.className = "fatal-hint";
-  hint.textContent = "Reloading usually fixes a transient startup problem. If not, clear this site's data.";
+  hint.textContent =
+    "Reloading usually fixes a transient startup problem. If not, clear this site's data.";
 
   const reload = document.createElement("button");
   reload.type = "button";
