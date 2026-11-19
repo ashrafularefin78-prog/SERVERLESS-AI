@@ -315,17 +315,35 @@ test("offers community GGUF models without WebGPU and persists the choice withou
   await page.goto("/");
   await page.locator("#open-sidebar").click();
   await page.locator("#open-settings").click();
+
+  const groups = page.locator("#model-select optgroup");
+  await expect(groups).toHaveCount(2);
+  await expect(groups.nth(0)).toHaveAttribute("label", "Community GGUF - CPU/WASM");
+  await expect(groups.nth(1)).toHaveAttribute("label", "WebGPU - official model builds");
+  await expect(groups.nth(0).locator("option")).toHaveCount(GGUF_MODELS.length);
+
+  const options = await page
+    .locator("#model-select option")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => ({ value: node.value, text: node.textContent || "" })),
+    );
   for (const model of GGUF_MODELS) {
+    const option = options.find((item) => item.value === model.id);
+    expect(option).toBeTruthy();
+    expect(option.text).toContain(model.label);
+    expect(option.text).toContain(`${Math.ceil(model.downloadBytes / 1_000_000)} MB download`);
+  }
+
+  for (const model of [GGUF_MODELS[0], GGUF_MODELS.at(-1)]) {
     await page.locator("#model-select").selectOption(model.id);
     await expect(page.locator("#model-load")).toBeEnabled();
     await expect(page.locator("#model-status")).toContainText(
       `${Math.ceil(model.downloadBytes / 1_000_000)} MB download`,
     );
-    await expect(page.locator("#model-note")).toContainText(
-      "not an official Anthropic Claude model",
-    );
+    await expect(page.locator("#model-note")).toContainText(/not an official/i);
     await expect(page.locator("#model-note")).toContainText("CPU");
   }
+
   await page.reload();
   await page.locator("#open-sidebar").click();
   await page.locator("#open-settings").click();

@@ -44,6 +44,8 @@ The built-in engine is model-free and answers immediately. If you want neural re
 | Qwen2.5 0.5B | 340 MB       | Balanced default                            |
 | Llama 3.2 1B | 690 MB       | Best quality here, needs a more capable GPU |
 
+Settings also lists pinned community GGUF builds that run on the CPU through WebAssembly, grouped under **Community GGUF - CPU/WASM**. Alongside a few featured builds, it includes a generated catalogue of more than 500 uncensored "abliterated" community models: coding, chat, and roleplay variants of Qwen, DeepSeek, MiMo, Llama, Gemma, and other families. They are labelled **uncensored** because their refusal behaviour was removed; replies can be unsafe or offensive, and the app does not add a content filter. Each URL is pinned to a specific Hugging Face commit, and the size is shown before download. The catalogue is filtered rather than literal: it keeps single-file, text-capable GGUF files under 4 GB and deduplicates by base model. Larger entries use aggressive Q2_K/Q3 quantizations, need several GB of free RAM, and generate slowly on the CPU.
+
 How the model path is built:
 
 - **WebLLM** (`@mlc-ai/web-llm`) compiles the model with WebGPU. Model records, compatible binaries and integrity data come from its pinned `prebuiltAppConfig` rather than being hand-copied.

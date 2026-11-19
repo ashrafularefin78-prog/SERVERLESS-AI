@@ -64,17 +64,45 @@ describe("local model catalogue", () => {
     expect(isKnownModel(model.id)).toBe(true);
   });
 
-  it.each(GGUF_MODELS)("labels $label as a pinned community GGUF, not official Claude", (model) => {
+  it.each(GGUF_MODELS)("labels $label as a pinned community GGUF", (model) => {
     expect(model.runtime).toBe("gguf");
-    expect(model.label).toContain("(community)");
-    expect(model.label).toContain("Qwen");
+    expect(model.label).toContain("community");
     expect(model.url).toMatch(/^https:\/\/huggingface\.co\/.+\/resolve\/[a-f0-9]{40}\/.+\.gguf$/);
     expect(model.downloadBytes).toBeGreaterThan(0);
-    expect(model.downloadBytes).toBeLessThan(2_000_000_000);
+    expect(model.downloadBytes).toBeLessThan(4_000_000_000);
     expect(model.memoryLabel).toContain("MB download - CPU/WASM");
-    expect(model.note).toContain("not an official Anthropic Claude model");
+    expect(model.note).toContain("Runs locally on your CPU");
+    expect(model.note).toMatch(/not an official/i);
     expect(modelById(model.id)).toBe(model);
     expect(LOCAL_MODELS).toContain(model);
+  });
+
+  it("offers uncensored coding models with a clear warning", () => {
+    const uncensored = GGUF_MODELS.filter((model) => model.uncensored);
+    expect(uncensored.length).toBeGreaterThanOrEqual(500);
+    expect(
+      new Set(uncensored.map((model) => model.baseModel.toLowerCase())).size,
+    ).toBeGreaterThanOrEqual(495);
+    expect(uncensored.filter((model) => /coder/i.test(model.label)).length).toBeGreaterThanOrEqual(
+      15,
+    );
+    expect(
+      uncensored.filter((model) => /deepseek/i.test(model.label)).length,
+    ).toBeGreaterThanOrEqual(15);
+    expect(uncensored.filter((model) => /mimo/i.test(model.label)).length).toBeGreaterThanOrEqual(
+      3,
+    );
+    expect(
+      uncensored.some((model) => /\b(caption|audio|ocr|whisper|diffusion)\b/i.test(model.label)),
+    ).toBe(false);
+    for (const model of uncensored) {
+      expect(model.label.toLowerCase()).toContain("uncensored");
+      expect(model.note).toContain("can produce unsafe or offensive output");
+    }
+  });
+
+  it("keeps community download URLs unique", () => {
+    expect(new Set(GGUF_MODELS.map((model) => model.url)).size).toBe(GGUF_MODELS.length);
   });
 
   it("preserves the built-in startup and existing recommended model", () => {

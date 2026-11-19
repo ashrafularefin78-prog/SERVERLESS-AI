@@ -20,6 +20,8 @@ export interface GGUFModel extends ModelDisplay {
   runtime: "gguf";
   url: string;
   downloadBytes: number;
+  baseModel: string;
+  uncensored?: boolean;
 }
 
 export type LocalModel = WebLLMModel | GGUFModel;
@@ -68,7 +70,7 @@ export const GGUF_MODELS: GGUFModel[] = COMMUNITY_MODELS.map((model) => ({
   memoryLabel: `about ${Math.ceil(model.downloadBytes / 1_000_000)} MB download - CPU/WASM`,
   contextWindow: 4096,
   note:
-    `Community derivative of ${model.baseModel}, not an official Anthropic Claude model. ` +
+    `${model.note} ` +
     "Runs locally on your CPU with WebAssembly, without an API key or WebGPU. " +
     "Requires a current Chrome or Edge with WebAssembly JSPI support. " +
     "CPU generation can be slow and needs free RAM beyond the download size. 4096-token context.",

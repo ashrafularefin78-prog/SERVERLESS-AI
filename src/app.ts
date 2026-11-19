@@ -976,14 +976,34 @@ async function initModelPanel() {
   const select = dom["model-select"];
   select.textContent = "";
   select.append(h("option", { value: "", text: "Built-in assistant - no download" }));
-  for (const model of engine.models) {
+
+  const option = (model: (typeof engine.models)[number]) =>
+    h("option", {
+      value: model.id,
+      text: `${model.label} - ${model.memoryLabel}`,
+    });
+  const community = engine.models.filter((model) => model.runtime === "gguf");
+  const webgpu = engine.models.filter((model) => model.runtime === "webllm");
+
+  if (community.length) {
     select.append(
-      h("option", {
-        value: model.id,
-        text: `${model.label} - ${model.memoryLabel}`,
-      }),
+      h(
+        "optgroup",
+        { label: "Community GGUF - CPU/WASM" },
+        ...community.map((model) => option(model)),
+      ),
     );
   }
+  if (webgpu.length) {
+    select.append(
+      h(
+        "optgroup",
+        { label: "WebGPU - official model builds" },
+        ...webgpu.map((model) => option(model)),
+      ),
+    );
+  }
+
   select.value = engine.models.some((model) => model.id === state.settings.modelId)
     ? state.settings.modelId
     : "";
