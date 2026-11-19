@@ -274,10 +274,12 @@ export function renderWelcome({
   suggestions: string[];
 }) {
   const welcome = h("section", { class: "welcome" });
+  const hero = h("div", { class: "welcome-hero" });
+  const copy = h("div", { class: "welcome-copy" });
 
-  welcome.append(h("p", { class: "eyebrow", text: "Private - on-device - no account" }));
-  welcome.append(h("h2", {}, "Your own AI,", h("br"), h("span", { text: "running in this tab." })));
-  welcome.append(
+  copy.append(h("p", { class: "eyebrow", text: "Private - on-device - no account" }));
+  copy.append(h("h2", {}, "Your own AI,", h("br"), h("span", { text: "running in this tab." })));
+  copy.append(
     h("p", {
       class: "welcome-lede",
       text:
@@ -285,6 +287,33 @@ export function renderWelcome({
         "this device. Add an on-device model in Settings for full neural replies.",
     }),
   );
+
+  const stats = h("div", { class: "hero-stats" });
+  for (const [iconName, label] of [
+    ["lock", "0 bytes uploaded"],
+    ["spark", "Runs offline"],
+    ["check", "No account needed"],
+  ] as const) {
+    const stat = h("span", { class: "hero-stat" });
+    stat.innerHTML = icon(iconName);
+    stat.append(h("span", { text: label }));
+    stats.append(stat);
+  }
+  copy.append(stats);
+
+  const orb = h("div", { class: "hero-orb", "aria-hidden": "true" });
+  orb.innerHTML =
+    '<span class="orb-glow"></span>' +
+    '<span class="orb-ring orb-ring-1"></span>' +
+    '<span class="orb-ring orb-ring-2"></span>' +
+    '<span class="orb-ring orb-ring-3"></span>' +
+    `<span class="orb-core">${iconLogo("")}</span>` +
+    '<span class="orb-spark orb-spark-1"></span>' +
+    '<span class="orb-spark orb-spark-2"></span>' +
+    '<span class="orb-spark orb-spark-3"></span>';
+
+  hero.append(copy, orb);
+  welcome.append(hero);
 
   const ready = engine.phase === "ready" || engine.phase === "generating";
   const notice =
@@ -296,17 +325,21 @@ export function renderWelcome({
           ? "The built-in assistant is ready. Ask anything, or pick a suggestion below."
           : "Starting the built-in assistant...";
   welcome.append(renderNotice(notice, false));
+  welcome.append(h("p", { class: "suggestions-label", text: "Start with" }));
 
   const chips = h("div", { class: "suggestions" });
   for (const suggestion of suggestions) {
-    chips.append(
-      h("button", {
-        class: "suggestion",
-        type: "button",
-        dataset: { suggestion },
-        text: suggestion,
-      }),
+    const chip = h("button", {
+      class: "suggestion",
+      type: "button",
+      dataset: { suggestion },
+      title: suggestion,
+    });
+    chip.append(
+      h("span", { class: "suggestion-text", text: suggestion }),
+      h("span", { class: "suggestion-arrow", html: icon("arrow") }),
     );
+    chips.append(chip);
   }
   welcome.append(chips);
 

@@ -521,7 +521,17 @@ function renderConversation({ scroll = true }: { scroll?: boolean } = {}) {
     }
   }
 
-  if (scroll) scrollToBottom();
+  if (scroll) {
+    // The welcome panel is taller than a phone screen, so anchor it to the top
+    // instead of scrolling the eyebrow and headline out of view on load.
+    if (conversation.messages.length) {
+      scrollToBottom();
+    } else {
+      window.requestAnimationFrame(() => {
+        dom["chat-scroll"].scrollTop = 0;
+      });
+    }
+  }
 }
 
 function updateChatHeader() {
@@ -1183,7 +1193,7 @@ function applyTheme() {
   const theme = resolvedTheme();
   document.documentElement.dataset.theme = theme;
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", theme === "light" ? "#f5f5ef" : "#0c0f0e");
+  if (meta) meta.setAttribute("content", theme === "light" ? "#f2f5ef" : "#05080a");
 }
 
 function toggleTheme() {

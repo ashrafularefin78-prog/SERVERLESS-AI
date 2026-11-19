@@ -9,7 +9,7 @@
       content="A private AI chat that runs entirely in your browser: optional on-device WebGPU and CPU models plus a built-in rule assistant. No API keys, no servers, and nothing leaves your device."
     />
     <meta name="color-scheme" content="dark light" />
-    <meta name="theme-color" content="#0c0f0e" />
+    <meta name="theme-color" content="#05080a" />
     <!-- CONTENT_SECURITY_POLICY -->
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
@@ -17,12 +17,20 @@
     <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body>
+    <div class="atmosphere" aria-hidden="true">
+      <span class="aurora aurora-a"></span>
+      <span class="aurora aurora-b"></span>
+      <span class="aurora aurora-c"></span>
+      <span class="grid-plane"></span>
+      <span class="vignette"></span>
+    </div>
+
     <svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <symbol id="i-logo" viewBox="0 0 32 32">
         <rect x="1" y="1" width="30" height="30" rx="9.5" fill="currentColor" />
         <path
           d="M16 6.5l2.55 6.95L25.5 16l-6.95 2.55L16 25.5l-2.55-6.95L6.5 16l6.95-2.55L16 6.5z"
-          fill="var(--logo-cutout, #0c0f0e)"
+          fill="var(--logo-cutout, #05080a)"
         />
       </symbol>
       <symbol id="i-plus" viewBox="0 0 24 24">
@@ -94,6 +102,9 @@
       </symbol>
       <symbol id="i-chevron" viewBox="0 0 24 24">
         <path d="M8 10l4 4 4-4" />
+      </symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24">
+        <path d="M7 17L17 7M9 7h8v8" />
       </symbol>
     </svg>
 
