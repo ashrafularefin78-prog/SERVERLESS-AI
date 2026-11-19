@@ -2291,7 +2291,11 @@ select optgroup {
   font-weight: 600;
 }
 
-.model-picker { display: grid; gap: 8px; position: relative; }
+.model-picker {
+  display: grid;
+  gap: 8px;
+  position: relative;
+}
 .model-trigger {
   display: flex;
   align-items: center;
@@ -2305,12 +2309,16 @@ select optgroup {
   color: var(--text);
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
 }
 [data-theme="light"] .model-trigger {
   background: rgba(255, 252, 249, 0.6);
 }
-.model-trigger:hover { border-color: var(--border-strong); }
+.model-trigger:hover {
+  border-color: var(--border-strong);
+}
 .model-trigger:focus-visible {
   outline: 0;
   border-color: var(--accent-line);
@@ -2427,7 +2435,9 @@ select optgroup {
   text-align: left;
   cursor: pointer;
 }
-.model-option:hover { background: var(--accent-soft); }
+.model-option:hover {
+  background: var(--accent-soft);
+}
 .model-option.is-selected {
   background: var(--accent-soft);
   box-shadow: inset 2px 0 0 var(--accent);
@@ -2463,7 +2473,9 @@ select optgroup {
   color: var(--faint);
 }
 @media (max-width: 560px) {
-  .model-options { max-height: 46vh; }
+  .model-options {
+    max-height: 46vh;
+  }
 }
 
 .field select:focus,

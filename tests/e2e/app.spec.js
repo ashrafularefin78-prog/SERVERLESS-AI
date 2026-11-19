@@ -215,9 +215,11 @@ test("lists models and persists choices without downloading", async ({ page, con
   await page.locator("#model-trigger").click();
   await expect(page.locator("#model-list [data-model-id]")).toHaveCount(LOCAL_MODELS.length + 1);
   await expect(page.locator("#model-list [data-model-id='']")).toContainText("Built-in assistant");
-  const rows = await page.locator("#model-list [data-model-id]").evaluateAll((nodes) =>
-    nodes.map((n) => ({ id: n.getAttribute("data-model-id"), text: n.textContent || "" })),
-  );
+  const rows = await page
+    .locator("#model-list [data-model-id]")
+    .evaluateAll((nodes) =>
+      nodes.map((n) => ({ id: n.getAttribute("data-model-id"), text: n.textContent || "" })),
+    );
   for (const model of LOCAL_MODELS.slice(0, 2).concat(LOCAL_MODELS.slice(-1))) {
     const row = rows.find((r) => r.id === model.id);
     expect(row, model.id).toBeTruthy();
@@ -236,16 +238,17 @@ test("lists models and persists choices without downloading", async ({ page, con
     await expect(page.locator("#model-load")).toBeEnabled();
   }
 
+  await page.reload();
+  await page.locator("#open-settings").click();
+  await expect(page.locator("#model-select")).toHaveValue(LOCAL_MODELS.at(-1).id);
+  await expect(page.locator("#model-load")).toBeEnabled();
+
   await pickModel(page, "");
   await expect(page.locator("#model-select")).toHaveValue("");
   await expect(page.locator("#model-status")).toContainText("Using the built-in rule assistant");
   await expect(page.locator("#model-load")).toBeHidden();
   await expect(page.locator("#model-delete")).toBeHidden();
 
-  await page.reload();
-  await page.locator("#open-settings").click();
-  await expect(page.locator("#model-select")).toHaveValue(LOCAL_MODELS.at(-1).id);
-  await expect(page.locator("#model-load")).toBeEnabled();
   await page.locator("#settings-dialog [data-close-dialog]").click();
   await page.locator("#input").fill("hello");
   await page.locator("#send").click();
@@ -327,19 +330,23 @@ test("offers community GGUF models without WebGPU and persists the choice withou
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await page.locator("#open-sidebar").click();
-    await page.locator("#open-settings").click();
+  await page.locator("#open-settings").click();
   await page.locator("#model-trigger").click();
   await expect(page.locator("#model-list")).toBeVisible();
   await expect(page.locator(".model-section")).toHaveText([
     "Community GGUF - CPU/WASM",
     "WebGPU - official model builds",
   ]);
-  await expect(page.locator("#model-list [data-model-id^='gguf:']")).toHaveCount(GGUF_MODELS.length);
+  await expect(page.locator("#model-list [data-model-id^='gguf:']")).toHaveCount(
+    GGUF_MODELS.length,
+  );
   await page.locator("#model-trigger").click();
 
-  const rows = await page.locator("#model-list [data-model-id]").evaluateAll((nodes) =>
-    nodes.map((n) => ({ id: n.getAttribute("data-model-id"), text: n.textContent || "" })),
-  );
+  const rows = await page
+    .locator("#model-list [data-model-id]")
+    .evaluateAll((nodes) =>
+      nodes.map((n) => ({ id: n.getAttribute("data-model-id"), text: n.textContent || "" })),
+    );
   for (const model of GGUF_MODELS) {
     const row = rows.find((item) => item.id === model.id);
     expect(row).toBeTruthy();

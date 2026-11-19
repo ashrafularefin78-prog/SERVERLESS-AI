@@ -33,10 +33,7 @@ import {
   deviceSummary,
   recommendDeviceModel,
 } from "./engine/device.js";
-import {
-  groupModelsByFamily,
-  modelFamily,
-} from "./engine/model-families.js";
+import { groupModelsByFamily, modelFamily } from "./engine/model-families.js";
 import type { DeviceProfile } from "./engine/device.js";
 import {
   clearDatabase,
@@ -1196,23 +1193,29 @@ function modelMatches(model: (typeof engine.models)[number], query: string) {
   if (!query) return true;
   const size = model.runtime === "gguf" ? `${Math.ceil(model.downloadBytes / 1_000_000)} mb` : "";
   const family = modelFamily(model);
-  const needle = (query.includes("uncensored") && model.runtime === "gguf" && model.uncensored ? "uncensored " : "") +
-    `${model.label} ${family} ${model.runtime}${size ? " " + size : ""}`;
+  const needle =
+    (query.includes("uncensored") && model.runtime === "gguf" && model.uncensored
+      ? "uncensored "
+      : "") + `${model.label} ${family} ${model.runtime}${size ? " " + size : ""}`;
   return needle.toLowerCase().includes(query);
 }
 
 function builtinRow(selectedId: string, picker: ModelPickerEls) {
-  return h("button", {
-    type: "button",
-    class: `model-option${selectedId === "" ? " is-selected" : ""}`,
-    role: "option",
-    "aria-selected": selectedId === "" ? "true" : "false",
-    "data-model-id": "",
-    onclick: () => chooseModel("", picker),
-  }, [
-    h("span", { class: "model-option-name", text: "Built-in assistant" }),
-    h("span", { class: "model-option-meta", text: "No download - works offline" }),
-  ]);
+  return h(
+    "button",
+    {
+      type: "button",
+      class: `model-option${selectedId === "" ? " is-selected" : ""}`,
+      role: "option",
+      "aria-selected": selectedId === "" ? "true" : "false",
+      "data-model-id": "",
+      onclick: () => chooseModel("", picker),
+    },
+    [
+      h("span", { class: "model-option-name", text: "Built-in assistant" }),
+      h("span", { class: "model-option-meta", text: "No download - works offline" }),
+    ],
+  );
 }
 
 function modelOptionRow(
@@ -1221,21 +1224,26 @@ function modelOptionRow(
   picker: ModelPickerEls,
 ) {
   const meta = h("span", { class: "model-option-meta" }, [
-    h("span", { text: model.runtime === "gguf" ? `${Math.ceil(model.downloadBytes / 1_000_000)} MB` : "WebGPU" }),
-    model.runtime === "gguf" && model.uncensored ? h("span", { class: "model-tag", text: "uncensored" }) : null,
+    h("span", {
+      text:
+        model.runtime === "gguf" ? `${Math.ceil(model.downloadBytes / 1_000_000)} MB` : "WebGPU",
+    }),
+    model.runtime === "gguf" && model.uncensored
+      ? h("span", { class: "model-tag", text: "uncensored" })
+      : null,
   ]);
-  return h("button", {
-    type: "button",
-    class: `model-option${model.id === selectedId ? " is-selected" : ""}`,
-    role: "option",
-    "aria-selected": model.id === selectedId ? "true" : "false",
-    "data-model-id": model.id,
-    onclick: () => chooseModel(model.id, picker),
-    disabled: model.runtime === "webllm" && !state.modelSupport?.available ? true : undefined,
-  }, [
-    h("span", { class: "model-option-name", text: model.label }),
-    meta,
-  ]);
+  return h(
+    "button",
+    {
+      type: "button",
+      class: `model-option${model.id === selectedId ? " is-selected" : ""}`,
+      role: "option",
+      "aria-selected": model.id === selectedId ? "true" : "false",
+      "data-model-id": model.id,
+      onclick: () => chooseModel(model.id, picker),
+    },
+    [h("span", { class: "model-option-name", text: model.label }), meta],
+  );
 }
 
 function renderModelList(picker: ModelPickerEls) {
@@ -1244,7 +1252,8 @@ function renderModelList(picker: ModelPickerEls) {
   const selectedId = dom["model-select"].value;
   list.textContent = "";
 
-  const builtinMatches = query === "" || "built-in assistant no download offline builtin".includes(query);
+  const builtinMatches =
+    query === "" || "built-in assistant no download offline builtin".includes(query);
   const visible = engine.models.filter((model) => modelMatches(model, query));
 
   if (builtinMatches) list.append(builtinRow(selectedId, picker));
@@ -1259,7 +1268,9 @@ function renderModelList(picker: ModelPickerEls) {
     list.append(h("p", { class: "model-section", text: title }));
     for (const group of groupModelsByFamily(models)) {
       list.append(
-        h("div", { class: "model-group" },
+        h(
+          "div",
+          { class: "model-group" },
           h("span", { text: group.family }),
           h("span", { class: "model-group-count", text: String(group.models.length) }),
         ),
@@ -1269,9 +1280,7 @@ function renderModelList(picker: ModelPickerEls) {
   }
 
   const shown = (builtinMatches ? 1 : 0) + visible.length;
-  picker.count.textContent = query
-    ? `${shown} match${shown === 1 ? "" : "es"}`
-    : `${shown} models`;
+  picker.count.textContent = query ? `${shown} match${shown === 1 ? "" : "es"}` : `${shown} models`;
   picker.empty.hidden = shown > 0;
 }
 

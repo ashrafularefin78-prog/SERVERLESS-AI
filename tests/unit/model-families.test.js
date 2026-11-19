@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  groupModelsByFamily,
-  modelFamily,
-} from "../../src/engine/model-families.js";
+import { groupModelsByFamily, modelFamily } from "../../src/engine/model-families.js";
 import { GGUF_MODELS, LOCAL_MODELS } from "../../src/engine/models.js";
 
 const byLabel = (prefix) => GGUF_MODELS.find((m) => m.label.startsWith(prefix)) ?? GGUF_MODELS[0];
@@ -58,4 +55,3 @@ describe("model families", () => {
     expect(groupModelsByFamily(LOCAL_MODELS).length).toBeGreaterThan(10);
   });
 });
-
