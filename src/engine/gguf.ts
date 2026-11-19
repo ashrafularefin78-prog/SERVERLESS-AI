@@ -88,6 +88,7 @@ export async function unload(): Promise<void> {
 export async function* streamModel(
   messages: ChatMessage[],
   signal?: AbortSignal,
+  maxTokens = 1024,
 ): AsyncGenerator<StreamChunk> {
   if (!runtime) throw new Error("No community model is loaded.");
   if (signal?.aborted) return;
@@ -101,7 +102,7 @@ export async function* streamModel(
     const stream = await runtime.createChatCompletion({
       messages,
       stream: true,
-      max_tokens: 1024,
+      max_tokens: maxTokens,
       temperature: 0.7,
       top_p: 0.95,
       chat_template_kwargs: { enable_thinking: false },

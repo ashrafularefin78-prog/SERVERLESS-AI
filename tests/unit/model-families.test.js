@@ -39,7 +39,7 @@ describe("model families", () => {
     expect(families.lastIndexOf("Other")).toBe(families.length - 1);
     const top = families.filter((f) => f !== "Other");
     for (let i = 1; i < top.length; i += 1) {
-      expect(top[i-1]).toBeLessThanOrEqual(top[i]);
+      expect(top[i - 1].localeCompare(top[i])).toBeLessThanOrEqual(0);
     }
   });
 

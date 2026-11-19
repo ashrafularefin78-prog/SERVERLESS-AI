@@ -7,6 +7,7 @@ import {
   readCompactionSummary,
   recapReply,
 } from "../../src/context.js";
+import { CONTEXT_LIMITS } from "../../src/config.js";
 import { demoChatReply } from "../../src/chat/replies.js";
 
 const msg = (role, content) => ({ role, content });
@@ -40,6 +41,16 @@ describe("compactHistory", () => {
     expect(raw.kept).toHaveLength(1);
     const measured = compactHistory(history, { maxMessages: 16, maxChars: 10 }, () => "");
     expect(measured.kept).toHaveLength(2);
+  });
+
+  it("keeps the whole conversation when the app limits are infinite", () => {
+    const history = Array.from({ length: 400 }, (_, index) =>
+      msg(index % 2 ? "assistant" : "user", "x".repeat(400)),
+    );
+    const result = compactHistory(history, CONTEXT_LIMITS);
+    expect(result.kept).toEqual(history);
+    expect(result.dropped).toEqual([]);
+    expect(result.summary).toBeNull();
   });
 
   it("always keeps at least the newest message even if it alone exceeds maxChars", () => {

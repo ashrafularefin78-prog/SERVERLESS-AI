@@ -5,7 +5,9 @@ import {
   DEFAULT_SETTINGS,
   SUGGESTIONS,
   SYSTEM_GUARDRAIL,
+  THINKING_EFFORTS,
   UNDERSTANDING_SKILLS,
+  effortById,
   modeById,
 } from "./config.js";
 import {
@@ -72,6 +74,7 @@ import type {
   Message,
   Settings,
   Theme,
+  ThinkingEffort,
 } from "./types.js";
 
 interface Dom {
@@ -118,6 +121,14 @@ interface Dom {
   "model-search": HTMLInputElement;
   "model-count": HTMLElement;
   "model-list": HTMLElement;
+  "composer-model-trigger": HTMLButtonElement;
+  "composer-model-trigger-value": HTMLElement;
+  "composer-model-pop": HTMLElement;
+  "composer-model-search": HTMLInputElement;
+  "composer-model-count": HTMLElement;
+  "composer-model-list": HTMLElement;
+  "composer-model-empty": HTMLElement;
+  "effort-select": HTMLSelectElement;
   "model-empty": HTMLElement;
   "model-status": HTMLElement;
   "model-note": HTMLElement;
@@ -290,6 +301,14 @@ function cacheDom() {
     "model-count",
     "model-list",
     "model-empty",
+    "composer-model-trigger",
+    "composer-model-trigger-value",
+    "composer-model-pop",
+    "composer-model-search",
+    "composer-model-count",
+    "composer-model-list",
+    "composer-model-empty",
+    "effort-select",
     "model-status",
     "model-note",
     "model-load",
@@ -387,6 +406,10 @@ function bindEvents() {
     updateComposerPlaceholder();
     refreshWelcomeSuggestions();
   });
+  dom["effort-select"].addEventListener("change", () => {
+    state.settings.effort = dom["effort-select"].value as ThinkingEffort;
+    saveSettingsPatch({ effort: state.settings.effort });
+  });
 
   dom["custom-instructions"].addEventListener("input", () => {
     state.settings.customInstructions = dom["custom-instructions"].value;
@@ -431,37 +454,8 @@ function bindEvents() {
       void confirmVault();
     }
   });
-  dom["model-trigger"].addEventListener("click", () => {
-    if (dom["model-pop"].hidden) openModelPicker();
-    else closeModelPicker();
-  });
-  dom["model-search"].addEventListener("input", () => renderModelList());
-  dom["model-search"].addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closeModelPicker();
-      dom["model-trigger"].focus();
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      dom["model-list"].querySelector<HTMLElement>(".model-option")?.click();
-    } else if (event.key === "ArrowDown") {
-      event.preventDefault();
-      dom["model-list"].querySelector<HTMLElement>(".model-option")?.focus();
-    }
-  });
-  dom["model-list"].addEventListener("keydown", (event) => {
-    const options = [...dom["model-list"].querySelectorAll<HTMLElement>(".model-option")];
-    const index = options.indexOf(document.activeElement as HTMLElement);
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      const next = options[index + (event.key === "ArrowDown" ? 1 : -1)];
-      (next ?? options[0])?.focus();
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      closeModelPicker();
-      dom["model-trigger"].focus();
-    }
-  });
+  renderEffortSelect();
+  registerModelPickers();
   dom["device-recommend"].addEventListener("click", () => {
     dom["model-select"].value = dom["device-recommend"].dataset.modelId ?? "";
     syncModelTrigger();
@@ -700,9 +694,18 @@ function engineStatus(snapshot: EngineState) {
   };
 }
 
+function renderEffortSelect() {
+  const select = dom["effort-select"];
+  select.textContent = "";
+  for (const effort of THINKING_EFFORTS) {
+    select.append(h("option", { value: effort.id, text: effort.label, title: effort.hint }));
+  }
+}
+
 function syncSettingsForm() {
   dom["custom-instructions"].value = state.settings.customInstructions || "";
   dom["theme-select"].value = state.settings.theme;
+  dom["effort-select"].value = effortById(state.settings.effort).id;
   updateModeSelect();
   updateComposerPlaceholder();
   renderMemoryList();
@@ -1061,8 +1064,11 @@ async function initModelPanel() {
   dom["model-select"].value = engine.models.some((model) => model.id === state.settings.modelId)
     ? state.settings.modelId
     : "";
-  dom["model-count"].textContent = `${engine.models.length + 1} models`;
-  dom["model-search"].placeholder = `Search ${engine.models.length + 1} models...`;
+  const total = engine.models.length + 1;
+  for (const picker of modelPickers) {
+    picker.count.textContent = `${total} models`;
+    picker.search.placeholder = `Search ${total} models...`;
+  }
   syncModelTrigger();
 
   state.modelSupport = await engine.detectSupport();
@@ -1070,30 +1076,120 @@ async function initModelPanel() {
   renderModelPanel();
 }
 
-function openModelPicker() {
-  dom["model-search"].value = "";
-  renderModelList();
-  dom["model-pop"].hidden = false;
-  dom["model-trigger"].setAttribute("aria-expanded", "true");
-  const current = dom["model-list"].querySelector<HTMLElement>(".model-option.is-selected");
-  current?.scrollIntoView({ block: "center" });
-  dom["model-search"].focus();
+interface ModelPickerEls {
+  trigger: HTMLButtonElement;
+  value: HTMLElement;
+  meta: HTMLElement | null;
+  pop: HTMLElement;
+  search: HTMLInputElement;
+  count: HTMLElement;
+  list: HTMLElement;
+  empty: HTMLElement;
+  fallback: string;
 }
 
-function closeModelPicker() {
-  dom["model-pop"].hidden = true;
-  dom["model-trigger"].setAttribute("aria-expanded", "false");
+const modelPickers: ModelPickerEls[] = [];
+let activeModelPicker: ModelPickerEls | null = null;
+
+/**
+ * Settings and the composer each own a picker over the same model list, so the
+ * picker markup stays identical and only one can be open at a time.
+ */
+function registerModelPickers() {
+  modelPickers.length = 0;
+  modelPickers.push(
+    {
+      trigger: dom["model-trigger"],
+      value: dom["model-trigger-value"],
+      meta: dom["model-trigger-meta"],
+      pop: dom["model-pop"],
+      search: dom["model-search"],
+      count: dom["model-count"],
+      list: dom["model-list"],
+      empty: dom["model-empty"],
+      fallback: "Built-in assistant - no download",
+    },
+    {
+      trigger: dom["composer-model-trigger"],
+      value: dom["composer-model-trigger-value"],
+      meta: null,
+      pop: dom["composer-model-pop"],
+      search: dom["composer-model-search"],
+      count: dom["composer-model-count"],
+      list: dom["composer-model-list"],
+      empty: dom["composer-model-empty"],
+      fallback: "Built-in assistant",
+    },
+  );
+
+  for (const picker of modelPickers) bindModelPicker(picker);
+}
+
+function bindModelPicker(picker: ModelPickerEls) {
+  picker.trigger.addEventListener("click", () => {
+    if (picker.pop.hidden) openModelPicker(picker);
+    else closeModelPicker(picker);
+  });
+  picker.search.addEventListener("input", () => renderModelList(picker));
+  picker.search.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeModelPicker(picker);
+      picker.trigger.focus();
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      picker.list.querySelector<HTMLElement>(".model-option")?.click();
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      picker.list.querySelector<HTMLElement>(".model-option")?.focus();
+    }
+  });
+  picker.list.addEventListener("keydown", (event) => {
+    const options = [...picker.list.querySelectorAll<HTMLElement>(".model-option")];
+    const index = options.indexOf(document.activeElement as HTMLElement);
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const next = options[index + (event.key === "ArrowDown" ? 1 : -1)];
+      (next ?? options[0])?.focus();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      closeModelPicker(picker);
+      picker.trigger.focus();
+    }
+  });
+}
+
+function openModelPicker(picker: ModelPickerEls) {
+  if (activeModelPicker && activeModelPicker !== picker) closeModelPicker(activeModelPicker);
+  picker.search.value = "";
+  renderModelList(picker);
+  picker.pop.hidden = false;
+  picker.trigger.setAttribute("aria-expanded", "true");
+  activeModelPicker = picker;
+  const current = picker.list.querySelector<HTMLElement>(".model-option.is-selected");
+  current?.scrollIntoView({ block: "center" });
+  picker.search.focus();
+}
+
+function closeModelPicker(picker: ModelPickerEls | null = activeModelPicker) {
+  const targets = picker ? [picker] : modelPickers;
+  for (const target of targets) {
+    target.pop.hidden = true;
+    target.trigger.setAttribute("aria-expanded", "false");
+  }
+  if (!picker || picker === activeModelPicker) activeModelPicker = null;
 }
 
 function syncModelTrigger() {
   const model = selectedModel();
-  dom["model-trigger-value"].textContent = model
-    ? model.label
-    : "Built-in assistant - no download";
-  dom["model-trigger-meta"].textContent = model
-    ? model.memoryLabel
-    : "No download - works offline";
-  dom["model-trigger"].classList.toggle("has-model", Boolean(model));
+  for (const picker of modelPickers) {
+    picker.value.textContent = model ? model.label : picker.fallback;
+    if (picker.meta) {
+      picker.meta.textContent = model ? model.memoryLabel : "No download - works offline";
+    }
+    picker.trigger.classList.toggle("has-model", Boolean(model));
+    picker.trigger.title = model ? model.label : picker.fallback;
+  }
 }
 
 function modelMatches(model: (typeof engine.models)[number], query: string) {
@@ -1105,22 +1201,25 @@ function modelMatches(model: (typeof engine.models)[number], query: string) {
   return needle.toLowerCase().includes(query);
 }
 
-function builtinRow(selectedId: string) {
+function builtinRow(selectedId: string, picker: ModelPickerEls) {
   return h("button", {
     type: "button",
     class: `model-option${selectedId === "" ? " is-selected" : ""}`,
     role: "option",
     "aria-selected": selectedId === "" ? "true" : "false",
     "data-model-id": "",
-    onclick: () => chooseModel(""),
-    children: [
-      h("span", { class: "model-option-name", text: "Built-in assistant" }),
-      h("span", { class: "model-option-meta", text: "No download - works offline" }),
-    ],
-  });
+    onclick: () => chooseModel("", picker),
+  }, [
+    h("span", { class: "model-option-name", text: "Built-in assistant" }),
+    h("span", { class: "model-option-meta", text: "No download - works offline" }),
+  ]);
 }
 
-function modelOptionRow(model: (typeof engine.models)[number], selectedId: string) {
+function modelOptionRow(
+  model: (typeof engine.models)[number],
+  selectedId: string,
+  picker: ModelPickerEls,
+) {
   const meta = h("span", { class: "model-option-meta" }, [
     h("span", { text: model.runtime === "gguf" ? `${Math.ceil(model.downloadBytes / 1_000_000)} MB` : "WebGPU" }),
     model.runtime === "gguf" && model.uncensored ? h("span", { class: "model-tag", text: "uncensored" }) : null,
@@ -1131,25 +1230,24 @@ function modelOptionRow(model: (typeof engine.models)[number], selectedId: strin
     role: "option",
     "aria-selected": model.id === selectedId ? "true" : "false",
     "data-model-id": model.id,
-    onclick: () => chooseModel(model.id),
+    onclick: () => chooseModel(model.id, picker),
     disabled: model.runtime === "webllm" && !state.modelSupport?.available ? true : undefined,
-    children: [
-      h("span", { class: "model-option-name", text: model.label }),
-      meta,
-    ],
-  });
+  }, [
+    h("span", { class: "model-option-name", text: model.label }),
+    meta,
+  ]);
 }
 
-function renderModelList() {
-  const query = dom["model-search"].value.trim().toLowerCase();
-  const list = dom["model-list"];
+function renderModelList(picker: ModelPickerEls) {
+  const query = picker.search.value.trim().toLowerCase();
+  const list = picker.list;
   const selectedId = dom["model-select"].value;
   list.textContent = "";
 
   const builtinMatches = query === "" || "built-in assistant no download offline builtin".includes(query);
   const visible = engine.models.filter((model) => modelMatches(model, query));
 
-  if (builtinMatches) list.append(builtinRow(selectedId));
+  if (builtinMatches) list.append(builtinRow(selectedId, picker));
 
   const sections: Array<[string, (typeof engine.models)[number][]]> = [
     ["Community GGUF - CPU/WASM", visible.filter((model) => model.runtime === "gguf")],
@@ -1166,22 +1264,22 @@ function renderModelList() {
           h("span", { class: "model-group-count", text: String(group.models.length) }),
         ),
       );
-      for (const model of group.models) list.append(modelOptionRow(model, selectedId));
+      for (const model of group.models) list.append(modelOptionRow(model, selectedId, picker));
     }
   }
 
   const shown = (builtinMatches ? 1 : 0) + visible.length;
-  dom["model-count"].textContent = query
+  picker.count.textContent = query
     ? `${shown} match${shown === 1 ? "" : "es"}`
     : `${shown} models`;
-  dom["model-empty"].hidden = shown > 0;
+  picker.empty.hidden = shown > 0;
 }
 
-function chooseModel(id: string) {
+function chooseModel(id: string, picker: ModelPickerEls) {
   dom["model-select"].value = id;
   syncModelTrigger();
-  closeModelPicker();
-  dom["model-trigger"].focus();
+  closeModelPicker(picker);
+  picker.trigger.focus();
   void applyModelChoice();
 }
 
@@ -1204,7 +1302,7 @@ function renderModelPanel() {
 
   dom["model-select"].value = model ? model.id : "";
   dom["model-select"].disabled = loading;
-  dom["model-trigger"].disabled = loading;
+  for (const picker of modelPickers) picker.trigger.disabled = loading;
   syncModelTrigger();
 
   const status = dom["model-status"];
@@ -1820,6 +1918,7 @@ async function runGeneration(assistantId: string) {
     for await (const chunk of engine.generate({
       messages: messagesForEngine,
       signal: state.streamSignal,
+      maxTokens: effortById(state.settings.effort).maxTokens,
       demo: {
         buildDemoReply: state.settings.mode === "coder" ? demoCodingReply : null,
         memory: state.settings.memory || [],
@@ -1907,7 +2006,8 @@ function buildEngineMessages(
         (message) => message.role === "user" && message.id !== excludeId && message.content?.trim(),
       )?.content || "";
 
-  let systemPrompt = `${mode.prompt}\n\n${CONVERSATION_SKILLS}\n\n${UNDERSTANDING_SKILLS}\n\n${SYSTEM_GUARDRAIL}`;
+  const effort = effortById(state.settings.effort);
+  let systemPrompt = `${mode.prompt}\n\n${CONVERSATION_SKILLS}\n\n${UNDERSTANDING_SKILLS}\n\n${SYSTEM_GUARDRAIL}\n\n${effort.prompt}`;
 
   const memoryPrompt = buildMemoryPrompt(state.settings.memory, latestUser, state.memoryOutcome);
   if (memoryPrompt) systemPrompt += `\n\n${memoryPrompt}`;

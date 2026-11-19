@@ -1841,6 +1841,65 @@ svg {
   color: var(--text);
 }
 
+.composer-pickers {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Compact picker in the composer: the same list, docked above the footer. */
+.composer-model {
+  position: relative;
+  display: block;
+  min-width: 0;
+  max-width: 34vw;
+}
+.composer-model .model-trigger {
+  gap: 5px;
+  width: auto;
+  max-width: 100%;
+  padding: 3px 7px;
+  border-color: transparent;
+  background: transparent;
+}
+[data-theme="light"] .composer-model .model-trigger {
+  background: transparent;
+}
+.composer-model .model-trigger:hover {
+  border-color: var(--border);
+}
+.composer-model .model-trigger-value {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.composer-model .model-trigger.has-model .model-trigger-value {
+  color: var(--text);
+}
+.composer-model .model-trigger-icon {
+  width: 12px;
+  height: 12px;
+}
+.composer-model .model-pop {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  width: min(440px, 86vw);
+}
+.composer-model .model-options {
+  max-height: min(320px, 45vh);
+}
+
+@media (max-width: 560px) {
+  .composer-model {
+    max-width: 46vw;
+  }
+}
+
 .local-badge {
   display: flex;
   align-items: center;
@@ -2302,7 +2361,7 @@ select optgroup {
   padding: 8px;
   border-bottom: 1px solid var(--border);
 }
-#model-search {
+.model-search {
   flex: 1;
   min-width: 0;
   padding: 7px 9px;
@@ -2313,10 +2372,10 @@ select optgroup {
   font-size: 12px;
   outline: 0;
 }
-[data-theme="light"] #model-search {
+[data-theme="light"] .model-search {
   background: rgba(255, 252, 249, 0.8);
 }
-#model-search:focus {
+.model-search:focus {
   border-color: var(--accent-line);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }

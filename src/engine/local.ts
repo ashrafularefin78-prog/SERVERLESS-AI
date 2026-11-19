@@ -324,9 +324,10 @@ export function interrupt(): void {
 export async function* streamModel(
   messages: ChatMessage[],
   signal?: AbortSignal,
+  maxTokens = 1024,
 ): AsyncGenerator<StreamChunk> {
   if (ggufBackend) {
-    yield* ggufBackend.streamModel(messages, signal);
+    yield* ggufBackend.streamModel(messages, signal, maxTokens);
     return;
   }
   if (!engine) throw new Error("No on-device model is loaded.");
@@ -341,7 +342,7 @@ export async function* streamModel(
       stream_options: { include_usage: true },
       temperature: 0.7,
       top_p: 0.95,
-      max_tokens: 1024,
+      max_tokens: maxTokens,
     });
 
     for await (const chunk of stream) {

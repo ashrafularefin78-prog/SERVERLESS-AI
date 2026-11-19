@@ -22,6 +22,19 @@ const baselinePath = path.join(root, "tests/evals/model/baseline.json");
 const DEFAULT_MODEL = "Qwen2.5-0.5B-Instruct-q4f32_1-MLC";
 const EVAL_PORT = 5199;
 
+/**
+ * Set the assistant mode. The select lives in the settings dialog now, so set
+ * the value directly and fire the same change event the UI listens for.
+ */
+async function setMode(page, mode) {
+  await page.evaluate((value) => {
+    const select = document.querySelector("#mode-select");
+    if (!select) throw new Error("The assistant mode select is missing.");
+    select.value = value;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  }, mode);
+}
+
 function parseArgs(argv) {
   const args = { record: false, updateBaseline: false, headed: false, help: false };
   for (const arg of argv) {
@@ -233,9 +246,9 @@ async function record(cases, args) {
     const recordedCases = [];
 
     for (const testCase of cases) {
-      // The app builds the system prompt from the composer's mode selector, so
-      // every case must be recorded in the mode it declares (general by default).
-      await page.selectOption("#mode-select", testCase.mode || "general");
+      // The app builds the system prompt from the assistant mode, so every case
+      // must be recorded in the mode it declares (general by default).
+      await setMode(page, testCase.mode || "general");
       await page.locator("#new-chat").click();
       await page.locator("#input").fill(testCase.prompt);
 
@@ -267,7 +280,7 @@ async function record(cases, args) {
       );
     }
 
-    await page.selectOption("#mode-select", "general");
+    await setMode(page, "general");
 
     const recording = {
       modelId,

@@ -27,6 +27,8 @@ export interface MemoryOutcome {
 
 export type Theme = "system" | "dark" | "light";
 
+export type ThinkingEffort = "low" | "medium" | "high";
+
 export interface EncryptedBlob {
   iv: string;
   data: string;
@@ -46,6 +48,8 @@ export interface Settings {
   memoryVault: MemoryVault | null;
   /** Model id to restore on start, or "" for the built-in rule engine. */
   modelId: string;
+  /** How much reasoning the reply should spend: low, medium, or high. */
+  effort: ThinkingEffort;
 }
 
 export interface Mode {

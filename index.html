@@ -206,15 +206,59 @@
         <footer class="composer-wrap">
           <div class="composer-inner">
             <div class="composer-top">
-              <label class="mode-label">
-                <span>Mode</span>
-                <select id="mode-select" aria-label="Assistant mode">
-                  <option value="general">General</option>
-                  <option value="tutor">Tutor</option>
-                  <option value="coder">Coder</option>
-                  <option value="summarizer">Summarizer</option>
-                </select>
-              </label>
+              <div class="composer-pickers">
+                <div class="model-picker composer-model" id="composer-model-picker">
+                  <button
+                    class="model-trigger"
+                    id="composer-model-trigger"
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded="false"
+                    aria-controls="composer-model-pop"
+                    aria-label="Model"
+                  >
+                    <span class="model-trigger-text">
+                      <span class="model-trigger-value" id="composer-model-trigger-value"
+                        >Built-in assistant</span
+                      >
+                    </span>
+                    <svg class="model-trigger-icon" viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        d="m6 9 6 6 6-6"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </button>
+                  <div class="model-pop" id="composer-model-pop" hidden>
+                    <div class="model-search-row">
+                      <input
+                        class="model-search"
+                        id="composer-model-search"
+                        type="search"
+                        placeholder="Search models..."
+                        autocomplete="off"
+                        spellcheck="false"
+                        aria-label="Search models"
+                        aria-controls="composer-model-list"
+                        aria-autocomplete="list"
+                      />
+                      <span class="model-count" id="composer-model-count"></span>
+                    </div>
+                    <div class="model-options" id="composer-model-list" role="listbox"></div>
+                    <p class="model-empty" id="composer-model-empty" hidden>
+                      No models match that search.
+                    </p>
+                  </div>
+                </div>
+                <label class="mode-label effort-label">
+                  <span>Thinking</span>
+                  <select id="effort-select" aria-label="Thinking effort"></select>
+                </label>
+              </div>
               <span class="local-badge"
                 ><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-lock" /></svg>Prompt
                 never leaves this tab</span
@@ -312,6 +356,7 @@
               <div class="model-pop" id="model-pop" hidden>
                 <div class="model-search-row">
                   <input
+                    class="model-search"
                     id="model-search"
                     type="search"
                     placeholder="Search models..."
@@ -336,6 +381,23 @@
             </div>
             <progress id="model-progress" max="1" value="0" hidden></progress>
             <p class="memory-note" id="model-note"></p>
+          </section>
+
+          <section class="setting-section">
+            <h3>Assistant</h3>
+            <label class="field">
+              <span class="field-label">Mode</span>
+              <select id="mode-select" aria-label="Assistant mode">
+                <option value="general">General</option>
+                <option value="tutor">Tutor</option>
+                <option value="coder">Coder</option>
+                <option value="summarizer">Summarizer</option>
+              </select>
+            </label>
+            <p class="memory-note">
+              Sets the assistant's style and instructions. The composer keeps the model and thinking
+              effort within reach.
+            </p>
           </section>
 
           <section class="setting-section">

@@ -1,4 +1,4 @@
-import type { Mode, Settings } from "./types.js";
+import type { Mode, Settings, ThinkingEffort } from "./types.js";
 
 export const APP_NAME = "LocalMind";
 export const APP_VERSION = "1.0.0";
@@ -46,6 +46,49 @@ export const MODES: Mode[] = [
   },
 ];
 
+export interface ThinkingEffortOption {
+  id: ThinkingEffort;
+  label: string;
+  hint: string;
+  prompt: string;
+  maxTokens: number;
+}
+
+/**
+ * Thinking effort trades speed for depth: it sets a completion budget and adds
+ * one short instruction so both the rule engine and neural models honour it.
+ */
+export const THINKING_EFFORTS: ThinkingEffortOption[] = [
+  {
+    id: "low",
+    label: "Low",
+    hint: "Quick, short answers.",
+    prompt:
+      "Thinking effort: low. Answer directly and keep it short. Skip step-by-step reasoning and long explanations unless the user asks for detail.",
+    maxTokens: 384,
+  },
+  {
+    id: "medium",
+    label: "Medium",
+    hint: "A brief check before answering.",
+    prompt:
+      "Thinking effort: medium. Reason briefly before answering, then give the answer with just enough explanation to be useful.",
+    maxTokens: 1024,
+  },
+  {
+    id: "high",
+    label: "High",
+    hint: "Careful reasoning and longer answers.",
+    prompt:
+      "Thinking effort: high. Think the problem through carefully before answering: weigh alternatives, check your work, and show the key reasoning steps when they help the user trust the answer.",
+    maxTokens: 2048,
+  },
+];
+
+export function effortById(id: string | undefined): ThinkingEffortOption {
+  return THINKING_EFFORTS.find((effort) => effort.id === id) ?? THINKING_EFFORTS[1]!;
+}
+
 export const SUGGESTIONS: string[] = [
   "What can you do?",
   "Help me plan a 30-minute study session",
@@ -61,11 +104,17 @@ export const DEFAULT_SETTINGS: Settings = {
   memory: [],
   memoryVault: null,
   modelId: "",
+  effort: "medium",
 };
 
+/**
+ * The app itself never trims a conversation: every stored turn is sent with the
+ * next prompt. A loaded model's own context window is the only remaining limit,
+ * and its runtime enforces it.
+ */
 export const CONTEXT_LIMITS = {
-  maxMessages: 16,
-  maxChars: 8500,
+  maxMessages: Number.POSITIVE_INFINITY,
+  maxChars: Number.POSITIVE_INFINITY,
 } as const;
 
 export const SYSTEM_GUARDRAIL =

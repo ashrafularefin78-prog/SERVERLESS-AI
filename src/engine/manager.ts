@@ -175,10 +175,12 @@ export async function* generate({
   messages,
   signal,
   demo,
+  maxTokens,
 }: {
   messages: ChatMessage[];
   signal?: AbortSignal;
   demo?: DemoOptions | null;
+  maxTokens?: number;
 }): AsyncGenerator<StreamChunk> {
   if (state.phase !== "ready" && state.phase !== "generating") {
     throw new Error("The assistant is not ready yet.");
@@ -188,7 +190,7 @@ export async function* generate({
 
   try {
     if (state.mode === "model" && loadedModel()) {
-      yield* streamModel(messages, signal);
+      yield* streamModel(messages, signal, maxTokens);
     } else {
       yield* generateDemo(messages, signal, demo);
     }

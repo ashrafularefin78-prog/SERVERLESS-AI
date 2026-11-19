@@ -65,7 +65,7 @@ Limits live in `src/memory.ts`: 30 notes, 200 characters each. Notes are plain t
 
 ## Context management
 
-`src/context.ts` keeps the bounded window honest. `compactHistory()` splits history into the tail that fits `CONTEXT_LIMITS` and the prefix that does not, and `buildHistorySummary()` makes an extractive digest of the dropped user topics (deduped, capped). `formatCompactionNote()` carries that digest as a system note so earlier context is not lost silently, and `recapReply()` answers "recap / what did we talk about" from the digest plus the turns still in the window. All of it is pure and unit-testable in Node.
+`src/context.ts` owns context shaping. The default `CONTEXT_LIMITS` is infinite, so every stored turn is sent and nothing is compacted. For callers that pass explicit limits, `compactHistory()` splits history into the tail that fits and the prefix that does not, and `buildHistorySummary()` makes an extractive digest of the dropped user topics (deduped, capped). `formatCompactionNote()` carries that digest as a system note so earlier context is not lost silently, and `recapReply()` answers "recap / what did we talk about" from the digest plus the turns still in the window. All of it is pure and unit-testable in Node.
 
 ## Adding a rule
 
