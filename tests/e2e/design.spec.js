@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { GGUF_MODELS, WEBLLM_MODELS } from "../../src/engine/models.js";
+import { pickModel } from "./helpers.js";
 
 const DESKTOP = { width: 1440, height: 900 };
 const PHONE = { width: 390, height: 844 };
@@ -114,11 +116,13 @@ test("light theme faint text meets AA contrast", async ({ page }) => {
   expect(contrast).toBeGreaterThanOrEqual(4.5);
 });
 
-test("model dropdown options are readable in both themes", async ({ page }) => {
+test("model picker options are readable in both themes", async ({ page }) => {
   const optionContrast = () =>
     page.evaluate(() => {
-      const option = document.querySelector("#model-select option");
+      const option = document.querySelector("#model-list .model-option");
+      const pop = document.querySelector("#model-pop");
       const style = getComputedStyle(option);
+      const popStyle = pop ? getComputedStyle(pop) : style;
       const rgb = (value) => value.match(/\d+/g).slice(0, 3).map(Number);
       const channel = (value) => {
         const c = value / 255;
@@ -127,7 +131,7 @@ test("model dropdown options are readable in both themes", async ({ page }) => {
       const luminance = ([r, g, b]) =>
         0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
       const fg = luminance(rgb(style.color));
-      const bg = luminance(rgb(style.backgroundColor));
+      const bg = luminance(rgb(popStyle.backgroundColor));
       return (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05);
     });
 
@@ -137,13 +141,80 @@ test("model dropdown options are readable in both themes", async ({ page }) => {
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   }
   await page.locator("#open-settings").click();
+  await page.locator("#model-trigger").click();
   expect(await optionContrast()).toBeGreaterThanOrEqual(4.5);
 
   await page.locator("#settings-dialog [data-close-dialog]").click();
   await page.locator("#theme-toggle").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await page.locator("#open-settings").click();
+  await page.locator("#model-trigger").click();
   expect(await optionContrast()).toBeGreaterThanOrEqual(4.5);
+});
+
+test("model picker filters by search and groups by family", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#open-settings").click();
+  await page.locator("#model-trigger").click();
+  await expect(page.locator("#model-search")).toBeVisible();
+  await expect(page.locator("#model-count")).toHaveText(/models$/);
+  await expect(page.locator(".model-section")).toBeVisible();
+  await expect(page.locator(".model-group")).toBeVisible();
+  expect(await page.locator("#model-list [data-model-id]").count()).toBeGreaterThan(GGUF_MODELS.length + 1);
+  await expect(page.locator("#model-empty")).toBeHidden();
+
+    await page.locator("#model-search").fill("granite 3.2");
+  await expect(page.locator("#model-count")).toMatch(/\d+ match/);
+  await expect(page.locator("#model-list .model-option")).toHaveCount(4);
+  for (const row of await page.locator("#model-list .model-option").all()) {
+    expect(await row.textContent()).toMatch(/granite/i);
+  }
+  await page.locator("#model-search").fill("zqzxqzx");
+  await expect(page.locator("#model-empty")).toBeVisible();
+  await expect(page.locator("#model-list [data-model-id]")).toHaveCount(0);
+
+  await page.locator("#model-search").fill("zqzxqzx");
+    await expect(page.locator("#model-empty")).toBeVisible();
+  await expect(page.locator("#model-list [data-model-id]")).toHaveCount(0);
+  await page.locator("#model-search").fill("");
+  await expect(page.locator("#model-count")).toHaveText(/models$/);
+  await expect(page.locator("#model-list [data-model-id]")).toHaveCount(GGUF_MODELS.length + WEBLLM_MODELS.length + 1);
+    const families = await page.locator("#model-list .model-group span").evaluateAll((nodes) => nodes.map((n) => n.textContent?.trim() ?? ""));
+  expect(families.some((f) => /^Qwen2\.5$/.test(f))).toBe(true);
+  expect(families.some((f) => /^Llama 3\.2$/.test(f))).toBe(true);
+  await pickModel(page, GGUF_MODELS[0].id);
+  await expect(page.locator("#model-select")).toHaveValue(GGUF_MODELS[0].id);
+  await page.locator("#settings-dialog [data-close-dialog]").click();
+
+  await page.locator("#model-search").fill("");
+  await expect(page.locator("#model-list [data-model-id]")).toHaveCount(GGUF_MODELS.length + WEBLLM_MODELS.length + 1);
+  const families = await page.locator("#model-list .model-group span").evaluateAll((nodes) => nodes.map((n) => n.textContent?.trim() ?? ""));
+  expect(families.some((f) => /^Qwen2\.5$/.test(f))).toBe(true);
+  expect(families.some((f) => /^Llama 3\.2$/.test(f))).toBe(true);
+  await pickModel(page, GGUF_MODELS[0].id);
+  await expect(page.locator("#model-select")).toHaveValue(GGUF_MODELS[0].id);
+
+  await page.locator("#settings-dialog [data-close-dialog]").click();
+});
+
+test.describes("model picker", () =>
+
+
+test("model picker family list is exhaustive", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#open-settings").click();
+  await page.locator("#model-trigger").click();
+  const families = await page.locator("#model-list .model-group span").evaluateAll((nodes) => nodes.map((n) => n.textContent?.trim() ?? ""));
+  expect(families.some((f) => /^Qwen2\.5$/.test(f))).toBe(true);
+  expect(families.some((f) => /^Llama 3\.2$/.test(f))).toBe(true);
+
+  await page.locator("#model-search").fill("");
+  await expect(page.locator("#model-list [data-model-id]")).toHaveCount(GGUF_MODELS.length + WEBLLM_MODELS.length + 1);
+
+  await pickModel(page, GGUF_MODELS[0].id);
+  await expect(page.locator("#model-select")).toHaveValue(GGUF_MODELS[0].id);
+
+  await page.locator("#settings-dialog [data-close-dialog]").click();
 });
 
 test.describe("reduced motion", () => {

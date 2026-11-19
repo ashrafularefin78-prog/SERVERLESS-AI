@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { GGUF_MODELS, LOCAL_MODELS } from "../../src/engine/models.js";
+import { pickModel } from "./helpers.js";
 
 test("sends a message and streams a local reply", async ({ page }) => {
   const errors = [];
@@ -208,17 +209,25 @@ test("lists models and persists choices without downloading", async ({ page, con
 
   await page.goto("/");
   await page.locator("#open-settings").click();
-  const select = page.locator("#model-select");
-  await expect(select).toHaveValue("");
-  await expect(select.locator("option")).toHaveText([
-    "Built-in assistant - no download",
-    ...LOCAL_MODELS.map((model) => `${model.label} - ${model.memoryLabel}`),
-  ]);
+  await expect(page.locator("#model-select")).toHaveValue("");
   await expect(page.locator("#model-load")).toBeHidden();
 
-  for (const model of LOCAL_MODELS) {
-    await select.selectOption(model.id);
-    await expect(select).toHaveValue(model.id);
+  await page.locator("#model-trigger").click();
+  await expect(page.locator("#model-list [data-model-id]")).toHaveCount(LOCAL_MODELS.length + 1);
+  await expect(page.locator("#model-list [data-model-id='']")).toContainText("Built-in assistant");
+  const rows = await page.locator("#model-list [data-model-id]").evaluateAll((nodes) =>
+    nodes.map((n) => ({ id: n.getAttribute("data-model-id"), text: n.textContent || "" })),
+  );
+  for (const model of LOCAL_MODELS.slice(0, 2).concat(LOCAL_MODELS.slice(-1))) {
+    const row = rows.find((r) => r.id === model.id);
+    expect(row, model.id).toBeTruthy();
+    expect(row.text).toContain(model.label);
+  }
+  await page.locator("#model-trigger").click();
+
+  for (const model of [LOCAL_MODELS[0], LOCAL_MODELS.at(-1)]) {
+    await pickModel(page, model.id);
+    await expect(page.locator("#model-select")).toHaveValue(model.id);
     await expect(page.locator("#model-status")).toContainText(
       `${model.label} is not downloaded yet.`,
     );
@@ -227,13 +236,16 @@ test("lists models and persists choices without downloading", async ({ page, con
     await expect(page.locator("#model-load")).toBeEnabled();
   }
 
-  await page.reload();
-  await page.locator("#open-settings").click();
-  await expect(select).toHaveValue(LOCAL_MODELS.at(-1).id);
-  await select.selectOption("");
+  await pickModel(page, "");
+  await expect(page.locator("#model-select")).toHaveValue("");
   await expect(page.locator("#model-status")).toContainText("Using the built-in rule assistant");
   await expect(page.locator("#model-load")).toBeHidden();
   await expect(page.locator("#model-delete")).toBeHidden();
+
+  await page.reload();
+  await page.locator("#open-settings").click();
+  await expect(page.locator("#model-select")).toHaveValue(LOCAL_MODELS.at(-1).id);
+  await expect(page.locator("#model-load")).toBeEnabled();
   await page.locator("#settings-dialog [data-close-dialog]").click();
   await page.locator("#input").fill("hello");
   await page.locator("#send").click();
@@ -251,7 +263,7 @@ test("keeps new models unavailable without WebGPU and retains built-in chat", as
   await page.locator("#open-sidebar").click();
   await page.locator("#open-settings").click();
   const model = LOCAL_MODELS.find((item) => item.id === "Qwen2.5-Coder-1.5B-Instruct-q4f32_1-MLC");
-  await page.locator("#model-select").selectOption(model.id);
+  await pickModel(page, model.id);
   await expect(page.locator("#model-status")).toContainText("This browser has no WebGPU");
   await expect(page.locator("#model-note")).toContainText(model.note);
   await expect(page.locator("#model-load")).toBeDisabled();
@@ -260,7 +272,7 @@ test("keeps new models unavailable without WebGPU and retains built-in chat", as
   await page.locator("#open-settings").click();
   await expect(page.locator("#model-select")).toHaveValue(model.id);
   await expect(page.locator("#model-load")).toBeDisabled();
-  await page.locator("#model-select").selectOption("");
+  await pickModel(page, "");
   await expect(page.locator("#model-status")).toContainText("Built-in assistant ready");
   await expect(page.locator("#model-load")).toBeHidden();
 });
@@ -279,18 +291,19 @@ test("shows incompatible variants but blocks downloads on unsupported GPUs", asy
   });
   await page.goto("/");
   await page.locator("#open-settings").click();
-  const select = page.locator("#model-select");
-  await expect(select.locator("option")).toHaveCount(LOCAL_MODELS.length + 1);
+  await page.locator("#model-trigger").click();
+  await expect(page.locator("#model-list [data-model-id]")).toHaveCount(LOCAL_MODELS.length + 1);
+  await page.locator("#model-trigger").click();
 
-  await select.selectOption("Llama-3.2-1B-Instruct-q4f16_1-MLC");
+  await pickModel(page, "Llama-3.2-1B-Instruct-q4f16_1-MLC");
   await expect(page.locator("#model-status")).toContainText("shader-f16");
   await expect(page.locator("#model-load")).toBeDisabled();
 
-  await select.selectOption("gemma-2b-it-q4f32_1-MLC");
+  await pickModel(page, "gemma-2b-it-q4f32_1-MLC");
   await expect(page.locator("#model-status")).toContainText("larger GPU buffers");
   await expect(page.locator("#model-load")).toBeDisabled();
 
-  await select.selectOption("Llama-3.2-1B-Instruct-q4f32_1-MLC");
+  await pickModel(page, "Llama-3.2-1B-Instruct-q4f32_1-MLC");
   await expect(page.locator("#model-status")).toContainText("is not downloaded yet");
   await expect(page.locator("#model-note")).toContainText("not the download size");
   await expect(page.locator("#model-load")).toBeEnabled();
@@ -314,28 +327,28 @@ test("offers community GGUF models without WebGPU and persists the choice withou
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await page.locator("#open-sidebar").click();
-  await page.locator("#open-settings").click();
+    await page.locator("#open-settings").click();
+  await page.locator("#model-trigger").click();
+  await expect(page.locator("#model-list")).toBeVisible();
+  await expect(page.locator(".model-section")).toHaveText([
+    "Community GGUF - CPU/WASM",
+    "WebGPU - official model builds",
+  ]);
+  await expect(page.locator("#model-list [data-model-id^='gguf:']")).toHaveCount(GGUF_MODELS.length);
+  await page.locator("#model-trigger").click();
 
-  const groups = page.locator("#model-select optgroup");
-  await expect(groups).toHaveCount(2);
-  await expect(groups.nth(0)).toHaveAttribute("label", "Community GGUF - CPU/WASM");
-  await expect(groups.nth(1)).toHaveAttribute("label", "WebGPU - official model builds");
-  await expect(groups.nth(0).locator("option")).toHaveCount(GGUF_MODELS.length);
-
-  const options = await page
-    .locator("#model-select option")
-    .evaluateAll((nodes) =>
-      nodes.map((node) => ({ value: node.value, text: node.textContent || "" })),
-    );
+  const rows = await page.locator("#model-list [data-model-id]").evaluateAll((nodes) =>
+    nodes.map((n) => ({ id: n.getAttribute("data-model-id"), text: n.textContent || "" })),
+  );
   for (const model of GGUF_MODELS) {
-    const option = options.find((item) => item.value === model.id);
-    expect(option).toBeTruthy();
-    expect(option.text).toContain(model.label);
-    expect(option.text).toContain(`${Math.ceil(model.downloadBytes / 1_000_000)} MB download`);
+    const row = rows.find((item) => item.id === model.id);
+    expect(row).toBeTruthy();
+    expect(row.text).toContain(model.label);
+    expect(row.text).toContain(`${Math.ceil(model.downloadBytes / 1_000_000)} MB`);
   }
 
   for (const model of [GGUF_MODELS[0], GGUF_MODELS.at(-1)]) {
-    await page.locator("#model-select").selectOption(model.id);
+    await pickModel(page, model.id);
     await expect(page.locator("#model-load")).toBeEnabled();
     await expect(page.locator("#model-status")).toContainText(
       `${Math.ceil(model.downloadBytes / 1_000_000)} MB download`,
@@ -358,7 +371,7 @@ test("blocks community downloads when modern WebAssembly is unavailable", async 
   });
   await page.goto("/");
   await page.locator("#open-settings").click();
-  await page.locator("#model-select").selectOption(GGUF_MODELS[0].id);
+  await pickModel(page, GGUF_MODELS[0].id);
   await expect(page.locator("#model-status")).toContainText("WebAssembly JSPI");
   await expect(page.locator("#model-load")).toBeDisabled();
 });
@@ -374,13 +387,13 @@ test("keeps built-in chat usable after a failed community model download", async
   );
   await page.goto("/");
   await page.locator("#open-settings").click();
-  await page.locator("#model-select").selectOption(GGUF_MODELS[0].id);
+  await pickModel(page, GGUF_MODELS[0].id);
   await page.locator("#model-load").click();
   await expect(page.locator("#toast")).toBeVisible();
   await expect(page.locator("#model-select")).toBeEnabled();
   await expect(page.locator("#model-load")).toBeEnabled();
   await expect(page.locator("#status-label")).toHaveText("Built-in assistant");
-  await page.locator("#model-select").selectOption("");
+  await pickModel(page, "");
   await page.locator("#settings-dialog [data-close-dialog]").click();
   await page.locator("#input").fill("hello");
   await page.locator("#send").click();

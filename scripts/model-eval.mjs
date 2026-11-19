@@ -186,7 +186,8 @@ async function record(cases, args) {
     await page.goto(url, { waitUntil: "domcontentloaded" });
 
     await page.locator("#open-settings").click();
-    await page.selectOption("#model-select", modelId);
+    await page.locator("#model-trigger").click();
+    await page.locator(`#model-list [data-model-id="${modelId}"]`).click();
     console.log(`\nPreparing ${modelId} (first run downloads weights)...`);
 
     // Selecting an already-downloaded model starts loading it immediately and

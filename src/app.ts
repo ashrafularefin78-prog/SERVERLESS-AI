@@ -31,6 +31,10 @@ import {
   deviceSummary,
   recommendDeviceModel,
 } from "./engine/device.js";
+import {
+  groupModelsByFamily,
+  modelFamily,
+} from "./engine/model-families.js";
 import type { DeviceProfile } from "./engine/device.js";
 import {
   clearDatabase,
@@ -105,7 +109,16 @@ interface Dom {
   "memory-list": HTMLUListElement;
   "memory-input": HTMLInputElement;
   "memory-add": HTMLButtonElement;
-  "model-select": HTMLSelectElement;
+  "model-select": HTMLInputElement;
+  "model-picker": HTMLElement;
+  "model-trigger": HTMLButtonElement;
+  "model-trigger-value": HTMLElement;
+  "model-trigger-meta": HTMLElement;
+  "model-pop": HTMLElement;
+  "model-search": HTMLInputElement;
+  "model-count": HTMLElement;
+  "model-list": HTMLElement;
+  "model-empty": HTMLElement;
   "model-status": HTMLElement;
   "model-note": HTMLElement;
   "model-load": HTMLButtonElement;
@@ -268,6 +281,15 @@ function cacheDom() {
     "memory-input",
     "memory-add",
     "model-select",
+    "model-picker",
+    "model-trigger",
+    "model-trigger-value",
+    "model-trigger-meta",
+    "model-pop",
+    "model-search",
+    "model-count",
+    "model-list",
+    "model-empty",
     "model-status",
     "model-note",
     "model-load",
@@ -409,11 +431,40 @@ function bindEvents() {
       void confirmVault();
     }
   });
-  dom["model-select"].addEventListener("change", () => {
-    void applyModelChoice();
+  dom["model-trigger"].addEventListener("click", () => {
+    if (dom["model-pop"].hidden) openModelPicker();
+    else closeModelPicker();
+  });
+  dom["model-search"].addEventListener("input", () => renderModelList());
+  dom["model-search"].addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeModelPicker();
+      dom["model-trigger"].focus();
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      dom["model-list"].querySelector<HTMLElement>(".model-option")?.click();
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      dom["model-list"].querySelector<HTMLElement>(".model-option")?.focus();
+    }
+  });
+  dom["model-list"].addEventListener("keydown", (event) => {
+    const options = [...dom["model-list"].querySelectorAll<HTMLElement>(".model-option")];
+    const index = options.indexOf(document.activeElement as HTMLElement);
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const next = options[index + (event.key === "ArrowDown" ? 1 : -1)];
+      (next ?? options[0])?.focus();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      closeModelPicker();
+      dom["model-trigger"].focus();
+    }
   });
   dom["device-recommend"].addEventListener("click", () => {
     dom["model-select"].value = dom["device-recommend"].dataset.modelId ?? "";
+    syncModelTrigger();
     void applyModelChoice();
   });
   dom["model-load"].addEventListener("click", () => {
@@ -429,6 +480,7 @@ function bindEvents() {
   });
 
   dom["export-data"].addEventListener("click", exportChats);
+
   dom["clear-data"].addEventListener("click", clearAllData);
   dom["clear-data-link"].addEventListener("click", clearAllData);
 
@@ -1006,44 +1058,131 @@ async function deleteKnowledge(id: string) {
 --------------------------------------------------------------- */
 
 async function initModelPanel() {
-  const select = dom["model-select"];
-  select.textContent = "";
-  select.append(h("option", { value: "", text: "Built-in assistant - no download" }));
-
-  const option = (model: (typeof engine.models)[number]) =>
-    h("option", {
-      value: model.id,
-      text: `${model.label} - ${model.memoryLabel}`,
-    });
-  const community = engine.models.filter((model) => model.runtime === "gguf");
-  const webgpu = engine.models.filter((model) => model.runtime === "webllm");
-
-  if (community.length) {
-    select.append(
-      h(
-        "optgroup",
-        { label: "Community GGUF - CPU/WASM" },
-        ...community.map((model) => option(model)),
-      ),
-    );
-  }
-  if (webgpu.length) {
-    select.append(
-      h(
-        "optgroup",
-        { label: "WebGPU - official model builds" },
-        ...webgpu.map((model) => option(model)),
-      ),
-    );
-  }
-
-  select.value = engine.models.some((model) => model.id === state.settings.modelId)
+  dom["model-select"].value = engine.models.some((model) => model.id === state.settings.modelId)
     ? state.settings.modelId
     : "";
+  dom["model-count"].textContent = `${engine.models.length + 1} models`;
+  dom["model-search"].placeholder = `Search ${engine.models.length + 1} models...`;
+  syncModelTrigger();
 
   state.modelSupport = await engine.detectSupport();
   state.deviceProfile = await detectDeviceProfile(state.modelSupport.available);
   renderModelPanel();
+}
+
+function openModelPicker() {
+  dom["model-search"].value = "";
+  renderModelList();
+  dom["model-pop"].hidden = false;
+  dom["model-trigger"].setAttribute("aria-expanded", "true");
+  const current = dom["model-list"].querySelector<HTMLElement>(".model-option.is-selected");
+  current?.scrollIntoView({ block: "center" });
+  dom["model-search"].focus();
+}
+
+function closeModelPicker() {
+  dom["model-pop"].hidden = true;
+  dom["model-trigger"].setAttribute("aria-expanded", "false");
+}
+
+function syncModelTrigger() {
+  const model = selectedModel();
+  dom["model-trigger-value"].textContent = model
+    ? model.label
+    : "Built-in assistant - no download";
+  dom["model-trigger-meta"].textContent = model
+    ? model.memoryLabel
+    : "No download - works offline";
+  dom["model-trigger"].classList.toggle("has-model", Boolean(model));
+}
+
+function modelMatches(model: (typeof engine.models)[number], query: string) {
+  if (!query) return true;
+  const size = model.runtime === "gguf" ? `${Math.ceil(model.downloadBytes / 1_000_000)} mb` : "";
+  const family = modelFamily(model);
+  const needle = (query.includes("uncensored") && model.runtime === "gguf" && model.uncensored ? "uncensored " : "") +
+    `${model.label} ${family} ${model.runtime}${size ? " " + size : ""}`;
+  return needle.toLowerCase().includes(query);
+}
+
+function builtinRow(selectedId: string) {
+  return h("button", {
+    type: "button",
+    class: `model-option${selectedId === "" ? " is-selected" : ""}`,
+    role: "option",
+    "aria-selected": selectedId === "" ? "true" : "false",
+    "data-model-id": "",
+    onclick: () => chooseModel(""),
+    children: [
+      h("span", { class: "model-option-name", text: "Built-in assistant" }),
+      h("span", { class: "model-option-meta", text: "No download - works offline" }),
+    ],
+  });
+}
+
+function modelOptionRow(model: (typeof engine.models)[number], selectedId: string) {
+  const meta = h("span", { class: "model-option-meta" }, [
+    h("span", { text: model.runtime === "gguf" ? `${Math.ceil(model.downloadBytes / 1_000_000)} MB` : "WebGPU" }),
+    model.runtime === "gguf" && model.uncensored ? h("span", { class: "model-tag", text: "uncensored" }) : null,
+  ]);
+  return h("button", {
+    type: "button",
+    class: `model-option${model.id === selectedId ? " is-selected" : ""}`,
+    role: "option",
+    "aria-selected": model.id === selectedId ? "true" : "false",
+    "data-model-id": model.id,
+    onclick: () => chooseModel(model.id),
+    disabled: model.runtime === "webllm" && !state.modelSupport?.available ? true : undefined,
+    children: [
+      h("span", { class: "model-option-name", text: model.label }),
+      meta,
+    ],
+  });
+}
+
+function renderModelList() {
+  const query = dom["model-search"].value.trim().toLowerCase();
+  const list = dom["model-list"];
+  const selectedId = dom["model-select"].value;
+  list.textContent = "";
+
+  const builtinMatches = query === "" || "built-in assistant no download offline builtin".includes(query);
+  const visible = engine.models.filter((model) => modelMatches(model, query));
+
+  if (builtinMatches) list.append(builtinRow(selectedId));
+
+  const sections: Array<[string, (typeof engine.models)[number][]]> = [
+    ["Community GGUF - CPU/WASM", visible.filter((model) => model.runtime === "gguf")],
+    ["WebGPU - official model builds", visible.filter((model) => model.runtime === "webllm")],
+  ];
+
+  for (const [title, models] of sections) {
+    if (!models.length) continue;
+    list.append(h("p", { class: "model-section", text: title }));
+    for (const group of groupModelsByFamily(models)) {
+      list.append(
+        h("div", { class: "model-group" },
+          h("span", { text: group.family }),
+          h("span", { class: "model-group-count", text: String(group.models.length) }),
+        ),
+      );
+      for (const model of group.models) list.append(modelOptionRow(model, selectedId));
+    }
+  }
+
+  const shown = (builtinMatches ? 1 : 0) + visible.length;
+  dom["model-count"].textContent = query
+    ? `${shown} match${shown === 1 ? "" : "es"}`
+    : `${shown} models`;
+  dom["model-empty"].hidden = shown > 0;
+}
+
+function chooseModel(id: string) {
+  dom["model-select"].value = id;
+  syncModelTrigger();
+  closeModelPicker();
+  dom["model-trigger"].focus();
+  void applyModelChoice();
 }
 
 function selectedModel() {
@@ -1065,6 +1204,8 @@ function renderModelPanel() {
 
   dom["model-select"].value = model ? model.id : "";
   dom["model-select"].disabled = loading;
+  dom["model-trigger"].disabled = loading;
+  syncModelTrigger();
 
   const status = dom["model-status"];
   status.classList.remove("is-error");

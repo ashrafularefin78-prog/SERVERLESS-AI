@@ -279,10 +279,55 @@
               <p class="device-check-advice" id="device-check-advice" hidden></p>
               <button class="btn subtle" id="device-recommend" type="button" hidden></button>
             </div>
-            <label class="field">
-              <span class="field-label">Model</span>
-              <select id="model-select"></select>
-            </label>
+            <div class="field model-picker" id="model-picker">
+              <span class="field-label" id="model-label">Model</span>
+              <button
+                class="model-trigger"
+                id="model-trigger"
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                aria-controls="model-pop"
+                aria-labelledby="model-label model-trigger-value"
+              >
+                <span class="model-trigger-text">
+                  <span class="model-trigger-value" id="model-trigger-value"
+                    >Built-in assistant - no download</span
+                  >
+                  <span class="model-trigger-meta" id="model-trigger-meta"
+                    >No download - works offline</span
+                  >
+                </span>
+                <svg class="model-trigger-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="m6 9 6 6 6-6"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+              <div class="model-pop" id="model-pop" hidden>
+                <div class="model-search-row">
+                  <input
+                    id="model-search"
+                    type="search"
+                    placeholder="Search models..."
+                    autocomplete="off"
+                    spellcheck="false"
+                    aria-label="Search models"
+                    aria-controls="model-list"
+                    aria-autocomplete="list"
+                  />
+                  <span class="model-count" id="model-count"></span>
+                </div>
+                <div class="model-options" id="model-list" role="listbox"></div>
+                <p class="model-empty" id="model-empty" hidden>No models match that search.</p>
+              </div>
+              <input type="hidden" id="model-select" />
+            </div>
             <div class="model-status" id="model-status" role="status">Checking this device...</div>
             <p class="model-warning" id="model-warning" role="alert" hidden></p>
             <div class="model-controls">

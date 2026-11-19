@@ -1,6 +1,7 @@
 import { expect, test, devices } from "@playwright/test";
 import { GGUF_MODELS } from "../../src/engine/models.js";
 import { lightestCpuModel } from "../../src/engine/device.js";
+import { pickModel } from "./helpers.js";
 
 // `defaultBrowserType` may only be set in the config, so copy the device's
 // browser context options explicitly.
@@ -112,7 +113,7 @@ test("warns and asks before a download that cannot fit", async ({ page }) => {
   await page.goto("/");
   await page.locator("#open-settings").click();
 
-  await page.locator("#model-select").selectOption(heaviest.id);
+  await pickModel(page, heaviest.id);
   await expect(page.locator("#model-warning")).toBeVisible();
   await expect(page.locator("#model-warning")).toContainText("free memory");
 
@@ -125,6 +126,6 @@ test("warns and asks before a download that cannot fit", async ({ page }) => {
   await expect(page.locator("#confirm-dialog")).toBeHidden();
   await expect(page.locator("#model-load")).toHaveText("Download and load");
 
-  await page.locator("#model-select").selectOption(lightest.id);
+  await pickModel(page, lightest.id);
   await expect(page.locator("#model-warning")).toBeHidden();
 });
