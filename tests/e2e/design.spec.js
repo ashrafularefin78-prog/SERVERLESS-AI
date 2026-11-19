@@ -81,12 +81,69 @@ test("theme toggle swaps palettes and the choice survives a reload", async ({ pa
   await page.locator("#theme-toggle").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(
-    "rgb(242, 245, 239)",
+    "rgb(247, 243, 239)",
   );
 
   await page.waitForTimeout(400);
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+});
+
+test("light theme faint text meets AA contrast", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+
+  const contrast = await page.evaluate(() => {
+    const channel = (value) => {
+      const c = value / 255;
+      return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    };
+    const luminance = ([r, g, b]) =>
+      0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+    const hex = (value) => {
+      const clean = value.trim().replace("#", "");
+      return [0, 2, 4].map((i) => Number.parseInt(clean.slice(i, i + 2), 16));
+    };
+    const styles = getComputedStyle(document.documentElement);
+    const faint = luminance(hex(styles.getPropertyValue("--faint")));
+    const bg = luminance(hex(styles.getPropertyValue("--bg")));
+    return (Math.max(faint, bg) + 0.05) / (Math.min(faint, bg) + 0.05);
+  });
+
+  expect(contrast).toBeGreaterThanOrEqual(4.5);
+});
+
+test("model dropdown options are readable in both themes", async ({ page }) => {
+  const optionContrast = () =>
+    page.evaluate(() => {
+      const option = document.querySelector("#model-select option");
+      const style = getComputedStyle(option);
+      const rgb = (value) => value.match(/\d+/g).slice(0, 3).map(Number);
+      const channel = (value) => {
+        const c = value / 255;
+        return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      };
+      const luminance = ([r, g, b]) =>
+        0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+      const fg = luminance(rgb(style.color));
+      const bg = luminance(rgb(style.backgroundColor));
+      return (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05);
+    });
+
+  await page.goto("/");
+  if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== "dark") {
+    await page.locator("#theme-toggle").click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  }
+  await page.locator("#open-settings").click();
+  expect(await optionContrast()).toBeGreaterThanOrEqual(4.5);
+
+  await page.locator("#settings-dialog [data-close-dialog]").click();
+  await page.locator("#theme-toggle").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await page.locator("#open-settings").click();
+  expect(await optionContrast()).toBeGreaterThanOrEqual(4.5);
 });
 
 test.describe("reduced motion", () => {

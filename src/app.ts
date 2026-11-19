@@ -26,6 +26,13 @@ import { analyzeIntent, expandShorthand, normalizeText, understandingHint } from
 import { compactHistory, formatCompactionNote } from "./context.js";
 import * as engine from "./engine/manager.js";
 import {
+  assessModelFit,
+  detectDeviceProfile,
+  deviceSummary,
+  recommendDeviceModel,
+} from "./engine/device.js";
+import type { DeviceProfile } from "./engine/device.js";
+import {
   clearDatabase,
   createConversation,
   createMessage,
@@ -104,6 +111,11 @@ interface Dom {
   "model-load": HTMLButtonElement;
   "model-delete": HTMLButtonElement;
   "model-progress": HTMLProgressElement;
+  "device-check": HTMLElement;
+  "device-check-spec": HTMLElement;
+  "device-check-advice": HTMLElement;
+  "device-recommend": HTMLButtonElement;
+  "model-warning": HTMLElement;
   "knowledge-list": HTMLUListElement;
   "knowledge-add": HTMLButtonElement;
   "knowledge-file": HTMLInputElement;
@@ -152,6 +164,7 @@ interface State {
   memoryKey: CryptoKey | null;
   modelSupport: Awaited<ReturnType<typeof engine.detectSupport>> | null;
   modelCached: boolean | null;
+  deviceProfile: DeviceProfile | null;
   knowledge: KnowledgeDoc[];
   knowledgeBusy: boolean;
   vaultMode: "enable" | "unlock" | null;
@@ -179,6 +192,7 @@ const state: State = {
   memoryKey: null,
   modelSupport: null,
   modelCached: null,
+  deviceProfile: null,
   knowledge: [],
   knowledgeBusy: false,
   vaultMode: null,
@@ -259,6 +273,11 @@ function cacheDom() {
     "model-load",
     "model-delete",
     "model-progress",
+    "device-check",
+    "device-check-spec",
+    "device-check-advice",
+    "device-recommend",
+    "model-warning",
     "knowledge-list",
     "knowledge-add",
     "knowledge-file",
@@ -391,6 +410,10 @@ function bindEvents() {
     }
   });
   dom["model-select"].addEventListener("change", () => {
+    void applyModelChoice();
+  });
+  dom["device-recommend"].addEventListener("click", () => {
+    dom["model-select"].value = dom["device-recommend"].dataset.modelId ?? "";
     void applyModelChoice();
   });
   dom["model-load"].addEventListener("click", () => {
@@ -1019,6 +1042,7 @@ async function initModelPanel() {
     : "";
 
   state.modelSupport = await engine.detectSupport();
+  state.deviceProfile = await detectDeviceProfile(state.modelSupport.available);
   renderModelPanel();
 }
 
@@ -1088,6 +1112,66 @@ function renderModelPanel() {
   dom["model-note"].textContent = model
     ? `${model.note} Weights are cached in this browser's private storage and can be deleted at any time.`
     : "Models run in a Worker with WebGPU or CPU/WebAssembly. Your prompts and replies stay on this device.";
+
+  renderDeviceCheck();
+  renderModelFit(model);
+}
+
+async function refreshDeviceProfile() {
+  if (!state.modelSupport) return;
+  state.deviceProfile = await detectDeviceProfile(state.modelSupport.available);
+  renderModelPanel();
+}
+
+function renderDeviceCheck() {
+  const profile = state.deviceProfile;
+  const box = dom["device-check"];
+  if (!profile) {
+    box.hidden = true;
+    return;
+  }
+
+  box.hidden = false;
+  dom["device-check-spec"].textContent = deviceSummary(profile);
+
+  const recommendation = recommendDeviceModel(engine.models, profile);
+  const advice = dom["device-check-advice"];
+  const action = dom["device-recommend"];
+  if (!recommendation) {
+    advice.hidden = true;
+    advice.textContent = "";
+    action.hidden = true;
+    action.disabled = true;
+    return;
+  }
+
+  advice.hidden = false;
+  advice.textContent = "";
+  advice.append(
+    h("strong", { text: recommendation.title }),
+    document.createTextNode(` ${recommendation.reason}`),
+  );
+
+  const selected = dom["model-select"].value === (recommendation.modelId ?? "");
+  action.hidden = false;
+  action.disabled = selected;
+  action.textContent = selected ? "Recommended model selected" : recommendation.actionLabel;
+  action.dataset.modelId = recommendation.modelId ?? "";
+}
+
+function renderModelFit(model: (typeof engine.models)[number] | null) {
+  const fit = model && state.deviceProfile ? assessModelFit(model, state.deviceProfile) : null;
+  const warning = dom["model-warning"];
+  if (!fit || fit.level === "ok") {
+    warning.hidden = true;
+    warning.textContent = "";
+    warning.classList.remove("is-danger");
+    return;
+  }
+
+  warning.hidden = false;
+  warning.classList.toggle("is-danger", fit.level === "too-large");
+  warning.textContent = fit.reasons.join(" ");
 }
 
 async function refreshModelPanel({ checkCache = false }: { checkCache?: boolean } = {}) {
@@ -1136,6 +1220,28 @@ async function applyModelChoice() {
 async function downloadSelectedModel() {
   const model = selectedModel();
   if (!model) return;
+
+  // Re-measure free storage right before downloading: it changes as the
+  // browser fills up, and the warning has to reflect the current state.
+  // Already-cached models only need loading, so there is nothing to confirm.
+  if (state.modelCached !== true && state.modelSupport) {
+    state.deviceProfile = await detectDeviceProfile(state.modelSupport.available);
+    renderModelPanel();
+  }
+
+  const fit =
+    state.modelCached !== true && state.deviceProfile
+      ? assessModelFit(model, state.deviceProfile)
+      : null;
+  if (fit?.level === "too-large") {
+    const ok = await confirmDialog({
+      title: "This model may not fit this device",
+      body: `${fit.reasons.join(" ")} Download ${model.label} anyway?`,
+      confirmLabel: "Download anyway",
+    });
+    if (!ok) return;
+  }
+
   await loadSelectedModel(model.id);
 }
 
@@ -1193,7 +1299,7 @@ function applyTheme() {
   const theme = resolvedTheme();
   document.documentElement.dataset.theme = theme;
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", theme === "light" ? "#f2f5ef" : "#05080a");
+  if (meta) meta.setAttribute("content", theme === "light" ? "#f7f3ef" : "#05080a");
 }
 
 function toggleTheme() {
@@ -1323,6 +1429,7 @@ function upsertSummary(conversation: Conversation) {
 
 function openSettings() {
   syncSettingsForm();
+  void refreshDeviceProfile();
   void refreshModelPanel({ checkCache: true });
   if (!dom["settings-dialog"].open) dom["settings-dialog"].showModal();
 }

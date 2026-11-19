@@ -2,7 +2,7 @@
   <rect width="512" height="512" rx="120" fill="#0c0f0e" />
   <path
     d="M256 84l42.5 115.9L420 256l-121.5 56.1L256 428l-42.5-115.9L92 256l121.5-56.1L256 84z"
-    fill="#c6f75a"
+    fill="#dc143c"
   />
   <circle cx="256" cy="256" r="30" fill="#0c0f0e" />
 </svg>

@@ -271,11 +271,20 @@
               once into this browser's private storage and never leave the device. Without it, the
               built-in rule assistant answers instantly and offline.
             </p>
+            <div class="device-check" id="device-check" hidden>
+              <div class="device-check-top">
+                <span class="device-check-label">Device check</span>
+                <span class="device-check-spec" id="device-check-spec"></span>
+              </div>
+              <p class="device-check-advice" id="device-check-advice" hidden></p>
+              <button class="btn subtle" id="device-recommend" type="button" hidden></button>
+            </div>
             <label class="field">
               <span class="field-label">Model</span>
               <select id="model-select"></select>
             </label>
             <div class="model-status" id="model-status" role="status">Checking this device...</div>
+            <p class="model-warning" id="model-warning" role="alert" hidden></p>
             <div class="model-controls">
               <button class="btn subtle" id="model-load" type="button">Download and load</button>
               <button class="btn subtle" id="model-delete" type="button">Delete download</button>
