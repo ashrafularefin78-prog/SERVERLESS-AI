@@ -434,8 +434,9 @@
           <section class="setting-section">
             <h3>Knowledge</h3>
             <p class="memory-note">
-              Add notes, docs, or a README and replies can be grounded in them. Files are chunked,
-              embedded on this device, and stored in IndexedDB. Nothing is uploaded.
+              Add notes, docs, PDFs, or a README and replies can be grounded in them. Files are
+              chunked, embedded on this device, and stored in IndexedDB. PDF text is extracted
+              locally; scanned pages need OCR first. Nothing is uploaded.
             </p>
             <ul class="memory-list" id="knowledge-list"></ul>
             <div class="memory-add">
@@ -443,7 +444,7 @@
               <input
                 id="knowledge-file"
                 type="file"
-                accept=".txt,.md,.markdown,.csv,.json,.log"
+                accept=".pdf,.txt,.md,.markdown,.csv,.json,.log"
                 multiple
                 hidden
               />

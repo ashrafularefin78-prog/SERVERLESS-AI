@@ -23,6 +23,7 @@ index.html
        |     `-- src/engine/model-worker.ts  WebLLM engine in a Worker
        |-- src/rag/               chunking, Transformers.js embeddings, vectors, retrieval
        |     |-- src/rag/embed-worker.ts  MiniLM embeddings in a Worker
+       |     |-- src/rag/pdf.ts      lazy pdf.js text extraction for PDF ingestion
        |     `-- src/rag/store.ts    IndexedDB documents and chunk vectors
        `-- src/storage/db.ts      IndexedDB conversations and settings
 ```

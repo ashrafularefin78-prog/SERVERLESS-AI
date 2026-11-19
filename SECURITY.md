@@ -14,6 +14,8 @@ This is a small project, not an audited product.
 ## Trust boundaries
 
 1. **The page and its bundled code.** Pinned npm dependencies are bundled at build time. There are no third-party scripts at runtime. The only runtime download is an optional model: after an explicit user action, pinned weights and a compatible inference binary are fetched from Hugging Face and the model-library host. No chat text is ever sent with those requests.
+   Indexing a PDF runs pdf.js from this origin on the file's bytes. The parser is given no URL, is loaded only when a PDF is added, and runs with eval disabled, so a document cannot make the page fetch anything.
+
 2. **Assistant output.** Text assembled from rules, templates, and user-supplied content. It can contain markup, misleading claims, links, or attempts to imitate the UI.
 3. **Other browser extensions and local malware.** Outside the app's control. An extension with page access can read everything.
 4. **The static host.** A compromised host or DNS can serve modified JavaScript. HTTPS and host security are required.
@@ -72,13 +74,13 @@ This is a small project, not an audited product.
 
 **Threat:** A compromised npm package injects code at build time or runtime.
 
-**Mitigation:** CI runs `npm audit --omit=dev --audit-level=high`, builds production output, and publishes a CycloneDX SBOM artifact (`npm run sbom`) so release consumers can audit the dependency graph.
+**Mitigation:** CI runs `npm audit --omit=dev --audit-level=high`, scans the full lockfile (including dev dependencies) with OSV-Scanner against the OSV database, builds production output, and publishes a CycloneDX SBOM artifact (`npm run sbom`) so release consumers can audit the dependency graph.
 
 **Mitigation:**
 
 - `package.json` pins exact versions; `package-lock.json` records the full tree.
 - Dependabot monitors npm packages and GitHub Actions weekly. Review lockfile diffs and `npm audit --omit=dev` before merging an update.
-- Production dependencies are pinned: marked, DOMPurify, highlight.js, `@mlc-ai/web-llm`, and `@huggingface/transformers` (with ONNX Runtime Web shipped from this origin). Chat weights are hash-verified by WebLLM before caching.
+- Production dependencies are pinned: marked, DOMPurify, highlight.js, `@mlc-ai/web-llm`, `@huggingface/transformers` (with ONNX Runtime Web shipped from this origin), and pdfjs-dist. Chat weights are hash-verified by WebLLM before caching.
 - No CDN scripts, no analytics, no remote fonts.
 - The build injects a CSP and the app ships a service worker only in production.
 - Review lockfile diffs before updating.
@@ -101,11 +103,11 @@ This is a small project, not an audited product.
 
 ### Network metadata
 
-The app makes no requests beyond loading its own files from the static host. There are no model downloads, APIs, or telemetry, so a chat reveals nothing beyond the fact that you loaded the app. A host, ISP, or proxy can still see the app files you load.
+The app makes no telemetry or API calls. The only cross-origin requests are the optional, user-triggered model downloads: chat weights from the pinned Hugging Face URLs, and the embedding model plus ONNX Runtime binary on the first document index. Those requests carry no chat text, prompts, or documents. A host, ISP, or proxy can see that you loaded the app and, if you chose to download a model, which pinned files were fetched.
 
 ## What the app deliberately does not do
 
-- No models, model downloads, remote inference, API keys, or account system.
+- No remote inference, API keys, or account system. Model weights and the embedding model are downloaded only after an explicit user action, and no chat text is sent with them.
 - No telemetry, analytics, crash reporting, or remote logging.
 - No plugins, arbitrary URLs, or tool execution.
 - No network access during a chat.
@@ -129,7 +131,7 @@ The app makes no requests beyond loading its own files from the static host. The
 
 - Unit tests cover input normalization, memory, reply rules, language detection, and the demo engine.
 - Playwright tests exercise chat, memory, and data clearing in a real browser, and assert that a chat makes no cross-origin requests.
-- CI runs lint, Prettier, unit tests, the production build, and the Playwright suite on every push and pull request.
+- CI runs lint, Prettier, unit tests, the production build, the Playwright suite, and an OSV-Scanner lockfile scan on every push and pull request.
 - DOMPurify, marked, and the build toolchain are kept current through Dependabot. These checks reduce risk; they do not replace a manual review of sanitizer and CSP changes.
 
 ## Keeping this document current

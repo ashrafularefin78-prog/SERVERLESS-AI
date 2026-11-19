@@ -39,6 +39,19 @@ jobs:
           path: sbom.cdx.json
           retention-days: 30
 
+  osv:
+    name: OSV dependency scan
+    permissions:
+      contents: read
+      # The reusable workflow declares this for its optional SARIF upload; the
+      # upload stays off so the scan works without Code Scanning enabled.
+      security-events: write
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.6.0
+    with:
+      scan-args: |-
+        --lockfile=./package-lock.json
+      upload-sarif: false
+
   e2e:
     name: Playwright
     runs-on: ubuntu-latest

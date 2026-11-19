@@ -8,6 +8,7 @@ import { newId } from "../storage/db.js";
 import type { KnowledgeDoc, KnowledgeProgress, StoredChunk } from "../types.js";
 import { chunkText } from "./chunk.js";
 import { embedTexts, setEmbeddingProgressListener } from "./embeddings.js";
+import { isPdfFile } from "./pdf-text.js";
 import { buildKnowledgeBlock, type KnowledgeBlock } from "./prompt.js";
 import { rankBySimilarity } from "./similarity.js";
 import { deleteKnowledgeDoc, listKnowledgeDocs, loadAllChunks, saveKnowledgeDoc } from "./store.js";
@@ -15,6 +16,7 @@ import { deleteKnowledgeDoc, listKnowledgeDocs, loadAllChunks, saveKnowledgeDoc 
 export const RAG = {
   maxDocuments: 20,
   maxCharsPerDocument: 200_000,
+  maxBytesPerPdf: 25_000_000,
   chunkChars: 900,
   overlapChars: 120,
   topK: 4,
@@ -93,10 +95,36 @@ export async function addDocumentFile(
   file: File,
   onProgress?: (progress: KnowledgeProgress) => void,
 ): Promise<KnowledgeDoc> {
-  if (file.size > RAG.maxCharsPerDocument * 4) {
+  const pdf = isPdfFile(file);
+  const maxBytes = pdf ? RAG.maxBytesPerPdf : RAG.maxCharsPerDocument * 4;
+  if (file.size > maxBytes) {
     throw new Error("That file is too large to index in this browser.");
   }
-  return addDocument(file.name, await file.text(), onProgress);
+
+  let text: string;
+  if (pdf) {
+    // pdf.js is large, so it is loaded only for the files that need it.
+    const { extractPdfText } = await import("./pdf.js");
+    try {
+      text = await extractPdfText(file);
+    } catch (error) {
+      const name = error instanceof Error ? error.name : "";
+      if (name === "PasswordException") {
+        throw new Error("That PDF is password-protected. Remove the password and try again.");
+      }
+      if (name === "InvalidPDFException") {
+        throw new Error("That file is not a readable PDF.");
+      }
+      throw error;
+    }
+    if (!text.trim()) {
+      throw new Error("That PDF has no selectable text. Scanned pages need OCR first.");
+    }
+  } else {
+    text = await file.text();
+  }
+
+  return addDocument(file.name, text, onProgress);
 }
 
 export async function removeDocument(id: string): Promise<void> {
