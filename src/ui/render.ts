@@ -317,14 +317,27 @@ export function renderMessage(
   return article;
 }
 
-export function streamText(node: HTMLElement, text: string, autoScroll = true) {
+/** How close to the end still counts as "following the reply". */
+const STICK_SLACK = 90;
+
+/**
+ * Replace the streaming text and, if the reader is still at the end, stay
+ * pinned there. The decision reads the actual scroll position rather than a
+ * flag: a scroll event lands on the next frame, so a chunk that arrives in
+ * between would otherwise drag the view back down over a reader who had just
+ * scrolled away.
+ */
+export function streamText(node: HTMLElement, text: string, stickToBottom = true) {
   const content = node.querySelector("[data-content]");
   if (!content) return;
   content.classList.add("streaming");
   content.textContent = text;
-  if (!autoScroll) return;
+  if (!stickToBottom) return;
+
   const scroller = node.closest(".chat-scroll");
-  if (scroller) scroller.scrollTop = scroller.scrollHeight;
+  if (!scroller) return;
+  const distance = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+  if (distance <= STICK_SLACK) scroller.scrollTop = scroller.scrollHeight;
 }
 
 export function formatTime(timestamp: number | string) {

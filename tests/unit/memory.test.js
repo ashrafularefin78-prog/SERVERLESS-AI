@@ -1,126 +1,153 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
-  MAX_MEMORIES,
-  MAX_MEMORY_LENGTH,
-  applyMemoryCommand,
-  buildMemoryPrompt,
-  parseMemoryCommand,
-} from "../../src/memory.js";
+  MODEL_IDLE_RELEASE_MS,
+  createIdleRelease,
+  shouldReleaseOnHide,
+} from "../../src/engine/memory.js";
 
-const note = (text, id = text) => ({ id, text, addedAt: 1 });
+function harness({ idleMs = 1000, now = 0 } = {}) {
+  const released = [];
+  const failures = [];
+  let clock = now;
+  let scheduled = null;
+  const api = createIdleRelease({
+    idleMs,
+    onRelease: () => released.push(clock),
+    onReleaseFailed: (error) => failures.push(error),
+    now: () => clock,
+    setTimer: (fn, ms) => {
+      scheduled = { fn, ms };
+      return scheduled;
+    },
+    clearTimer: (handle) => {
+      if (scheduled === handle) scheduled = null;
+    },
+  });
+  return {
+    api,
+    released,
+    failures,
+    get pending() {
+      return scheduled;
+    },
+    advance(ms) {
+      clock += ms;
+      return scheduled;
+    },
+    get clock() {
+      return clock;
+    },
+  };
+}
 
-describe("parseMemoryCommand", () => {
-  it.each([
-    ["remember that I use metric units", { type: "add", text: "I use metric units" }],
-    ["Please remember this: I like tea", { type: "add", text: "I like tea" }],
-    ["keep in mind I work nights", { type: "add", text: "I work nights" }],
-    ["my name is Ada Lovelace.", { type: "add", text: "The user's name is Ada Lovelace." }],
-    ["call me Grace", { type: "add", text: "The user's name is Grace." }],
-    ["forget about my old address", { type: "forget", text: "my old address" }],
-    ["forget everything", { type: "forget-all" }],
-    ["forget it all", { type: "forget-all" }],
-  ])("parses %j", (text, expected) => {
-    expect(parseMemoryCommand(text)).toEqual(expected);
+describe("createIdleRelease", () => {
+  it("arms a countdown that releases once", () => {
+    const h = harness();
+    h.api.touch();
+    expect(h.pending.ms).toBe(1000);
+    h.advance(1000);
+    const timer = h.pending;
+    timer.fn();
+    expect(h.released).toEqual([1000]);
+    expect(h.api.armed()).toBe(false);
   });
 
-  it("ignores ordinary messages", () => {
-    expect(parseMemoryCommand("hello there")).toBeNull();
-    expect(parseMemoryCommand("")).toBeNull();
-    expect(parseMemoryCommand(null)).toBeNull();
+  it("restarts the countdown on activity", () => {
+    const h = harness();
+    h.api.touch();
+    h.advance(600);
+    h.api.touch();
+    expect(h.pending.ms).toBe(1000);
+    h.advance(600);
+    expect(h.released).toEqual([]);
   });
 
-  it("trims and caps stored notes", () => {
-    const command = parseMemoryCommand(`remember   ${"x".repeat(400)}`);
-    expect(command.type).toBe("add");
-    expect(command.text).toHaveLength(MAX_MEMORY_LENGTH);
-  });
-});
-
-describe("applyMemoryCommand", () => {
-  it("adds a note without mutating the input list", () => {
-    const original = [note("I like tea")];
-    const result = applyMemoryCommand(original, { type: "add", text: "I use metric units" });
-
-    expect(original).toHaveLength(1);
-    expect(result.changed).toBe(true);
-    expect(result.duplicate).toBe(false);
-    expect(result.added).toMatchObject({ text: "I use metric units" });
-    expect(result.memory).toHaveLength(2);
+  it("re-arms instead of releasing when activity lands before the timer fires", () => {
+    const h = harness();
+    h.api.touch();
+    const stale = h.pending;
+    h.advance(400);
+    h.api.touch();
+    stale.fn(); // a cancelled timer that still fires must not release
+    expect(h.released).toEqual([]);
+    // Activity restarts the whole window, not the remainder of the old one.
+    expect(h.pending.ms).toBe(1000);
   });
 
-  it("rejects duplicates case-insensitively", () => {
-    const result = applyMemoryCommand([note("I like tea")], { type: "add", text: "i like TEA" });
-    expect(result.duplicate).toBe(true);
-    expect(result.changed).toBe(false);
-    expect(result.memory).toHaveLength(1);
+  it("does not release while blocked, and resumes afterwards", () => {
+    const h = harness();
+    h.api.touch();
+    h.api.block();
+    expect(h.api.armed()).toBe(false);
+    expect(h.pending).toBeNull();
+    h.api.unblock();
+    expect(h.api.armed()).toBe(true);
+    expect(h.released).toEqual([]);
   });
 
-  it("reports a full memory instead of growing past the limit", () => {
-    const memory = Array.from({ length: MAX_MEMORIES }, (_, index) => note(`note ${index}`));
-    const result = applyMemoryCommand(memory, { type: "add", text: "one more" });
-    expect(result.full).toBe(true);
-    expect(result.changed).toBe(false);
-    expect(result.memory).toHaveLength(MAX_MEMORIES);
+  it("stays blocked until every block is released", () => {
+    const h = harness();
+    h.api.block();
+    h.api.block();
+    h.api.unblock();
+    expect(h.api.armed()).toBe(false);
+    h.api.unblock();
+    expect(h.api.armed()).toBe(true);
   });
 
-  it("forgets matching notes and reports the count", () => {
-    const memory = [note("I like green tea"), note("I like coffee"), note("My name is Ada.")];
-    const result = applyMemoryCommand(memory, { type: "forget", text: "tea" });
-
-    expect(result.removed).toBe(1);
-    expect(result.changed).toBe(true);
-    expect(result.memory.map((item) => item.text)).toEqual(["I like coffee", "My name is Ada."]);
+  it("stop clears the countdown", () => {
+    const h = harness();
+    h.api.touch();
+    h.api.stop();
+    expect(h.api.armed()).toBe(false);
+    expect(h.pending).toBeNull();
   });
 
-  it("forgets everything", () => {
-    const result = applyMemoryCommand([note("a"), note("b")], { type: "forget-all" });
-    expect(result.removed).toBe(2);
-    expect(result.changed).toBe(true);
-    expect(result.memory).toEqual([]);
-  });
-
-  it("returns an untouched copy for empty input", () => {
-    expect(applyMemoryCommand(null, null)).toMatchObject({
-      memory: [],
-      changed: false,
-      added: null,
-      removed: 0,
+  it("reports a failing release instead of throwing", async () => {
+    const failures = [];
+    const api = createIdleRelease({
+      idleMs: 10,
+      onRelease: () => Promise.reject(new Error("unload failed")),
+      onReleaseFailed: (error) => failures.push(error),
+      setTimer: (fn) => {
+        queueMicrotask(fn);
+        return 1;
+      },
+      clearTimer: () => {},
     });
+    api.touch();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(failures.map((error) => error.message)).toEqual(["unload failed"]);
+  });
+
+  it("uses a ten minute default, which is well past any generation", () => {
+    expect(MODEL_IDLE_RELEASE_MS).toBe(600_000);
   });
 });
 
-describe("buildMemoryPrompt", () => {
-  it("returns null when there is nothing to add", () => {
-    expect(buildMemoryPrompt([], "hello", null)).toBeNull();
-    expect(buildMemoryPrompt(null, "hello", null)).toBeNull();
+describe("shouldReleaseOnHide", () => {
+  it("releases when the page is really gone", () => {
+    expect(shouldReleaseOnHide({ persisted: false })).toBe(true);
+    expect(shouldReleaseOnHide({})).toBe(true);
   });
 
-  it("lists saved notes with a no-recital instruction", () => {
-    const prompt = buildMemoryPrompt(
-      [note("I like tea"), note("I use metric units")],
-      "hello",
-      null,
-    );
-    expect(prompt).toContain("- I like tea");
-    expect(prompt).toContain("- I use metric units");
-    expect(prompt).toMatch(/never recite the list/i);
+  it("keeps the model when the page goes into the back/forward cache", () => {
+    // Restoring would otherwise show a dead model.
+    expect(shouldReleaseOnHide({ persisted: true })).toBe(false);
   });
+});
 
-  it("describes the outcome of a memory command", () => {
-    expect(buildMemoryPrompt([], "remember I like tea", { added: { text: "I like tea" } })).toMatch(
-      /confirm it in one short, natural sentence/i,
-    );
-
-    expect(buildMemoryPrompt([], "remember I like tea", { duplicate: true })).toMatch(
-      /already know/i,
-    );
-
-    expect(buildMemoryPrompt([], "remember I like tea", { full: true })).toMatch(/memory is full/i);
-
-    expect(buildMemoryPrompt([note("tea")], "forget tea", { removed: 1 })).toMatch(/was removed/i);
-
-    expect(buildMemoryPrompt([note("tea")], "forget coffee", { removed: 0 })).toMatch(
-      /no note matched/i,
-    );
+describe("timer injection", () => {
+  it("uses the provided clock rather than wall time", () => {
+    vi.useFakeTimers();
+    const released = [];
+    const api = createIdleRelease({
+      idleMs: 50,
+      onRelease: () => released.push("released"),
+    });
+    api.touch();
+    vi.advanceTimersByTime(60);
+    expect(released).toEqual(["released"]);
+    vi.useRealTimers();
   });
 });

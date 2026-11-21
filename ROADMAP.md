@@ -22,6 +22,12 @@ Open an issue or a Discussion before starting anything from **Next** or **Later*
 - **Privacy policy and architecture whitepaper** — [PRIVACY.md](PRIVACY.md) maps data handling to GDPR obligations with the code that implements each one; [docs/whitepaper.md](docs/whitepaper.md) documents the crypto, storage, worker, and retrieval design and how to verify the claims.
 - **Issue triage automation** — stale issue sweeping that exempts security and roadmap labels, plus a first-time contributor welcome pointing at the guides.
 - **Trusted Types** — `require-trusted-types-for 'script'` is enforced, every HTML sink goes through one sanitizing policy (`src/trusted-types.ts`), and a browser test fails if rendering or chatting raises a violation.
+- **Read-position-aware auto-scroll** — the view follows a reply only while the reader is at the end, pauses the moment they scroll away, marks new text with a "scroll to bottom" cue, and never yanks them back when the reply finishes (`tests/e2e/scroll.spec.js`).
+- **Frame-coalesced streaming** — deltas are painted once per animation frame instead of once per chunk (`queueStreamPaint` in `src/app.ts`).
+- **GPU memory hand-back** — the model is unloaded after ten idle minutes, on `pagehide` when the page is not going into the back/forward cache, and before any model switch; the next message reloads the cached weights (`src/engine/memory.ts`).
+- **iOS tab budget** — iOS reports no `deviceMemory`, so model fit is judged against Safari's roughly 1 GB per-tab limit instead (`assessModelFit` in `src/engine/device.ts`).
+- **Cloud dev environment** — [.devcontainer](.devcontainer/README.md) gives a Codespace with Node 22 and Chromium, so onboarding needs no local install.
+- **RAG load guard** — a 50,000-word document is chunked and ranked in bounded time, asserted by `tests/unit/rag-load.test.js`.
 
 ## Next
 
@@ -48,6 +54,11 @@ A contributor with publishing access can wrap those without changing the app.
 - **Vision input.** Requires a vision-capable model in the catalogue (WebLLM's multimodal builds) plus an image pipeline, a memory budget for the image encoder, and an accessible upload UI.
 - **Speech input.** whisper.cpp or a Transformers.js Whisper build in a Worker: tens to hundreds of MB of extra download and a second model lifecycle.
 - **`@localmind/core`, `@localmind/react`, `@localmind/vue`.** Publishing packages means splitting the app into a framework-agnostic engine plus bindings, renegotiating the size budget, and owning a release process for three artifacts. A monorepo move should happen first.
+- **KaTeX / MathJax.** Self-hosted KaTeX is roughly 280 kB of script plus ~1 MB of fonts, which is more than the entire current initial payload budget (`npm run check:size`). It needs its own lazy chunk and a font-subsetting story before it can ship; until then formulas render as code spans.
+- **Storybook.** The chat surface depends on a live conversation, engine state, and IndexedDB, so isolating components means building fixtures for all three. The browser suite covers the same ground end to end (`tests/e2e/`), including axe accessibility checks, so the cost is not justified yet.
+- **Pixel screenshot baselines.** Playwright snapshots compare against images rendered on the CI runner's font stack; committing baselines generated on another OS yields constant false failures. Layout regressions are instead covered by explicit assertions on computed sizes and contrast (`tests/e2e/design.spec.js`).
+- **Publishing to npm on tag.** Changesets already automate `CHANGELOG.md` and version PRs; publishing needs an npm token and an owned package name, which this repository does not have.
+- **`buffer.destroy()` for WebGPU objects.** WebLLM owns its `GPUBuffer` and `GPUTexture` instances; destroying them from app code would corrupt the runtime. The supported release paths are `MLCEngine.unload()` and terminating the worker, both of which `src/engine/local.ts` performs.
 - **Message virtualization** beyond pagination. Page-based rendering caps DOM size without a virtual-scroller dependency; true windowing only pays off above a few thousand messages.
 
 ## Not planned

@@ -52,6 +52,7 @@ import {
   recommendDeviceModel,
 } from "./engine/device.js";
 import { groupModelsByFamily, modelFamily } from "./engine/model-families.js";
+import { createIdleRelease, shouldReleaseOnHide } from "./engine/memory.js";
 import {
   isLicenseAccepted,
   licenseAcceptanceKey,
@@ -121,6 +122,8 @@ interface Dom {
   "model-chip-label": HTMLElement;
   "theme-toggle": HTMLButtonElement;
   "chat-scroll": HTMLElement;
+  "scroll-bottom": HTMLButtonElement;
+  "scroll-bottom-label": HTMLElement;
   messages: HTMLElement;
   "mode-select": HTMLSelectElement;
   composer: HTMLFormElement;
@@ -241,6 +244,8 @@ interface State {
   messageWindow: number;
   messageWindowFor: string | null;
   vaultMode: "enable" | "unlock" | null;
+  /** Set when the model was unloaded to free memory, so a send can reload it. */
+  modelReleased: boolean;
 }
 
 /**
@@ -278,6 +283,7 @@ const state: State = {
   messageWindow: MESSAGE_WINDOW_STEP,
   messageWindowFor: null,
   vaultMode: null,
+  modelReleased: false,
 };
 
 export async function boot() {
@@ -340,6 +346,8 @@ function cacheDom() {
     "model-chip-label",
     "theme-toggle",
     "chat-scroll",
+    "scroll-bottom",
+    "scroll-bottom-label",
     "messages",
     "mode-select",
     "composer",
@@ -601,17 +609,49 @@ function bindEvents() {
     clearDiagnostics();
     toast("Diagnostics cleared.");
   });
+  dom["scroll-bottom"].addEventListener("click", () => scrollToBottom({ smooth: true }));
   dom["engine-alert-reload"].addEventListener("click", reloadApp);
   dom["engine-alert-dismiss"].addEventListener("click", hideEngineAlert);
   subscribeDiagnostics(() => renderDiagnostics());
 
-  dom["chat-scroll"].addEventListener("scroll", () => {
-    const distance =
-      dom["chat-scroll"].scrollHeight -
-      dom["chat-scroll"].scrollTop -
-      dom["chat-scroll"].clientHeight;
-    state.autoScroll = distance < 90;
+  // Rotation, an opened mobile keyboard, or a window resize all change what
+  // "at the bottom" means.
+  // A discarded tab keeps nothing alive: hand the GPU memory back as it goes.
+  // The back/forward cache is the exception, because the restore expects the
+  // model to still be there.
+  window.addEventListener("pagehide", (event) => {
+    if (!shouldReleaseOnHide(event)) return;
+    idleRelease.stop();
+    void engine.unloadModel().catch(() => {});
   });
+
+  window.addEventListener("resize", () => window.requestAnimationFrame(syncScrollCue));
+  window.visualViewport?.addEventListener("resize", () =>
+    window.requestAnimationFrame(syncScrollCue),
+  );
+
+  dom["chat-scroll"].addEventListener(
+    "scroll",
+    () => {
+      // Reading these three properties forces layout, and scroll fires in bursts.
+      // Collapse a burst into one measurement per frame.
+      if (scrollFrame !== null) return;
+      scrollFrame = window.requestAnimationFrame(() => {
+        scrollFrame = null;
+        const distance = distanceFromBottom();
+        // Direction, not timing, decides intent: the app's own jumps move
+        // toward the bottom, and skipping the reader away from it is manual.
+        // A time window cannot tell those apart when someone scrolls up again
+        // straight after a jump.
+        const towardBottom = distance < lastDistance - 1;
+        lastDistance = distance;
+        if (distance < BOTTOM_SLACK) state.autoScroll = true;
+        else if (!towardBottom) state.autoScroll = false;
+        syncScrollCue();
+      });
+    },
+    { passive: true },
+  );
 
   document.addEventListener("keydown", (event) => {
     const key = event.key.toLowerCase();
@@ -667,6 +707,11 @@ function onEngineState(snapshot: EngineState) {
     snapshot.progress?.progress !== previous.progress?.progress
   ) {
     renderModelPanel();
+  }
+
+  if (snapshot.mode !== previous.mode || snapshot.phase !== previous.phase) {
+    if (snapshot.mode === "model") state.modelReleased = false;
+    syncMemoryWatch();
   }
 
   if (
@@ -768,8 +813,11 @@ function renderConversation({ scroll = true }: { scroll?: boolean } = {}) {
     } else {
       window.requestAnimationFrame(() => {
         dom["chat-scroll"].scrollTop = 0;
+        syncScrollCue();
       });
     }
+  } else {
+    window.requestAnimationFrame(syncScrollCue);
   }
 }
 
@@ -1783,6 +1831,45 @@ function confirmLicense(model: LocalModel): Promise<boolean> {
   });
 }
 
+/**
+ * Give the model's memory back after a long idle spell. The weights stay in the
+ * cache, so the next message reloads them instead of downloading again.
+ */
+const idleRelease = createIdleRelease({
+  onRelease: () => void releaseIdleModel(),
+  onReleaseFailed: () =>
+    recordDiagnostic({
+      level: "warn",
+      source: "engine",
+      message: "Releasing an idle model failed.",
+    }),
+});
+
+async function releaseIdleModel() {
+  if (state.generating) return;
+  if (engine.getState().mode !== "model") return;
+  const label = selectedModel()?.label ?? "The model";
+  await engine.unloadModel();
+  state.modelReleased = true;
+  updateEngineChrome(engine.getState());
+  renderModelPanel();
+  toast(`${label} was unloaded after ten idle minutes. Its memory is free.`);
+}
+
+/** Called whenever the engine may hold memory or stop holding it. */
+function syncMemoryWatch() {
+  const loaded = engine.getState().mode === "model";
+  if (!loaded) {
+    idleRelease.stop();
+    return;
+  }
+  if (state.generating) idleRelease.block();
+  else {
+    idleRelease.unblock();
+    idleRelease.touch();
+  }
+}
+
 async function loadSelectedModel(id: string) {
   const model = engine.models.find((item) => item.id === id) ?? null;
   if (!model) return;
@@ -2183,10 +2270,33 @@ function ensureConversation(): Conversation {
   return created;
 }
 
+/**
+ * If the model was unloaded to free memory and the user still has it selected,
+ * bring it back before answering rather than silently replying from the rule
+ * engine. Failing that, say so and continue with the built-in assistant.
+ */
+async function restoreReleasedModel() {
+  const modelId = state.settings.modelId;
+  if (!state.modelReleased || !modelId) return;
+  if (!engine.models.some((model) => model.id === modelId)) return;
+
+  state.modelReleased = false;
+  try {
+    await engine.useModel(modelId);
+    toast(`${selectedModel()?.label ?? "The model"} was reloaded.`);
+  } catch (error) {
+    state.modelCached = false;
+    toast(`${friendlyError(error)} Using the built-in assistant instead.`);
+  }
+  updateEngineChrome(engine.getState());
+}
+
 async function runGeneration(assistantId: string) {
   const conversation = state.conversation;
   const assistant = conversation?.messages.find((message) => message.id === assistantId);
   if (!conversation || !assistant) return;
+
+  await restoreReleasedModel();
 
   const latestUser =
     [...conversation.messages]
@@ -2218,6 +2328,7 @@ async function runGeneration(assistantId: string) {
 
   const runId = ++state.runId;
   state.generating = true;
+  syncMemoryWatch();
   announce("Assistant is responding.");
   state.partialText = "";
   state.streamSignal = engine.newGenerationSignal();
@@ -2254,7 +2365,7 @@ async function runGeneration(assistantId: string) {
         const node = dom.messages.querySelector<HTMLElement>(
           `[data-message-id="${cssEscape(assistantId)}"]`,
         );
-        if (node) streamText(node, accumulated, state.autoScroll);
+        if (node) queueStreamPaint(node, accumulated);
 
         if (performance.now() - lastSave > 2500) {
           assistant.content = accumulated;
@@ -2277,6 +2388,7 @@ async function runGeneration(assistantId: string) {
     return;
   }
 
+  cancelStreamPaint();
   assistant.streaming = false;
   assistant.content = accumulated.trimEnd();
   const stoppedByUser = aborted || Boolean(state.streamSignal?.aborted);
@@ -2314,10 +2426,14 @@ async function runGeneration(assistantId: string) {
   state.streamSignal = null;
   state.partialText = "";
   updateComposerState();
+  syncMemoryWatch();
   resolveGenerationRun();
   await saveCurrent();
   renderConversation({ scroll: false });
-  scrollToBottom();
+  // The reply is finished, but the reader may have scrolled away to read
+  // something else. Only follow when they were still at the end.
+  if (state.autoScroll) scrollToBottom();
+  else syncScrollCue();
   updateEngineChrome(engine.getState());
   focusInput();
 }
@@ -2439,8 +2555,10 @@ async function stopAndWait() {
 
 function forceFinishGeneration() {
   state.runId += 1;
+  cancelStreamPaint();
   state.generating = false;
   state.streamSignal = null;
+  syncMemoryWatch();
 
   const conversation = state.conversation;
   const assistant = conversation?.messages.at(-1);
@@ -2574,11 +2692,87 @@ function autoResize() {
   dom.input.style.height = `${Math.min(dom.input.scrollHeight, 190)}px`;
 }
 
-function scrollToBottom() {
-  window.requestAnimationFrame(() => {
-    dom["chat-scroll"].scrollTop = dom["chat-scroll"].scrollHeight;
-    state.autoScroll = true;
+/** How close to the end still counts as "following the reply". */
+const BOTTOM_SLACK = 90;
+
+let streamFrame: number | null = null;
+let streamTarget: HTMLElement | null = null;
+let streamValue = "";
+
+/**
+ * Paint the newest streamed text once per frame. A fast stream can deliver
+ * dozens of deltas between paints; writing each one sets the text, forces
+ * layout, and reads the scroll position again for no visible benefit.
+ */
+function queueStreamPaint(node: HTMLElement, text: string) {
+  streamTarget = node;
+  streamValue = text;
+  if (streamFrame !== null) return;
+  streamFrame = window.requestAnimationFrame(() => {
+    streamFrame = null;
+    const target = streamTarget;
+    const value = streamValue;
+    streamTarget = null;
+    if (!target?.isConnected) return;
+    streamText(target, value, state.autoScroll);
+    noteStreamWhilePaused();
   });
+}
+
+/** Drop any queued paint; the caller is about to render the final state. */
+function cancelStreamPaint() {
+  if (streamFrame !== null) window.cancelAnimationFrame(streamFrame);
+  streamFrame = null;
+  streamTarget = null;
+}
+let scrollFrame: number | null = null;
+let lastDistance = Number.POSITIVE_INFINITY;
+let cuePending = false;
+
+function distanceFromBottom() {
+  const scroller = dom["chat-scroll"];
+  return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+}
+
+/**
+ * The cue is the only affordance for "the reply is still streaming while you
+ * read further up", so it has to be honest: visible only when the view is not
+ * at the end, and marked when new text arrived after the pause.
+ */
+function syncScrollCue() {
+  const empty = !dom.messages.childElementCount;
+  const show = !empty && distanceFromBottom() > BOTTOM_SLACK;
+  dom["scroll-bottom"].hidden = !show;
+  dom["scroll-bottom"].dataset.pending = show && cuePending ? "true" : "false";
+}
+
+/**
+ * Called after streamed text was appended. "Pending" means the reader is no
+ * longer at the end and new text arrived, which is measured, not assumed.
+ */
+function noteStreamWhilePaused() {
+  cuePending = distanceFromBottom() > BOTTOM_SLACK;
+  syncScrollCue();
+}
+
+/**
+ * Jump to the newest message. This runs synchronously on purpose: a deferred
+ * jump is a second writer racing the streaming loop, and it lands on the reader
+ * who scrolled away in the meantime. Reading `scrollHeight` forces the layout
+ * anyway, so there is nothing to wait for.
+ */
+function scrollToBottom({ smooth = false }: { smooth?: boolean } = {}) {
+  const scroller = dom["chat-scroll"];
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (smooth && !reduceMotion) {
+    scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
+  } else {
+    scroller.scrollTop = scroller.scrollHeight;
+  }
+  state.autoScroll = true;
+  cuePending = false;
+  lastDistance = distanceFromBottom();
+  syncScrollCue();
 }
 
 function focusInput() {

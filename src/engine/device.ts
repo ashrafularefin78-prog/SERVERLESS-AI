@@ -12,6 +12,8 @@ export interface DeviceProfile {
   freeStorageMB: number | null;
   wasmJspi: boolean;
   mobile: boolean;
+  /** iOS/iPadOS, where a tab is killed long before the device runs out of RAM. */
+  ios: boolean;
 }
 
 export type FitLevel = "ok" | "tight" | "too-large";
@@ -41,6 +43,12 @@ export interface NavigatorDeviceHints {
 }
 
 const MB = 1_000_000;
+/**
+ * Safari on iOS enforces a per-tab memory budget far below the device's RAM and
+ * kills the tab instead of paging. Treat that as the usable amount so a model
+ * that would crash the tab is flagged before it is downloaded.
+ */
+const IOS_TAB_MEMORY_MB = 1_024;
 const MIB = 1_048_576;
 
 export function formatSizeMB(mb: number): string {
@@ -50,6 +58,12 @@ export function formatSizeMB(mb: number): string {
 
 /** Chrome reports 8 for "8 GB or more", so only smaller values are exact. */
 function usableMemoryMB(profile: DeviceProfile): number | null {
+  // iOS never reports `deviceMemory`, so the tab budget stands in for it and is
+  // the stricter of the two when both are known.
+  if (profile.ios) {
+    if (profile.memoryGB === null || profile.memoryGB >= 8) return IOS_TAB_MEMORY_MB;
+    return Math.min(Math.round(profile.memoryGB * 1024), IOS_TAB_MEMORY_MB);
+  }
   if (profile.memoryGB === null || profile.memoryGB >= 8) return null;
   return Math.round(profile.memoryGB * 1024);
 }
@@ -59,6 +73,13 @@ function usableMemoryMB(profile: DeviceProfile): number | null {
  * one too, so the browser's mobile flag and the user agent decide first and the
  * pointer is only a fallback for touch-only screens with no fine pointer.
  */
+/** iPhone/iPad, including iPadOS, which reports a desktop "Macintosh" UA. */
+export function isIOSDevice(nav: NavigatorDeviceHints): boolean {
+  const ua = nav.userAgent ?? "";
+  if (/iPhone|iPad|iPod/i.test(ua)) return true;
+  return /Macintosh/i.test(ua) && (nav.maxTouchPoints ?? 0) > 1;
+}
+
 export function isMobileDevice(nav: NavigatorDeviceHints): boolean {
   const ua = nav.userAgent ?? "";
 
@@ -90,6 +111,7 @@ export function readDeviceProfile(webgpu: boolean): DeviceProfile {
     freeStorageMB: null,
     wasmJspi: typeof WebAssembly !== "undefined" && "Suspending" in WebAssembly,
     mobile: isMobileDevice(nav),
+    ios: isIOSDevice(nav),
   };
 }
 
@@ -171,12 +193,16 @@ export function assessModelFit(model: LocalModel, profile: DeviceProfile): Model
     if (requiredMemoryMB > memoryMB * 0.8) {
       add(
         "too-large",
-        `It needs about ${formatSizeMB(requiredMemoryMB)} of free memory and this device reports about ${formatSizeMB(memoryMB)} of RAM.`,
+        profile.ios
+          ? `It needs about ${formatSizeMB(requiredMemoryMB)} of memory, and Safari on iOS gives a tab roughly ${formatSizeMB(IOS_TAB_MEMORY_MB)} before it closes the tab.`
+          : `It needs about ${formatSizeMB(requiredMemoryMB)} of free memory and this device reports about ${formatSizeMB(memoryMB)} of RAM.`,
       );
     } else if (requiredMemoryMB > memoryMB * 0.55) {
       add(
         "tight",
-        `It needs about ${formatSizeMB(requiredMemoryMB)} of free memory on a ${formatSizeMB(memoryMB)} device, so replies may be slow.`,
+        profile.ios
+          ? `It needs about ${formatSizeMB(requiredMemoryMB)} of memory against roughly ${formatSizeMB(memoryMB)} for a Safari tab, so replies may be slow or the tab may be reloaded.`
+          : `It needs about ${formatSizeMB(requiredMemoryMB)} of free memory on a ${formatSizeMB(memoryMB)} device, so replies may be slow.`,
       );
     }
   }
@@ -266,7 +292,7 @@ export function deviceSummary(profile: DeviceProfile): string {
     parts.push(profile.memoryGB >= 8 ? "8 GB+ RAM" : `${profile.memoryGB} GB RAM`);
   }
   if (profile.cores !== null) parts.push(`${profile.cores} cores`);
-  if (profile.mobile) parts.push("phone/tablet");
+  if (profile.mobile) parts.push(profile.ios ? "iOS" : "phone/tablet");
   if (profile.freeStorageMB !== null) parts.push(`${formatSizeMB(profile.freeStorageMB)} free`);
   return parts.join(" · ");
 }

@@ -148,6 +148,45 @@ Settings shows the log with copy and clear actions. Copying includes the app ver
 
 The full threat model is in [SECURITY.md](../SECURITY.md).
 
+## Streaming and scroll ownership
+
+The chat view has exactly one rule: follow the reply while the reader is at the
+end, and stop the instant they scroll away.
+
+- Deltas are queued and painted once per animation frame (`queueStreamPaint`), so
+  a fast stream cannot set text, force layout, and re-read the scroll position
+  dozens of times per frame.
+- `streamText()` decides whether to stay pinned from the _measured_ scroll
+  position rather than a flag, because a scroll event lands a frame later and a
+  chunk that arrives in between would otherwise drag the reader back down.
+- The scroll listener treats a movement toward the bottom as intent to resume
+  and anything else as intent to pause; direction is more reliable than a time
+  window, which cannot distinguish a manual scroll that happens right after a
+  programmatic jump.
+- Finishing a reply does not scroll. If the reader was at the end they are still
+  there; if they were not, they stay where they are and the cue shows that new
+  text arrived.
+
+## Memory lifecycle
+
+The model is the only large allocation in the app, and it is released three ways:
+
+| Trigger          | Code                                            | Note                                                                   |
+| ---------------- | ----------------------------------------------- | ---------------------------------------------------------------------- |
+| Switching models | `engine.useModel()` → `unload()`                | The old worker is terminated before the new one starts.                |
+| Ten idle minutes | `createIdleRelease()` in `src/engine/memory.ts` | The countdown is suspended while a reply streams; weights stay cached. |
+| Page hide        | `pagehide` handler in `src/app.ts`              | Skipped for the back/forward cache, where the model must survive.      |
+
+`unload()` interrupts generation, calls `MLCEngine.unload()` (which drops the KV
+cache and the weights), then terminates the worker, which tears down the
+`GPUDevice` and every buffer allocated on it. App code never calls
+`GPUBuffer.destroy()`: those objects belong to WebLLM, and reaching into them
+would corrupt the runtime rather than free it.
+
+Clearing a chat deliberately does **not** unload the model. Deleting history is
+not a memory action, and forcing a one-gigabyte reload afterwards would be a
+worse outcome than the memory it saved.
+
 ## Offline and PWA
 
 `public/sw.js` caches the app shell during install, precaches hashed entry assets by reading `index.html`, and uses:

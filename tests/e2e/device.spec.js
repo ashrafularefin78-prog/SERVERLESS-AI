@@ -129,3 +129,35 @@ test("warns and asks before a download that cannot fit", async ({ page }) => {
   await pickModel(page, lightest.id);
   await expect(page.locator("#model-warning")).toBeHidden();
 });
+
+test.describe("iPhone", () => {
+  const iphone = devices["iPhone 13"];
+  test.use({
+    viewport: iphone.viewport,
+    userAgent: iphone.userAgent,
+    deviceScaleFactor: iphone.deviceScaleFactor,
+    isMobile: iphone.isMobile,
+    hasTouch: iphone.hasTouch,
+  });
+
+  test("warns that a large model exceeds a Safari tab's memory", async ({ page }) => {
+    // iOS reports no deviceMemory at all, which is exactly the case the tab
+    // budget has to cover.
+    await stubDevice(page, { gpu: false, memory: null });
+    await page.goto("/");
+    // The phone layout keeps settings behind the history drawer.
+    await page.locator("#open-sidebar").click();
+    await page.locator("#open-settings").click();
+
+    const big = bySize.find((model) => model.downloadBytes > 700_000_000) ?? heaviest;
+    await pickModel(page, big.id);
+    await expect(page.locator("#model-warning")).toBeVisible();
+    await expect(page.locator("#model-warning")).toContainText("Safari on iOS");
+
+    // The smallest real model is still tight against a 1 GB tab, but it is no
+    // longer a blocker, so the warning drops from danger to advice.
+    await pickModel(page, lightest.id);
+    await expect(page.locator("#model-warning")).not.toHaveClass(/is-danger/);
+    await expect(page.locator("#model-warning")).toContainText("Safari tab");
+  });
+});

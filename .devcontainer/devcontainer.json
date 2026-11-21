@@ -1,0 +1,42 @@
+{
+  "name": "LocalMind",
+  // Node 22 matches the "engines" field, so a Codespace behaves like CI.
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  // The Playwright browsers and their system libraries are the only thing not
+  // covered by `npm ci`; installing them here means the first `npm test` works
+  // instead of failing with "Executable doesn't exist".
+  "postCreateCommand": "npm ci && npx playwright install --with-deps chromium",
+  "remoteUser": "node",
+  "forwardPorts": [5173, 4173],
+  "portsAttributes": {
+    "5173": { "label": "Vite dev server", "onAutoForward": "notify" },
+    "4173": { "label": "Preview (built app)", "onAutoForward": "notify" }
+  },
+  "containerEnv": {
+    // The browser suite runs against a built preview, which needs no GPU.
+    "PLAYWRIGHT_PREVIEW": "1"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "vitest.explorer",
+        "ms-playwright.playwright",
+        "github.vscode-github-actions",
+        "github.vscode-pull-request-github"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "eslint.useFlatConfig": true,
+        "typescript.tsdk": "node_modules/typescript/lib",
+        "files.eol": "\n"
+      }
+    }
+  }
+}

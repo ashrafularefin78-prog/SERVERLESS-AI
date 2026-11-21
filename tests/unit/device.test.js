@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assessModelFit,
   deviceSummary,
+  isIOSDevice,
   isMobileDevice,
   lightestCpuModel,
   modelDisplayName,
@@ -59,6 +60,7 @@ function profile(overrides = {}) {
     freeStorageMB: 50_000,
     wasmJspi: true,
     mobile: false,
+    ios: false,
     ...overrides,
   };
 }
@@ -242,5 +244,63 @@ describe("deviceSummary", () => {
 
   it("marks the capped memory value as a minimum", () => {
     expect(deviceSummary(profile({ webgpu: true }))).toContain("8 GB+ RAM");
+  });
+});
+
+describe("iOS tab memory", () => {
+  it("treats an iPhone as a ~1 GB tab even though it reports no memory", () => {
+    const fit = assessModelFit(cpuModel("small", 1000), profile({ ios: true, mobile: true }));
+    expect(fit.level).toBe("too-large");
+    expect(fit.reasons.join(" ")).toContain("Safari on iOS");
+  });
+
+  it("still allows a small model on the same device", () => {
+    const fit = assessModelFit(cpuModel("stub", 63), profile({ ios: true, mobile: true }));
+    expect(fit.level).toBe("ok");
+  });
+
+  it("uses the smaller of the reported RAM and the tab budget", () => {
+    const tight = assessModelFit(
+      cpuModel("mid", 300),
+      profile({ ios: true, mobile: true, memoryGB: 34 }),
+    );
+    // 684 MB of working set against a 1 GB tab budget: allowed, but tight.
+    // The device claims 34 GB, so the tab budget has to be what decides.
+    expect(tight.level).toBe("tight");
+    expect(tight.reasons.join(" ")).toContain("Safari tab");
+    const bigger = assessModelFit(
+      cpuModel("big", 900),
+      profile({ ios: true, mobile: true, memoryGB: 34 }),
+    );
+    expect(bigger.level).toBe("too-large");
+  });
+
+  it("says nothing about iOS tabs on other platforms", () => {
+    const fit = assessModelFit(cpuModel("small", 1000), profile());
+    expect(fit.reasons.join(" ")).not.toContain("Safari on iOS");
+  });
+
+  it("detects iPhone, iPad, and iPadOS desktop UAs", () => {
+    expect(
+      isIOSDevice({ userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)" }),
+    ).toBe(true);
+    expect(isIOSDevice({ userAgent: "Mozilla/5.0 (iPad; CPU OS 16_6 like Mac OS X)" })).toBe(true);
+    expect(
+      isIOSDevice({
+        userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+        maxTouchPoints: 5,
+      }),
+    ).toBe(true);
+    expect(
+      isIOSDevice({
+        userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+        maxTouchPoints: 0,
+      }),
+    ).toBe(false);
+    expect(isIOSDevice({ userAgent: "Mozilla/5.0 (Linux; Android 14)" })).toBe(false);
+  });
+
+  it("reports the platform in the diagnostics summary", () => {
+    expect(deviceSummary(profile({ ios: true, mobile: true }))).toContain("iOS");
   });
 });
