@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import cases from "./cases.json";
-import { demoChatReply } from "../../src/chat/replies.js";
+import {
+  demoChatReply,
+  isUnsupportedKnowledgeQuestion,
+  modelUpgradeReply,
+} from "../../src/chat/replies.js";
 import { demoCodingReply } from "../../src/coder/languages.js";
 
 const FIXED_NOW = new Date("2026-11-18T14:00:00");
 
 function resolve(testCase) {
   if (testCase.mode === "coder") return demoCodingReply({ prompt: testCase.prompt });
+  if (isUnsupportedKnowledgeQuestion(testCase.prompt)) return modelUpgradeReply();
   return demoChatReply({
     prompt: testCase.prompt,
     messages: testCase.messages || [],

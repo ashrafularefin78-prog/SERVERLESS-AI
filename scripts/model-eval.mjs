@@ -2,6 +2,7 @@
 //
 //   npm run evals:model                 replay the last recording, gate on baseline
 //   npm run evals:model:record          drive the real WebGPU model and record replies
+//   npm run evals:model:compare         compare the four requested WebGPU candidates
 //
 // Replay needs no GPU and no weights, so it runs in CI. Recording is manual:
 // it downloads the model once into a persistent browser profile, then asks the
@@ -20,6 +21,12 @@ const casesPath = path.join(root, "tests/evals/model/cases.json");
 const recordedPath = path.join(root, "tests/evals/model/recorded.json");
 const baselinePath = path.join(root, "tests/evals/model/baseline.json");
 const DEFAULT_MODEL = "Qwen2.5-0.5B-Instruct-q4f32_1-MLC";
+const MODEL_COMPARISON_IDS = [
+  "Qwen2.5-0.5B-Instruct-q4f32_1-MLC",
+  "Qwen3-1.7B-q4f32_1-MLC",
+  "Qwen3.5-2B-q4f32_1-MLC",
+  "SmolLM2-360M-Instruct-q4f32_1-MLC",
+];
 const EVAL_PORT = 5199;
 
 /**
@@ -36,9 +43,10 @@ async function setMode(page, mode) {
 }
 
 function parseArgs(argv) {
-  const args = { record: false, updateBaseline: false, headed: false, help: false };
+  const args = { record: false, compare: false, updateBaseline: false, headed: false, help: false };
   for (const arg of argv) {
     if (arg === "--record") args.record = true;
+    else if (arg === "--compare") args.compare = true;
     else if (arg === "--update-baseline") args.updateBaseline = true;
     else if (arg === "--headed") args.headed = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
@@ -167,7 +175,7 @@ async function waitForServer(url, timeoutMs = 60_000) {
   throw new Error(`Dev server did not answer at ${url}`);
 }
 
-async function record(cases, args) {
+async function record(cases, args, outputPath = recordedPath) {
   const modelId = args.model || DEFAULT_MODEL;
   const { chromium } = await import("@playwright/test");
 
@@ -288,8 +296,9 @@ async function record(cases, args) {
       app: "LocalMind",
       cases: recordedCases,
     };
-    await writeFile(recordedPath, `${JSON.stringify(recording, null, 2)}\n`);
-    console.log(`\nWrote ${path.relative(root, recordedPath)}`);
+    await mkdir(path.dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, `${JSON.stringify(recording, null, 2)}\n`);
+    console.log(`\nWrote ${path.relative(root, outputPath)}`);
 
     const results = cases.map((testCase) => {
       const entry = recordedCases.find((item) => item.id === testCase.id);
@@ -302,7 +311,8 @@ async function record(cases, args) {
       console.log(`Wrote ${path.relative(root, baselinePath)}`);
     }
 
-    if (results.some((result) => !result.passed)) process.exit(1);
+    if (results.some((result) => !result.passed)) process.exitCode = 1;
+    return { modelId, results, metrics: summarize(results) };
   } finally {
     await context?.close().catch(() => {});
     server.kill();
@@ -313,13 +323,47 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
     console.log(
-      "Usage: node scripts/model-eval.mjs [--record] [--model=<id>] [--update-baseline] [--headed]",
+      "Usage: node scripts/model-eval.mjs [--record] [--compare] [--model=<id>] [--update-baseline] [--headed]",
     );
     return;
   }
 
-  if (args.record) {
+  if (args.record || args.compare) {
     const cases = await readJson(casesPath);
+    if (args.compare) {
+      const comparisonDir = path.join(root, ".cache", "model-comparison");
+      const comparisons = [];
+      let failed = false;
+      for (const modelId of MODEL_COMPARISON_IDS) {
+        const safeName = modelId.replace(/[^a-z0-9.-]/gi, "_");
+        try {
+          const result = await record(
+            cases,
+            { ...args, model: modelId, updateBaseline: false },
+            path.join(comparisonDir, `${safeName}.json`),
+          );
+          comparisons.push(result);
+          if (result.results.some((item) => !item.passed)) failed = true;
+        } catch (error) {
+          failed = true;
+          console.error(`\nComparison failed for ${modelId}:`, error);
+        }
+      }
+      console.log("\nModel comparison summary:");
+      for (const modelId of MODEL_COMPARISON_IDS) {
+        const comparison = comparisons.find((entry) => entry.modelId === modelId);
+        if (!comparison) {
+          console.log(`${modelId}: unavailable; see error above`);
+          continue;
+        }
+        console.log(
+          `${comparison.modelId}: ${comparison.metrics.passed}/${comparison.metrics.total} passed; ` +
+            `${comparison.metrics.meanChars} mean chars; ${comparison.metrics.meanMs} ms mean / ${comparison.metrics.p95Ms} ms p95`,
+        );
+      }
+      if (failed) process.exitCode = 1;
+      return;
+    }
     await record(cases, args);
     return;
   }

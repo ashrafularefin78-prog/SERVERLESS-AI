@@ -18,6 +18,29 @@ interface History {
   turnCount: number;
 }
 
+export const MODEL_UPGRADE_MARKER = "[[LOAD_ON_DEVICE_MODEL]]";
+
+export function isUnsupportedKnowledgeQuestion(prompt: string): boolean {
+  const text = prompt.trim();
+  if (!text || text.length > 500) return false;
+  const normalized = text.toLowerCase();
+  const topic =
+    /\b(?:tcp|handshake|ww\s?(?:i|1)|world war|sql injection|injection attack|symmetric|asymmetric|encryption|cryptograph(?:y|ic)|photosynthesis|mitosis|gravity|dns|http|tls|blockchain|machine learning|neural network|database|algorithm|renaissance|industrial revolution|cold war|plate tectonics|quantum|evolution|inflation|democracy|french revolution|cellular respiration)\b/.test(
+      normalized,
+    );
+  const question =
+    /\b(?:explain|describe|define|what(?:'s| is| are)|how (?:does|do|did|is|are)|why (?:does|do|did|is|are)|compare|difference between|causes? of|tell me about)\b/.test(
+      normalized,
+    ) ||
+    /\b\w+\s+vs\.?\s+\w+\b/.test(normalized) ||
+    /\?$/.test(text);
+  return topic && question;
+}
+
+export function modelUpgradeReply(): string {
+  return `My built-in rules cannot explain this topic reliably. Load an on-device model to answer it.\n\n${MODEL_UPGRADE_MARKER}`;
+}
+
 const JOKES = [
   "Why do programmers prefer dark mode? Because light attracts bugs.",
   'I told my computer I needed a break. It said, "No problem, I\'ll go to sleep."',
@@ -251,6 +274,7 @@ export function demoChatReply({
 
   const explanation = explanationReply(lower);
   if (explanation) return explanation;
+  if (isUnsupportedKnowledgeQuestion(text)) return modelUpgradeReply();
 
   const planning = planningReply(lower);
   if (planning) return planning;

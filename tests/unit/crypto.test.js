@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   KEY_DERIVATION,
+  LEGACY_KEY_DERIVATION,
   MEMORY_VERIFIER,
+  MIN_PASSPHRASE_LENGTH,
   checkVerifier,
   decryptJson,
   deriveMemoryKey,
@@ -27,6 +29,25 @@ describe("vault key derivation", () => {
     expect(key.usages.sort()).toEqual(["decrypt", "encrypt"]);
   });
 
+  it("requires a long passphrase and normalizes it with NFKC", async () => {
+    await expect(deriveMemoryKey("short", SALT)).rejects.toThrow(
+      `at least ${MIN_PASSPHRASE_LENGTH} characters`,
+    );
+    const composed = await deriveMemoryKey("école password", SALT);
+    const decomposed = await deriveMemoryKey("e\u0301cole password", SALT);
+    const legacyRaw = await deriveMemoryKey(
+      "e\u0301cole password",
+      SALT,
+      LEGACY_KEY_DERIVATION.iterations,
+      false,
+      false,
+    );
+    await expect(decryptJson(composed, await encryptJson(decomposed, "same"))).resolves.toBe(
+      "same",
+    );
+    await expect(decryptJson(composed, await encryptJson(legacyRaw, "same"))).rejects.toThrow();
+  });
+
   it("generates a fresh salt each time", () => {
     expect(randomSalt()).not.toBe(randomSalt());
   });
@@ -38,7 +59,7 @@ describe("encryptJson / decryptJson", () => {
     const value = { messages: [{ role: "user", content: "hi" }], count: 1 };
     const blob = await encryptJson(key, value);
 
-    expect(blob.data).not.toContain("hi");
+    expect(blob.data).not.toContain(JSON.stringify(value));
     await expect(decryptJson(key, blob)).resolves.toEqual(value);
   });
 
@@ -57,6 +78,14 @@ describe("encryptJson / decryptJson", () => {
     const blob = await encryptJson(key, "secret");
 
     await expect(decryptJson(other, blob)).rejects.toThrow();
+  });
+
+  it("binds ciphertext to record AAD when supplied", async () => {
+    const key = await deriveMemoryKey(PASSPHRASE, SALT);
+    const blob = await encryptJson(key, { secret: true }, "conversations:one");
+    await expect(decryptJson(key, blob, "conversations:one")).resolves.toEqual({ secret: true });
+    await expect(decryptJson(key, blob, "conversations:two")).rejects.toThrow();
+    await expect(decryptJson(key, blob)).rejects.toThrow();
   });
 
   it("checks the verifier without revealing the passphrase", async () => {

@@ -17,12 +17,16 @@ import {
   parseMemoryCommand,
 } from "./memory.js";
 import {
-  MEMORY_VERIFIER,
-  checkVerifier,
+  KEY_DERIVATION,
   decryptJson,
+  LEGACY_KEY_DERIVATION,
+  MEMORY_VERIFIER,
+  MIN_PASSPHRASE_LENGTH,
+  checkVerifier,
   deriveMemoryKey,
   encryptJson,
   randomSalt,
+  recordAAD,
 } from "./crypto.js";
 import { analyzeIntent, expandShorthand, normalizeText, understandingHint } from "./understand.js";
 import { compactHistory, formatCompactionNote } from "./context.js";
@@ -45,6 +49,7 @@ import {
   getConversation,
   getSettings,
   listConversations,
+  migrateVaultRecords,
   saveConversation,
   saveSettings,
   setVaultKey,
@@ -183,6 +188,7 @@ interface State {
   memoryOutcome: MemoryOutcome | null;
   editingId: string | null;
   memoryKey: CryptoKey | null;
+  vaultAutoLockTimer: number | null;
   modelSupport: Awaited<ReturnType<typeof engine.detectSupport>> | null;
   modelCached: boolean | null;
   deviceProfile: DeviceProfile | null;
@@ -211,6 +217,7 @@ const state: State = {
   memoryOutcome: null,
   editingId: null,
   memoryKey: null,
+  vaultAutoLockTimer: null,
   modelSupport: null,
   modelCached: null,
   deviceProfile: null,
@@ -439,6 +446,22 @@ function bindEvents() {
     if (button) void deleteKnowledge(button.dataset.knowledgeId ?? "");
   });
 
+  for (const eventName of ["pointerdown", "keydown", "touchstart"] as const) {
+    document.addEventListener(
+      eventName,
+      () => {
+        if (state.memoryKey) armVaultAutoLock();
+      },
+      { passive: true },
+    );
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden" && state.memoryKey) lockVault();
+  });
+  window.addEventListener("pagehide", () => {
+    if (state.memoryKey) lockVault();
+  });
+
   dom["vault-enable"].addEventListener("click", () => openVaultDialog("enable"));
   dom["vault-unlock"].addEventListener("click", () => openVaultDialog("unlock"));
   dom["vault-lock"].addEventListener("click", () => lockVault());
@@ -544,6 +567,13 @@ function renderAll() {
   updateChatHeader();
 }
 
+function getWelcomeModelRecommendation() {
+  const recommendation = state.deviceProfile
+    ? recommendDeviceModel(engine.models, state.deviceProfile)
+    : null;
+  return recommendation?.kind === "cpu" ? recommendation : null;
+}
+
 /* ---------------------------------------------------------------
    Rendering
 --------------------------------------------------------------- */
@@ -572,6 +602,7 @@ function renderConversation({ scroll = true }: { scroll?: boolean } = {}) {
       renderWelcome({
         engine: state.engine,
         suggestions: mode.id === "coder" ? coderSuggestions() : SUGGESTIONS,
+        recommendation: getWelcomeModelRecommendation(),
       }),
     );
   } else {
@@ -774,8 +805,8 @@ function openVaultDialog(mode: "enable" | "unlock") {
     : "Enter the passphrase you set on this device.";
   dom["vault-confirm-field"].hidden = !enabling;
   dom["vault-hint"].textContent = enabling
-    ? "There is no recovery: if you forget the passphrase, the encrypted data cannot be read. Use at least 8 characters."
-    : "The passphrase is never stored. It unlocks data for this tab only.";
+    ? `There is no recovery: if you forget the passphrase, the encrypted data cannot be read. Use at least ${MIN_PASSPHRASE_LENGTH} characters.`
+    : "The passphrase is never stored. It unlocks data for this tab only. The vault locks after 15 minutes of inactivity or when you leave this tab.";
   dom["vault-ok"].textContent = enabling ? "Encrypt" : "Unlock";
   dom["vault-pass"].value = "";
   dom["vault-confirm"].value = "";
@@ -790,25 +821,34 @@ async function confirmVault() {
   if (!mode) return;
 
   if (mode === "enable") {
-    if (pass.length < 8) {
-      toast("Use a passphrase of at least 8 characters.");
+    if (pass.normalize("NFKC").length < MIN_PASSPHRASE_LENGTH) {
+      toast(`Use a passphrase of at least ${MIN_PASSPHRASE_LENGTH} characters.`);
       return;
     }
-    if (pass !== dom["vault-confirm"].value) {
+    if (pass.normalize("NFKC") !== dom["vault-confirm"].value.normalize("NFKC")) {
       toast("Passphrases do not match.");
       return;
     }
 
     try {
+      const normalizedPassphrase = pass.normalize("NFKC");
       const salt = randomSalt();
-      const key = await deriveMemoryKey(pass, salt);
+      const key = await deriveMemoryKey(normalizedPassphrase, salt);
       state.memoryKey = key;
-      setVaultKey(key);
+      setVaultKey(key, 2);
+      armVaultAutoLock();
 
       const vault: MemoryVault = {
+        version: 2,
+        kdf: "PBKDF2-SHA-256",
+        iterations: KEY_DERIVATION.iterations,
         salt,
-        verifier: await encryptJson(key, MEMORY_VERIFIER),
-        notes: await encryptJson(key, state.settings.memory || []),
+        verifier: await encryptJson(key, MEMORY_VERIFIER, recordAAD("settings", "vault-verifier")),
+        notes: await encryptJson(
+          key,
+          state.settings.memory || [],
+          recordAAD("settings", "vault-notes"),
+        ),
       };
       const encrypted = await encryptStoredConversations();
 
@@ -833,18 +873,43 @@ async function confirmVault() {
   if (!vault) return;
 
   try {
-    const key = await deriveMemoryKey(pass, vault.salt);
-    if (!(await checkVerifier(key, vault.verifier))) {
+    const legacy = vault.version !== 2;
+    const iterations = legacy
+      ? LEGACY_KEY_DERIVATION.iterations
+      : vault.iterations || KEY_DERIVATION.iterations;
+    const oldKey = await deriveMemoryKey(pass, vault.salt, iterations, !legacy, !legacy);
+    const oldVersion = legacy ? 1 : 2;
+    const verifierAad = legacy ? undefined : recordAAD("settings", "vault-verifier");
+    if (!(await checkVerifier(oldKey, vault.verifier, verifierAad))) {
       toast("Wrong passphrase.");
       return;
     }
 
+    const notesAad = legacy ? undefined : recordAAD("settings", "vault-notes");
+    const notes = await decryptJson<MemoryNote[]>(oldKey, vault.notes, notesAad);
+    let key = oldKey;
+    if (legacy || iterations < KEY_DERIVATION.iterations || vault.kdf !== "PBKDF2-SHA-256") {
+      const salt = randomSalt();
+      key = await deriveMemoryKey(pass, salt, KEY_DERIVATION.iterations, true, !legacy);
+      const upgraded: MemoryVault = {
+        version: 2,
+        kdf: "PBKDF2-SHA-256",
+        iterations: KEY_DERIVATION.iterations,
+        salt,
+        verifier: await encryptJson(key, MEMORY_VERIFIER, recordAAD("settings", "vault-verifier")),
+        notes: await encryptJson(key, notes, recordAAD("settings", "vault-notes")),
+      };
+      await migrateVaultRecords(oldKey, key, oldVersion, upgraded);
+      state.settings.memoryVault = upgraded;
+    }
+
     state.memoryKey = key;
-    setVaultKey(key);
-    state.settings.memory = await decryptJson<MemoryNote[]>(key, vault.notes);
+    setVaultKey(key, 2);
+    state.settings.memory = notes;
+    armVaultAutoLock();
     closeDialog(dom["vault-dialog"]);
     await refreshVaultState();
-    toast("Unlocked for this tab.");
+    toast(legacy ? "Vault upgraded and unlocked." : "Unlocked for this tab.");
   } catch (error) {
     console.error("Could not unlock", error);
     toast("Could not unlock.");
@@ -858,7 +923,23 @@ async function refreshVaultState() {
   syncSettingsForm();
 }
 
+function armVaultAutoLock() {
+  if (state.vaultAutoLockTimer !== null) {
+    window.clearTimeout(state.vaultAutoLockTimer);
+  }
+  state.vaultAutoLockTimer = window.setTimeout(
+    () => {
+      if (state.memoryKey) lockVault();
+    },
+    15 * 60 * 1000,
+  );
+}
+
 function lockVault() {
+  if (state.vaultAutoLockTimer !== null) {
+    window.clearTimeout(state.vaultAutoLockTimer);
+    state.vaultAutoLockTimer = null;
+  }
   setVaultKey(null);
   state.memoryKey = null;
   state.settings.memory = [];
@@ -867,6 +948,7 @@ function lockVault() {
   closeDialog(dom["vault-dialog"]);
   renderAll();
   syncSettingsForm();
+  if (!state.settings.memoryVault) return;
   toast("Locked. Encrypted chats are hidden until you unlock.");
 }
 
@@ -881,6 +963,8 @@ async function disableEncryption() {
   try {
     const notes = state.settings.memory || [];
     await decryptStoredConversations();
+    if (state.vaultAutoLockTimer !== null) window.clearTimeout(state.vaultAutoLockTimer);
+    state.vaultAutoLockTimer = null;
     setVaultKey(null);
     state.settings.memoryVault = null;
     state.memoryKey = null;
@@ -898,7 +982,17 @@ async function commitMemory(notes: MemoryNote[]) {
   const vault = state.settings.memoryVault;
   try {
     if (vault && state.memoryKey) {
-      const next: MemoryVault = { ...vault, notes: await encryptJson(state.memoryKey, notes) };
+      if (vault.version !== 2) {
+        throw new Error("Unlock again to upgrade this legacy vault before editing memory.");
+      }
+      const next: MemoryVault = {
+        ...vault,
+        notes: await encryptJson(
+          state.memoryKey,
+          notes,
+          vault.version === 2 ? recordAAD("settings", "vault-notes") : undefined,
+        ),
+      };
       state.settings.memoryVault = next;
       await saveSettings({ memoryVault: next, memory: [] });
     } else {
@@ -1071,6 +1165,7 @@ async function initModelPanel() {
   state.modelSupport = await engine.detectSupport();
   state.deviceProfile = await detectDeviceProfile(state.modelSupport.available);
   renderModelPanel();
+  if (!state.conversation?.messages.length) renderConversation({ scroll: false });
 }
 
 interface ModelPickerEls {
@@ -2125,6 +2220,18 @@ function resolveGenerationRun() {
 
 function onMessagesClick(event: MouseEvent) {
   const target = event.target as Element | null;
+  if (target?.closest("[data-load-model]")) {
+    const recommendation = getWelcomeModelRecommendation();
+    const fallback = engine.models.find((model) => model.id === state.settings.modelId);
+    const modelId = recommendation?.modelId || fallback?.id;
+    if (modelId) {
+      void loadSelectedModel(modelId);
+    } else {
+      openSettings();
+      toast("Choose a compatible on-device model to download.");
+    }
+    return;
+  }
   const copyButton = target?.closest<HTMLElement>("[data-copy-code]");
   if (copyButton) {
     const block = copyButton.closest(".code-block");

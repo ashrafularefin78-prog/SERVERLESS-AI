@@ -60,5 +60,25 @@
     "id": "cpu-definition",
     "prompt": "What does the acronym CPU stand for?",
     "expect": { "contains": ["central processing unit"], "maxChars": 400 }
+  },
+  {
+    "id": "tcp-handshake",
+    "prompt": "Explain the TCP handshake",
+    "expect": { "contains": ["SYN", "ACK"], "maxChars": 800 }
+  },
+  {
+    "id": "wwi-causes",
+    "prompt": "What were the main causes of WWI?",
+    "expect": { "matches": "nationalism|alliance|militarism|imperialism", "maxChars": 800 }
+  },
+  {
+    "id": "sql-injection",
+    "prompt": "Explain SQL injection",
+    "expect": { "matches": "query|database|input", "maxChars": 800 }
+  },
+  {
+    "id": "symmetric-asymmetric-encryption",
+    "prompt": "Compare symmetric and asymmetric encryption",
+    "expect": { "contains": ["symmetric", "asymmetric"], "maxChars": 800 }
   }
 ]

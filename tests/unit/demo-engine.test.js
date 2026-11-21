@@ -71,6 +71,25 @@ describe("buildDemoReply", () => {
     ).toContain("2 notes matching that");
   });
 
+  it.each([
+    "Explain the TCP handshake",
+    "What were the main causes of WWI?",
+    "Explain SQL injection",
+    "Compare symmetric and asymmetric encryption",
+  ])("offers an on-device model for unsupported knowledge: %s", (prompt) => {
+    const reply = buildDemoReply({ prompt });
+    expect(reply).toContain("built-in rules cannot explain");
+    expect(reply).toContain("[[LOAD_ON_DEVICE_MODEL]]");
+    expect(reply).not.toContain("What made you bring it up?");
+  });
+
+  it("does not override a mode-specific builder", () => {
+    const custom = () => "custom coder answer";
+    expect(buildDemoReply({ prompt: "Explain the TCP handshake", buildDemoReply: custom })).toBe(
+      "custom coder answer",
+    );
+  });
+
   it("uses a mode-specific builder when one is provided", () => {
     const custom = () => "custom coder answer";
     expect(buildDemoReply({ prompt: "write a C program", buildDemoReply: custom })).toBe(

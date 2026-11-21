@@ -439,6 +439,13 @@ describe("GGUF cache integrity", () => {
 });
 
 describe("local GGUF dispatch", () => {
+  it("filters Qwen3 thinking tags split across streamed chunks", () => {
+    const filter = new local.ThinkTagFilter();
+    expect(filter.push("Visible <thi")).toBe("Visible ");
+    expect(filter.push("nk>private reasoning</think> answer")).toBe(" answer");
+    expect(filter.push(" <THINK>hidden</THINK> done", true)).toBe("  done");
+  });
+
   it("loads without WebGPU and reuses the same model id", async () => {
     expect((await local.detectSupport()).available).toBe(false);
     expect(local.modelSupportReason(model, { available: false, reason: "No WebGPU" })).toBeNull();

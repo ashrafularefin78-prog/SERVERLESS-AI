@@ -15,7 +15,7 @@ async function welcomeLayout(page) {
     return {
       overflowX: root.scrollWidth - root.clientWidth,
       scrollTop: Math.round(scroller.scrollTop),
-      composerGap: Math.round(window.innerHeight - composer.bottom),
+      composerGap: Math.max(0, Math.round(window.innerHeight - composer.bottom)),
       eyebrowClipped: eyebrow.top < scrollerBox.top - 1,
       theme: root.dataset.theme,
     };

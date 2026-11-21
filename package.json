@@ -27,7 +27,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "evals:model:compare": "node scripts/model-eval.mjs --compare"
   },
   "engines": {
     "node": ">=22"

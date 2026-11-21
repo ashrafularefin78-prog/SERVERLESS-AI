@@ -35,6 +35,10 @@ export interface EncryptedBlob {
 }
 
 export interface MemoryVault {
+  /** Missing metadata on stored records is normalized to a legacy v1 vault. */
+  version: 1 | 2;
+  kdf: "PBKDF2-SHA-256";
+  iterations: number;
   salt: string;
   verifier: EncryptedBlob;
   notes: EncryptedBlob;

@@ -1,12 +1,20 @@
 import { DEFAULT_SETTINGS, STORAGE } from "../config.js";
-import { decryptJson, encryptJson } from "../crypto.js";
-import type { Conversation, EncryptedBlob, Message, Role, Settings } from "../types.js";
+import { decryptJson, encryptJson, recordAAD } from "../crypto.js";
+import type {
+  Conversation,
+  EncryptedBlob,
+  MemoryVault,
+  Message,
+  Role,
+  Settings,
+} from "../types.js";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
 // The vault key lives only in this module, only for this tab's lifetime.
 // Nothing writes it to disk, and it is non-extractable once derived.
 let vaultKey: CryptoKey | null = null;
+let vaultVersion: 1 | 2 = 2;
 
 interface StoredConversation {
   id: string;
@@ -18,12 +26,55 @@ interface StoredConversation {
   messages?: Message[];
 }
 
-export function setVaultKey(key: CryptoKey | null): void {
+export function setVaultKey(key: CryptoKey | null, version: 1 | 2 = 2): void {
   vaultKey = key;
+  vaultVersion = key ? version : 2;
 }
 
 export function hasVaultKey(): boolean {
   return vaultKey !== null;
+}
+
+/** Atomically re-wrap legacy chat records and publish the new v2 vault metadata. */
+export async function migrateVaultRecords(
+  oldKey: CryptoKey,
+  newKey: CryptoKey,
+  oldVersion: 1 | 2,
+  vault: MemoryVault,
+): Promise<number> {
+  const db = await openDb();
+  const readTx = db.transaction("conversations", "readonly");
+  const rows = (await requestToPromise(
+    readTx.objectStore("conversations").getAll(),
+  )) as StoredConversation[];
+  await transactionDone(readTx);
+
+  const updates: StoredConversation[] = [];
+  for (const row of rows) {
+    if (!row.encrypted) {
+      throw new Error(
+        "An encrypted vault contains a plaintext conversation; migration stopped to protect data.",
+      );
+    }
+    const conversation = await decryptJson<Conversation>(
+      oldKey,
+      row.encrypted,
+      oldVersion === 2 ? recordAAD("conversations", row.id) : undefined,
+    );
+    updates.push({
+      id: row.id,
+      updatedAt: conversation.updatedAt,
+      encrypted: await encryptJson(newKey, conversation, recordAAD("conversations", row.id)),
+    });
+  }
+
+  const tx = db.transaction(["conversations", "settings"], "readwrite");
+  const conversations = tx.objectStore("conversations");
+  for (const update of updates) conversations.put(update);
+  tx.objectStore("settings").put({ key: "memoryVault", value: vault });
+  tx.objectStore("settings").put({ key: "memory", value: [] });
+  await transactionDone(tx);
+  return updates.length;
 }
 
 const REQUIRED_STORES = ["conversations", "settings", "knowledge", "knowledgeChunks"] as const;
@@ -112,7 +163,11 @@ async function decodeConversation(
   if (!row.encrypted) return row as unknown as Conversation;
   if (!vaultKey) return null;
   try {
-    return await decryptJson<Conversation>(vaultKey, row.encrypted);
+    return await decryptJson<Conversation>(
+      vaultKey,
+      row.encrypted,
+      vaultVersion === 2 ? recordAAD("conversations", row.id) : undefined,
+    );
   } catch {
     console.warn("Could not decrypt a stored conversation");
     return null;
@@ -146,7 +201,11 @@ export async function saveConversation(conversation: Conversation): Promise<Conv
   const tx = db.transaction("conversations", "readwrite");
 
   if (vaultKey) {
-    const encrypted = await encryptJson(vaultKey, conversation);
+    const encrypted = await encryptJson(
+      vaultKey,
+      conversation,
+      recordAAD("conversations", conversation.id),
+    );
     tx.objectStore("conversations").put({
       id: conversation.id,
       updatedAt: conversation.updatedAt,
@@ -180,7 +239,7 @@ export async function encryptStoredConversations(): Promise<number> {
     updates.push({
       id: row.id,
       updatedAt: row.updatedAt,
-      encrypted: await encryptJson(key, row),
+      encrypted: await encryptJson(key, row, recordAAD("conversations", row.id)),
     });
   }
 
@@ -207,7 +266,13 @@ export async function decryptStoredConversations(): Promise<number> {
   for (const row of rows as StoredConversation[]) {
     if (!row.encrypted) continue;
     try {
-      plaintext.push(await decryptJson<Conversation>(key, row.encrypted));
+      plaintext.push(
+        await decryptJson<Conversation>(
+          key,
+          row.encrypted,
+          vaultVersion === 2 ? recordAAD("conversations", row.id) : undefined,
+        ),
+      );
     } catch {
       // Leave records this key cannot read untouched rather than deleting them.
       console.warn("Skipped a conversation that this key cannot decrypt");

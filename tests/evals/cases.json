@@ -137,5 +137,37 @@
     "mode": "coder",
     "prompt": "write a javascript function to add two numbers",
     "expect": { "contains": ["```javascript", "console.log"] }
+  },
+  {
+    "id": "tcp-handshake",
+    "prompt": "Explain the TCP handshake",
+    "expect": {
+      "contains": ["built-in rules cannot explain", "[[LOAD_ON_DEVICE_MODEL]]"],
+      "notContains": ["What made you bring it up?"]
+    }
+  },
+  {
+    "id": "wwi-causes",
+    "prompt": "What were the main causes of WWI?",
+    "expect": {
+      "contains": ["built-in rules cannot explain", "[[LOAD_ON_DEVICE_MODEL]]"],
+      "notContains": ["What made you bring it up?"]
+    }
+  },
+  {
+    "id": "sql-injection",
+    "prompt": "Explain SQL injection",
+    "expect": {
+      "contains": ["built-in rules cannot explain", "[[LOAD_ON_DEVICE_MODEL]]"],
+      "notContains": ["What made you bring it up?"]
+    }
+  },
+  {
+    "id": "symmetric-asymmetric-encryption",
+    "prompt": "Compare symmetric and asymmetric encryption",
+    "expect": {
+      "contains": ["built-in rules cannot explain", "[[LOAD_ON_DEVICE_MODEL]]"],
+      "notContains": ["What made you bring it up?"]
+    }
   }
 ]

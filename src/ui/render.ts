@@ -163,8 +163,24 @@ export function renderMessage(
     body.append(content);
   } else {
     content.classList.add("md");
-    content.innerHTML = renderMarkdown(message.content || "");
+    const upgradeMarker = "[[LOAD_ON_DEVICE_MODEL]]";
+    const upgradePrompt = (message.content || "").includes(upgradeMarker);
+    const displayText = (message.content || "").replace(upgradeMarker, "").trim();
+    content.innerHTML = renderMarkdown(displayText);
     body.append(content);
+    if (upgradePrompt) {
+      content.append(
+        h(
+          "button",
+          {
+            class: "button button-primary model-upgrade-action",
+            type: "button",
+            dataset: { loadModel: "true" },
+          },
+          "Load an on-device model",
+        ),
+      );
+    }
   }
 
   if (!isUser && message.sources?.length) {
@@ -269,9 +285,16 @@ export function formatTime(timestamp: number | string) {
 export function renderWelcome({
   engine,
   suggestions,
+  recommendation = null,
 }: {
   engine: EngineState;
   suggestions: string[];
+  recommendation?: {
+    title: string;
+    reason: string;
+    actionLabel: string;
+    kind: "cpu" | "builtin";
+  } | null;
 }) {
   const welcome = h("section", { class: "welcome" });
   const hero = h("div", { class: "welcome-hero" });
@@ -325,6 +348,19 @@ export function renderWelcome({
           ? "The built-in assistant is ready. Ask anything, or pick a suggestion below."
           : "Starting the built-in assistant...";
   welcome.append(renderNotice(notice, false));
+  if (recommendation?.kind === "cpu") {
+    const card = h("aside", { class: "model-recommendation", role: "note" });
+    card.append(
+      h("strong", { text: recommendation.title }),
+      h("p", { text: recommendation.reason }),
+      h(
+        "button",
+        { class: "button button-primary", type: "button", dataset: { loadModel: "true" } },
+        recommendation.actionLabel,
+      ),
+    );
+    welcome.append(card);
+  }
   welcome.append(h("p", { class: "suggestions-label", text: "Start with" }));
 
   const chips = h("div", { class: "suggestions" });

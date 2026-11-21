@@ -279,6 +279,46 @@ export function loadedModel(): string | null {
   return loadedModelId;
 }
 
+/** Removes Qwen3 reasoning blocks, including tags split across stream chunks. */
+export class ThinkTagFilter {
+  private pending = "";
+  private thinking = false;
+
+  push(chunk: string, flush = false): string {
+    this.pending += chunk;
+    let output = "";
+    const opening = "<think>";
+    const closing = "</think>";
+
+    while (this.pending) {
+      const tag = this.thinking ? closing : opening;
+      const index = this.pending.toLowerCase().indexOf(tag);
+      if (index >= 0) {
+        if (!this.thinking) output += this.pending.slice(0, index);
+        this.pending = this.pending.slice(index + tag.length);
+        this.thinking = !this.thinking;
+        continue;
+      }
+
+      if (flush) {
+        if (!this.thinking) output += this.pending;
+        this.pending = "";
+        break;
+      }
+
+      let carry = 0;
+      for (let size = 1; size < tag.length && size <= this.pending.length; size++) {
+        if (this.pending.slice(-size).toLowerCase() === tag.slice(0, size)) carry = size;
+      }
+      const safeLength = this.pending.length - carry;
+      if (!this.thinking && safeLength > 0) output += this.pending.slice(0, safeLength);
+      this.pending = this.pending.slice(safeLength);
+      break;
+    }
+    return output;
+  }
+}
+
 /** Unload the model, terminate the worker, and free GPU memory. */
 export async function unload(): Promise<void> {
   const current = engine;
@@ -321,13 +361,37 @@ export function interrupt(): void {
  * Stream a completion from the loaded model. The signal is wired to
  * `interruptGenerate()` so the UI's stop button ends the worker-side loop.
  */
+async function* filterQwenThinking(
+  chunks: AsyncIterable<StreamChunk>,
+  modelId: string | null,
+): AsyncGenerator<StreamChunk> {
+  if (!/qwen3(?:[.-]|_|$)/i.test(modelId || "")) {
+    yield* chunks;
+    return;
+  }
+
+  const filter = new ThinkTagFilter();
+  let usage: { completion_tokens: number; total_tokens: number } | undefined;
+  for await (const chunk of chunks) {
+    if ("text" in chunk) {
+      const text = filter.push(chunk.text);
+      if (text) yield { text };
+    } else {
+      usage = chunk.usage;
+    }
+  }
+  const remaining = filter.push("", true);
+  if (remaining) yield { text: remaining };
+  if (usage) yield { usage };
+}
+
 export async function* streamModel(
   messages: ChatMessage[],
   signal?: AbortSignal,
   maxTokens = 1024,
 ): AsyncGenerator<StreamChunk> {
   if (ggufBackend) {
-    yield* ggufBackend.streamModel(messages, signal, maxTokens);
+    yield* filterQwenThinking(ggufBackend.streamModel(messages, signal, maxTokens), loadedModelId);
     return;
   }
   if (!engine) throw new Error("No on-device model is loaded.");
@@ -345,20 +409,22 @@ export async function* streamModel(
       max_tokens: maxTokens,
     });
 
-    for await (const chunk of stream) {
-      if (signal?.aborted) return;
-      const text = chunk.choices[0]?.delta?.content ?? "";
-      if (text) yield { text };
-      const usage = chunk.usage;
-      if (usage) {
-        yield {
-          usage: {
-            completion_tokens: usage.completion_tokens,
-            total_tokens: usage.total_tokens,
-          },
-        };
+    async function* chunks(): AsyncGenerator<StreamChunk> {
+      for await (const chunk of stream) {
+        if (signal?.aborted) return;
+        const text = chunk.choices[0]?.delta?.content ?? "";
+        if (text) yield { text };
+        if (chunk.usage) {
+          yield {
+            usage: {
+              completion_tokens: chunk.usage.completion_tokens,
+              total_tokens: chunk.usage.total_tokens,
+            },
+          };
+        }
       }
     }
+    yield* filterQwenThinking(chunks(), loadedModelId);
   } finally {
     signal?.removeEventListener("abort", onAbort);
   }

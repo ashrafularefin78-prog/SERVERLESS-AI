@@ -20,6 +20,20 @@ test("sends a message and streams a local reply", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("offers a clickable model upgrade for unsupported knowledge questions", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#input").fill("Explain the TCP handshake");
+  await page.locator("#send").click();
+
+  const reply = page.locator(".msg.assistant .msg-text").last();
+  await expect(reply).toContainText("built-in rules cannot explain");
+  await expect(reply.getByRole("button", { name: "Load an on-device model" })).toBeVisible();
+  await expect(reply).not.toContainText("[[LOAD_ON_DEVICE_MODEL]]");
+
+  await reply.getByRole("button", { name: "Load an on-device model" }).click();
+  await expect(page.locator("#toast")).toBeVisible();
+});
+
 test("remembers and forgets a note through chat and settings", async ({ page }) => {
   await page.goto("/");
 
@@ -92,6 +106,108 @@ test("encrypts chats at rest and requires the passphrase after reload", async ({
   await page.locator("#vault-ok").click();
   await expect(page.locator("#vault-dialog")).not.toHaveAttribute("open", "");
   await expect(page.locator("#history")).toContainText("vault code is amber-42");
+});
+
+test("upgrades and unlocks a legacy v1 memory vault", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("localmind");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const encode = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)));
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const material = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode("legacy test passphrase"),
+      "PBKDF2",
+      false,
+      ["deriveKey"],
+    );
+    const key = await crypto.subtle.deriveKey(
+      { name: "PBKDF2", salt, iterations: 310000, hash: "SHA-256" },
+      material,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt", "decrypt"],
+    );
+    const encrypt = async (value) => {
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const data = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        key,
+        new TextEncoder().encode(JSON.stringify(value)),
+      );
+      return { iv: encode(iv), data: encode(data) };
+    };
+    const conversation = {
+      id: "legacy-chat",
+      title: "Legacy chat",
+      createdAt: 1,
+      updatedAt: 2,
+      mode: "general",
+      messages: [{ id: "legacy-message", role: "user", content: "legacy vault chat survives" }],
+    };
+    const [verifier, notes, encrypted] = await Promise.all([
+      encrypt("localmind-memory-verifier-v1"),
+      encrypt([{ id: "legacy-note", text: "legacy note survives", addedAt: 1 }]),
+      encrypt(conversation),
+    ]);
+    const tx = db.transaction(["settings", "conversations"], "readwrite");
+    tx.objectStore("settings").put({
+      key: "memoryVault",
+      value: {
+        salt: encode(salt),
+        verifier,
+        notes,
+      },
+    });
+    tx.objectStore("settings").put({ key: "memory", value: [] });
+    tx.objectStore("conversations").put({ id: conversation.id, updatedAt: 2, encrypted });
+    await new Promise((resolve, reject) => {
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+    db.close();
+  });
+
+  await page.reload();
+  await page.locator("#vault-pass").fill("legacy test passphrase");
+  await page.locator("#vault-ok").click();
+  await expect(page.locator("#history")).toContainText("Legacy chat");
+  await page.locator("#history").getByText("Legacy chat").click();
+  await expect(page.locator(".msg.user .msg-text")).toContainText("legacy vault chat survives");
+  await page.locator("#open-settings").click();
+  await expect(page.locator("#memory-list")).toContainText("legacy note survives");
+
+  const migrated = await page.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("localmind");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const tx = db.transaction(["settings", "conversations"], "readonly");
+    const vaultRequest = tx.objectStore("settings").get("memoryVault");
+    const chatRequest = tx.objectStore("conversations").get("legacy-chat");
+    const [vault, chat] = await Promise.all([
+      new Promise((resolve, reject) => {
+        vaultRequest.onsuccess = () => resolve(vaultRequest.result.value);
+        vaultRequest.onerror = () => reject(vaultRequest.error);
+      }),
+      new Promise((resolve, reject) => {
+        chatRequest.onsuccess = () => resolve(chatRequest.result);
+        chatRequest.onerror = () => reject(chatRequest.error);
+      }),
+    ]);
+    db.close();
+    return { vault, chat };
+  });
+  expect(migrated.vault.version).toBe(2);
+  expect(migrated.vault.iterations).toBe(600000);
+  expect(migrated.chat.encrypted).toBeTruthy();
+  expect(migrated.chat.messages).toBeUndefined();
 });
 
 test("clears chats and settings from the browser", async ({ page }) => {

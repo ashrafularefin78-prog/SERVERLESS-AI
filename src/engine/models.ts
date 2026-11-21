@@ -80,6 +80,14 @@ export const LOCAL_MODELS: LocalModel[] = [...GGUF_MODELS, ...WEBLLM_MODELS];
 
 export const DEFAULT_MODEL_ID = "Qwen2.5-0.5B-Instruct-q4f32_1-MLC";
 
+/** Candidates used by the optional real-WebGPU model comparison harness. */
+export const MODEL_COMPARISON_IDS = [
+  "Qwen2.5-0.5B-Instruct-q4f32_1-MLC",
+  "Qwen3-1.7B-q4f32_1-MLC",
+  "Qwen3.5-2B-q4f32_1-MLC",
+  "SmolLM2-360M-Instruct-q4f32_1-MLC",
+] as const;
+
 export function modelById(id: string): LocalModel | null {
   return LOCAL_MODELS.find((model) => model.id === id) ?? null;
 }

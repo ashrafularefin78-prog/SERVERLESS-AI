@@ -1094,6 +1094,26 @@ svg {
   animation-delay: -3.2s;
 }
 
+.model-recommendation {
+  display: grid;
+  gap: 0.65rem;
+  max-width: 42rem;
+  margin: 1rem auto;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--panel);
+}
+
+.model-recommendation p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.model-upgrade-action {
+  margin-top: 0.75rem;
+}
+
 .notice {
   display: flex;
   align-items: center;

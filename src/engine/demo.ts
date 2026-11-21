@@ -1,9 +1,18 @@
 // Built-in, model-free reply engine. This module deliberately has no DOM or
 // app-state imports so it can be unit-tested in Node and moved to a Worker
 // later without changing the UI.
-import { demoChatReply } from "../chat/replies.js";
+import {
+  demoChatReply,
+  isUnsupportedKnowledgeQuestion,
+  modelUpgradeReply,
+} from "../chat/replies.js";
 import { parseMemoryCommand } from "../memory.js";
 import type { ChatMessage, DemoOptions, MemoryNote, MemoryOutcome, StreamChunk } from "../types.js";
+export { isUnsupportedKnowledgeQuestion } from "../chat/replies.js";
+
+function modelUpgradePrompt(): string {
+  return modelUpgradeReply();
+}
 
 export interface BuildDemoReplyInput {
   prompt?: string;
@@ -31,6 +40,7 @@ export function buildDemoReply({
     return buildDemoReply({ prompt, messages, systemPrompt: messages[0]?.content || "" });
   }
 
+  if (isUnsupportedKnowledgeQuestion(prompt)) return modelUpgradePrompt();
   return demoChatReply({ prompt, messages, memory });
 }
 
