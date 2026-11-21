@@ -1,5 +1,5 @@
 import { renderMarkdown } from "../markdown.js";
-import type { ConversationSummary, EngineState, Message } from "../types.js";
+import type { ConversationSummary, EngineState, Message, RetrievalTrace } from "../types.js";
 
 export function h<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -23,6 +23,63 @@ export function h<K extends keyof HTMLElementTagNameMap>(
 
   appendChildren(node, children);
   return node;
+}
+
+/**
+ * "Show your work" for a grounded answer: which passages were considered, how
+ * each one scored, and whether the reply was allowed to answer at all. Costs
+ * nothing until the user opens it, and holds no document text beyond a preview.
+ */
+function renderRetrievalTrace(trace: RetrievalTrace): HTMLElement {
+  const details = h("details", { class: "msg-trace" });
+  const summary = h("summary", {
+    class: "msg-trace-summary",
+    text: trace.grounded
+      ? `How this answer was grounded (${trace.hits.length} of ${trace.chunks} passages)`
+      : "No document passage was relevant enough",
+  });
+  details.append(summary);
+
+  const stats = h(
+    "p",
+    { class: "msg-trace-stats" },
+    h("span", { text: `${trace.documents} document${trace.documents === 1 ? "" : "s"}` }),
+    h("span", { text: `best match ${trace.bestSemantic.toFixed(2)}` }),
+    h("span", { text: `term coverage ${Math.round(trace.bestCoverage * 100)}%` }),
+    h("span", { text: trace.grounded ? "answered from documents" : "asked to abstain" }),
+  );
+  details.append(stats);
+
+  if (!trace.hits.length) {
+    details.append(
+      h("p", {
+        class: "msg-trace-empty",
+        text: "No passage cleared the relevance floor, so the model was told to say it could not find the answer.",
+      }),
+    );
+    return details;
+  }
+
+  const list = h("ol", { class: "msg-trace-list" });
+  for (const hit of trace.hits) {
+    list.append(
+      h(
+        "li",
+        { class: "msg-trace-hit" },
+        h(
+          "div",
+          { class: "msg-trace-head" },
+          h("strong", { text: hit.title }),
+          h("span", {
+            text: `match ${hit.semantic.toFixed(2)} · terms ${Math.round(hit.coverage * 100)}% · rank ${hit.score.toFixed(3)}`,
+          }),
+        ),
+        h("p", { class: "msg-trace-preview", text: hit.preview }),
+      ),
+    );
+  }
+  details.append(list);
+  return details;
 }
 
 function appendChildren(node: HTMLElement, children: unknown[]) {
@@ -191,6 +248,8 @@ export function renderMessage(
       }),
     );
   }
+
+  if (!isUser && message.retrieval) body.append(renderRetrievalTrace(message.retrieval));
 
   const meta = h("div", { class: "msg-meta" });
   const actions = h("div", { class: "msg-actions" });

@@ -72,6 +72,16 @@ Weak retrieval is a separate failure mode: rather than leaving a small model to 
 
 **Residual risk:** While the vault is unlocked, chats are plaintext in memory and any script running on the page (including a compromised dependency) can read them; encryption protects data at rest, not an active session. Record ids, `updatedAt` timestamps, and ciphertext lengths stay in plaintext, so an observer with profile access learns how many chats exist and roughly how large they are. Knowledge documents and their embeddings are not covered by the vault and remain plaintext in IndexedDB. Offline guessing of the passphrase is limited by the KDF but not eliminated; use a long passphrase. A forgotten passphrase cannot be recovered, and losing it makes encrypted chats unreadable.
 
+### Model integrity
+
+**Threat:** Tampered, corrupted, or silently replaced model weights.
+
+**Mitigation:** WebGPU models come from WebLLM's pinned `prebuiltAppConfig`, whose SRI hashes for the config, WASM, and tokenizer are verified before load. Community GGUF URLs are pinned to a specific Hugging Face commit, the catalogue records the exact byte size, the downloaded size is checked before the model is used, and a resumed transfer is refused when the ETag changes. The ETag is stored with the weights and reused for `If-Range`.
+
+**Residual risk:** the app does not compute a full SHA-256 of multi-gigabyte GGUF files. WebCrypto has no incremental digest, and hashing a 2-4 GB blob in one call would exhaust memory on the low-RAM devices this app targets. The commit-pinned URL, size check, and validator are the current controls; a streaming digest or upstream hashes in the catalogue would close the gap. See [ROADMAP.md](../ROADMAP.md).
+
+Build provenance is attested in CI: the deploy workflow archives `dist/`, signs it with `actions/attest-build-provenance`, and publishes the archive as an artifact, so a built bundle can be checked with `gh attestation verify` against the workflow, commit, and repository that produced it.
+
 ### Supply chain
 
 **Threat:** A compromised npm package injects code at build time or runtime.

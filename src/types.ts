@@ -29,6 +29,24 @@ export type Theme = "system" | "dark" | "light";
 
 export type ThinkingEffort = "low" | "medium" | "high";
 
+export interface RetrievalHitTrace {
+  title: string;
+  score: number;
+  semantic: number;
+  coverage: number;
+  preview: string;
+}
+
+export interface RetrievalTrace {
+  query: string;
+  grounded: boolean;
+  bestSemantic: number;
+  bestCoverage: number;
+  documents: number;
+  chunks: number;
+  hits: RetrievalHitTrace[];
+}
+
 /** Why the on-device model stopped: out of memory, or an unclassified crash. */
 export type EngineCrash = "oom" | "crash";
 
@@ -88,6 +106,8 @@ export interface Message {
   stats?: MessageStats;
   /** Document titles the reply was grounded in, when retrieval contributed. */
   sources?: string[];
+  /** Retrieval scores behind a grounded or abstained reply, for "show your work". */
+  retrieval?: RetrievalTrace;
 }
 
 export interface KnowledgeDoc {

@@ -212,8 +212,17 @@ interface State {
   deviceProfile: DeviceProfile | null;
   knowledge: KnowledgeDoc[];
   knowledgeBusy: boolean;
+  /** How many trailing messages are in the DOM, for long chats. */
+  messageWindow: number;
+  messageWindowFor: string | null;
   vaultMode: "enable" | "unlock" | null;
 }
+
+/**
+ * Messages kept in the DOM per page. A 10,000-message chat must not build
+ * 10,000 nodes on load; older turns are appended on request.
+ */
+const MESSAGE_WINDOW_STEP = 60;
 
 const $ = (id: string) => document.getElementById(id);
 
@@ -241,6 +250,8 @@ const state: State = {
   deviceProfile: null,
   knowledge: [],
   knowledgeBusy: false,
+  messageWindow: MESSAGE_WINDOW_STEP,
+  messageWindowFor: null,
   vaultMode: null,
 };
 
@@ -662,9 +673,32 @@ function renderConversation({ scroll = true }: { scroll?: boolean } = {}) {
       }),
     );
   } else {
+    if (state.messageWindowFor !== conversation.id) {
+      state.messageWindowFor = conversation.id;
+      state.messageWindow = MESSAGE_WINDOW_STEP;
+    }
+
     const last = conversation.messages.at(-1);
     const canRegenerate = last?.role === "assistant" && !last.streaming && !last.error;
-    for (const message of conversation.messages) {
+    const start = Math.max(0, conversation.messages.length - state.messageWindow);
+    const hidden = start;
+
+    if (hidden > 0) {
+      dom.messages.append(
+        h(
+          "div",
+          { class: "earlier-bar" },
+          h("button", {
+            class: "btn subtle",
+            type: "button",
+            dataset: { action: "show-earlier" },
+            text: `Show ${Math.min(hidden, MESSAGE_WINDOW_STEP)} earlier message${Math.min(hidden, MESSAGE_WINDOW_STEP) === 1 ? "" : "s"} (${hidden} hidden)`,
+          }),
+        ),
+      );
+    }
+
+    for (const message of conversation.messages.slice(start)) {
       dom.messages.append(
         renderMessage(message, {
           canRegenerate: message === last && canRegenerate,
@@ -2037,7 +2071,7 @@ async function runGeneration(assistantId: string) {
 
   // The rule engine cannot read a grounding block, so retrieval only runs for
   // the neural path. Otherwise the UI would claim sources a reply never used.
-  let knowledge: { block: string; sources: string[] } | null = null;
+  let knowledge: Awaited<ReturnType<typeof retrieveKnowledge>> = null;
   if (engine.getState().mode === "model" && latestUser.trim() && state.knowledge.length) {
     try {
       knowledge = await retrieveKnowledge(latestUser);
@@ -2135,6 +2169,7 @@ async function runGeneration(assistantId: string) {
     assistant.error = errorMessage;
   } else {
     assistant.sources = knowledge?.sources;
+    assistant.retrieval = knowledge?.trace;
     if (!assistant.content) {
       assistant.content = stoppedByUser ? "_Stopped._" : "_No output. Try a shorter prompt._";
     }
@@ -2358,6 +2393,18 @@ function onMessagesClick(event: MouseEvent) {
     }
     if (action === "regenerate" || action === "retry") {
       regenerate();
+      return;
+    }
+    if (action === "show-earlier") {
+      state.messageWindow += MESSAGE_WINDOW_STEP;
+      // Keep the viewport on the message the reader was looking at.
+      const anchor = dom.messages.querySelector<HTMLElement>(".msg");
+      const offset = anchor ? anchor.offsetTop : 0;
+      renderConversation({ scroll: false });
+      window.requestAnimationFrame(() => {
+        const nextAnchor = dom.messages.querySelector<HTMLElement>(".msg");
+        if (nextAnchor) dom["chat-scroll"].scrollTop += nextAnchor.offsetTop - offset;
+      });
       return;
     }
   }

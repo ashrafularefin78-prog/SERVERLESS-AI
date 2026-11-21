@@ -579,3 +579,123 @@ test("shows a local diagnostics log in Settings", async ({ page }) => {
   await expect(page.locator("#hardware-stats")).toBeChecked();
   await expect(page.locator("#engine-alert")).toBeHidden();
 });
+
+test("renders a page of a long conversation and loads earlier messages on request", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.evaluate(async () => {
+    const now = Date.now();
+    const messages = Array.from({ length: 150 }, (_, index) => ({
+      id: `m-${index}`,
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: `Message number ${index}`,
+      createdAt: now + index,
+    }));
+    const conversation = {
+      id: "long-chat",
+      title: "Long chat",
+      createdAt: now,
+      updatedAt: now + messages.length,
+      mode: "general",
+      messages,
+    };
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("localmind");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction("conversations", "readwrite");
+      tx.objectStore("conversations").put(conversation);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  });
+  await page.reload();
+
+  // Only the newest page is in the DOM, plus a control for the rest.
+  await expect(page.locator(".msg")).toHaveCount(60);
+  const earlier = page.locator("[data-action='show-earlier']");
+  await expect(earlier).toBeVisible();
+  await expect(earlier).toContainText("(90 hidden)");
+  await expect(page.locator(".msg-text").last()).toContainText("Message number 149");
+
+  await earlier.click();
+  await expect(page.locator(".msg")).toHaveCount(120);
+  await expect(earlier).toContainText("(30 hidden)");
+
+  await earlier.click();
+  await expect(page.locator(".msg")).toHaveCount(150);
+  await expect(earlier).toBeHidden();
+});
+
+test("shows retrieval scores behind a grounded reply", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(async () => {
+    const now = Date.now();
+    const conversation = {
+      id: "traced-chat",
+      title: "Refund policy",
+      createdAt: now,
+      updatedAt: now + 2,
+      mode: "general",
+      messages: [
+        {
+          id: "t-1",
+          role: "user",
+          content: "How long do refunds take?",
+          createdAt: now,
+        },
+        {
+          id: "t-2",
+          role: "assistant",
+          content: "Refunds take five business days.",
+          createdAt: now + 1,
+          sources: ["handbook.md"],
+          retrieval: {
+            query: "How long do refunds take?",
+            grounded: true,
+            bestSemantic: 0.82,
+            bestCoverage: 1,
+            documents: 1,
+            chunks: 9,
+            hits: [
+              {
+                title: "handbook.md",
+                score: 0.0328,
+                semantic: 0.82,
+                coverage: 1,
+                preview: "Refunds take five business days from approval.",
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("localmind");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction("conversations", "readwrite");
+      tx.objectStore("conversations").put(conversation);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  });
+  await page.reload();
+
+  await expect(page.locator(".msg-sources")).toContainText("handbook.md");
+  const trace = page.locator(".msg-trace");
+  await expect(trace).not.toHaveAttribute("open", "");
+  await trace.locator("summary").click();
+  await expect(trace).toHaveAttribute("open", "");
+  await expect(trace).toContainText("1 of 9 passages");
+  await expect(trace).toContainText("best match 0.82");
+  await expect(trace).toContainText("term coverage 100%");
+  await expect(trace).toContainText("Refunds take five business days from approval.");
+});

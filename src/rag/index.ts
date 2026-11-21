@@ -13,6 +13,7 @@ import { embedTexts, setEmbeddingProgressListener } from "./embeddings.js";
 import { isPdfFile } from "./pdf-text.js";
 import { buildAbstainBlock, buildKnowledgeBlock, type KnowledgeBlock } from "./prompt.js";
 import { rankByHybrid } from "./similarity.js";
+import { buildRetrievalTrace, type RetrievalTrace } from "./trace.js";
 import { deleteKnowledgeDoc, listKnowledgeDocs, loadAllChunks, saveKnowledgeDoc } from "./store.js";
 
 export const RAG = {
@@ -29,7 +30,14 @@ export const RAG = {
 } as const;
 
 export { setEmbeddingProgressListener };
-export type { KnowledgeBlock };
+export type { KnowledgeBlock, RetrievalTrace };
+
+/** Grounding for the prompt plus the numbers shown by "show your work". */
+export interface RetrievalResult {
+  sources: string[];
+  block: string;
+  trace: RetrievalTrace;
+}
 
 export async function listDocuments(): Promise<KnowledgeDoc[]> {
   return listKnowledgeDocs();
@@ -138,7 +146,7 @@ export async function removeDocument(id: string): Promise<void> {
  * Find the document passages most relevant to a query and format them for the
  * prompt. Returns null when there is no knowledge base or nothing matches.
  */
-export async function retrieveKnowledge(query: string): Promise<KnowledgeBlock | null> {
+export async function retrieveKnowledge(query: string): Promise<RetrievalResult | null> {
   const trimmed = String(query ?? "").trim();
   if (!trimmed) return null;
 
@@ -152,7 +160,18 @@ export async function retrieveKnowledge(query: string): Promise<KnowledgeBlock |
   if (!vector?.length) return null;
 
   const hits = rankByHybrid(trimmed, vector, chunks, RAG.topK, RAG.candidateK);
-  if (!hits.length) return buildAbstainBlock();
+  const counts = { documents: docs.length, chunks: chunks.length };
+
+  const abstain = (grounded: boolean): RetrievalResult => {
+    const block = buildAbstainBlock();
+    return {
+      sources: block.sources,
+      block: block.block,
+      trace: buildRetrievalTrace({ query: trimmed, vector, hits, ...counts, grounded }),
+    };
+  };
+
+  if (!hits.length) return abstain(false);
 
   const top = hits[0]!;
   const assessment = assessRetrieval({
@@ -169,7 +188,7 @@ export async function retrieveKnowledge(query: string): Promise<KnowledgeBlock |
       message: "Knowledge search was too weak to answer from; asking the model to abstain.",
       detail: `semantic ${assessment.semantic.toFixed(2)}, term coverage ${assessment.coverage.toFixed(2)}`,
     });
-    return buildAbstainBlock();
+    return abstain(false);
   }
 
   const block = buildKnowledgeBlock(
@@ -182,5 +201,11 @@ export async function retrieveKnowledge(query: string): Promise<KnowledgeBlock |
   );
 
   // Nothing fit the budget, so there is no context to ground on.
-  return block ?? buildAbstainBlock();
+  if (!block) return abstain(false);
+
+  return {
+    sources: block.sources,
+    block: block.block,
+    trace: buildRetrievalTrace({ query: trimmed, vector, hits, ...counts, grounded: true }),
+  };
 }

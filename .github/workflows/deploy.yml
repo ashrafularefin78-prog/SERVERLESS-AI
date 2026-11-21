@@ -9,6 +9,8 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  # Signed build provenance (SLSA) for the artifact that ships to Pages.
+  attestations: write
 
 concurrency:
   group: pages
@@ -25,6 +27,21 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # Attest the exact bytes that get deployed. `dist/` is a directory, so it
+      # is archived first; consumers can verify the archive against the
+      # published provenance with `gh attestation verify`.
+      - name: Package the build for attestation
+        run: |
+          cd dist
+          zip -qr ../dist.zip .
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-provenance
+          path: dist.zip
+          retention-days: 90
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

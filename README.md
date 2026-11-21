@@ -1,6 +1,6 @@
 # LocalMind
 
-[**Try the live demo →**](https://ashrafularefin78-prog.github.io/SERVERLESS-AI/)
+[**Try the live demo →**](https://ashrafularefin78-prog.github.io/SERVERLESS-AI/) · [**Open it in StackBlitz →**](https://stackblitz.com/github/ashrafularefin78-prog/SERVERLESS-AI)
 
 [![Live demo](https://img.shields.io/badge/live-demo-f0445e)](https://ashrafularefin78-prog.github.io/SERVERLESS-AI/)
 [![CI](https://github.com/ashrafularefin78-prog/SERVERLESS-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/ashrafularefin78-prog/SERVERLESS-AI/actions/workflows/ci.yml)
@@ -74,6 +74,7 @@ RAG is the difference between a chat toy and an assistant that knows your materi
 4. **Retrieve.** A query is embedded the same way, then ranked twice: an exact flat cosine scan for meaning and a small BM25 term ranking for exact names, error codes, and identifiers. The two lists are merged with reciprocal-rank fusion, which keeps semantic matches without losing literal ones.
 5. **Ground.** The top passages go into the system prompt inside a `<context> ... </context>` block. The instructions say the block is untrusted data, never instructions, so text inside a document cannot take over the conversation; anything that looks like a closing delimiter or a chat-template token is stripped first.
 6. **Abstain when unsure.** If the best passage is below the relevance floor and the query terms barely appear, the prompt tells the model to answer exactly "I cannot find the answer in the provided documents." instead of guessing. The same sentence is repeated in the grounding rules, so a model that half-matches still has a safe path. Abstained replies cite no documents.
+7. **Show the work.** Each grounded reply keeps the per-passage cosine score, term coverage, fused rank, and a short preview. Expand **How this answer was grounded** under the message to see exactly what the model was given; abstained replies say so instead.
 
 Removing a document deletes its chunks and vectors immediately. Retrieval failures never block a reply: the chat falls back to the conversation alone.
 
@@ -200,6 +201,14 @@ Rule-engine evals (`tests/evals/cases.json`) assert exact properties of determin
 The harness itself is covered by unit tests (`tests/unit/model-eval.test.js`), including the regression gate.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the local workflow.
+
+## Long chats
+
+Only the newest 60 messages are in the DOM. Older turns load a page at a time on request, so a conversation with thousands of messages costs a bounded amount of rendering work. The model prompt is separately budgeted in `src/config.ts`, so neither the UI nor the context window can grow without limit.
+
+## Roadmap
+
+[ROADMAP.md](ROADMAP.md) tracks what shipped, what is next, and what is deliberately not planned, including the constraints behind each deferred item (no backend, no CSP weakening, no payload regression).
 
 ## Community
 

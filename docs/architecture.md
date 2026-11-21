@@ -52,6 +52,8 @@ If boot fails, `main.ts` shows a self-contained error overlay with a reload acti
 7. On completion the assistant message records `sources`, which the UI renders as "From your documents: ...".
 8. `app.ts` appends chunks through `streamText()` using `textContent` while streaming. When the stream finishes, the final content is saved and rendered as sanitized markdown.
 
+Only the newest 60 messages are rendered. `renderConversation()` prepends a "show earlier" control when older turns exist, and appending a page preserves the reader's scroll position by measuring the first message's offset. This bounds DOM work for long conversations without a virtual-scroller dependency; the model prompt is bounded separately by `contextLimitsFor()`.
+
 Stop and regenerate are handled with the run identifier and abort signal. A late chunk from an old run is ignored. Editing a user message loads it into the composer with a banner; sending truncates the conversation at that message and regenerates from the new text. Edit actions are hidden while a reply is generating.
 
 ## Data model
@@ -107,6 +109,7 @@ See [rule-engine.md](rule-engine.md) for the rule order and extension points.
 - `confidence.ts` decides whether a result may be answered from. A passage must either clear the cosine floor or, for multi-word queries, cover most query terms exactly. Single shared words never count, because they prove nothing.
 - `prompt.ts` formats the grounding block and enforces the character budget. Excerpts sit inside `<context> ... </context>`; the rules say the block is untrusted data and repeat the exact abstain sentence. Document text is escaped first: anything resembling a closing delimiter or a `<|...|>` control token is replaced, so a file cannot break out of the block.
 - When retrieval is too weak, `buildAbstainBlock()` is used instead of excerpts. It tells the model to reply "I cannot find the answer in the provided documents." for document questions, and to answer normally (without claiming document coverage) for ordinary conversation. Abstained replies record no sources.
+- `trace.ts` records what the model was given: the query, a preview of each passage, its cosine score, term coverage, fused rank, and whether the reply was grounded. The trace is stored on the message so "show your work" survives a reload. Previews are capped at 220 characters: the trace explains a decision without copying the document into the chat record.
 
 Embedding runs on the CPU (ONNX Runtime Web, asyncify build) and is independent of WebGPU, so retrieval works even when the chat model cannot run.
 
