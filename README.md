@@ -123,7 +123,7 @@ If the inference worker dies, usually from running out of memory, the app aborts
 
 For a deeper tour, see [docs/architecture.md](docs/architecture.md), [docs/whitepaper.md](docs/whitepaper.md), [docs/rule-engine.md](docs/rule-engine.md), and [docs/adding-languages.md](docs/adding-languages.md).
 
-Everything the app stores stays in this browser; [PRIVACY.md](PRIVACY.md) states what is kept, where, and how to erase it, with the code that implements each claim.
+Everything the app stores stays in this browser; [PRIVACY.md](PRIVACY.md) states what is kept, where, and how to erase it, with the code that implements each claim. Release history is in [CHANGELOG.md](CHANGELOG.md), and [docs/launch.md](docs/launch.md) has the v1.0.0 announcement copy and the pre-launch checklist.
 
 ## Browsers and devices
 
