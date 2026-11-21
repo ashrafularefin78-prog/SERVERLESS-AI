@@ -140,10 +140,11 @@ Settings shows the log with copy and clear actions. Copying includes the app ver
 ## Rendering and security boundary
 
 - Streaming text is inserted as plain text.
-- Completed replies are parsed by marked, sanitized by DOMPurify with a restrictive allowlist, then inserted.
+- Completed replies are parsed by marked, sanitized by DOMPurify with a restrictive allowlist, then inserted through the Trusted Types policy in `src/trusted-types.ts`. Nothing assigns to `innerHTML` directly, so the policy — which sanitizes — is unavoidable.
 - Links are restricted to `https:`, `http:`, and `mailto:` and open with `rel="noopener noreferrer"`.
 - Images and raw HTML are not rendered.
 - The production build injects a CSP meta tag. It allows `wasm-unsafe-eval` for the inference runtime and network access only to the pinned model hosts. Hosts that can set headers should serve the same policy as a header and add `frame-ancestors 'none'`.
+- `require-trusted-types-for 'script'` is enforced, with `trusted-types localmind dompurify` allowed: `localmind` is the app policy, and `dompurify` is created by the sanitizer itself. Keep both names when editing the policy, and do not add a second copy of DOMPurify — the second policy creation is refused and sanitizing would return empty output.
 
 The full threat model is in [SECURITY.md](../SECURITY.md).
 

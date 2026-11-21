@@ -1,4 +1,5 @@
 import { renderMarkdown } from "../markdown.js";
+import { setHTML } from "../trusted-types.js";
 import type { ConversationSummary, EngineState, Message, RetrievalTrace } from "../types.js";
 
 export function h<K extends keyof HTMLElementTagNameMap>(
@@ -12,7 +13,7 @@ export function h<K extends keyof HTMLElementTagNameMap>(
     if (value === null || value === undefined || value === false) continue;
     if (key === "class") node.className = value as string;
     else if (key === "text") node.textContent = value as string;
-    else if (key === "html") node.innerHTML = value as string;
+    else if (key === "html") setHTML(node, value as string);
     else if (key === "dataset") Object.assign(node.dataset, value);
     else if (key === "style") Object.assign(node.style, value);
     else if (key.startsWith("on") && typeof value === "function") {
@@ -197,7 +198,7 @@ export function renderMessage(
 
   const avatar = h("div", { class: "avatar", "aria-hidden": "true" });
   if (isUser) avatar.textContent = "You";
-  else avatar.innerHTML = iconLogo("");
+  else setHTML(avatar, iconLogo(""));
 
   const body = h("div", { class: "msg-body" });
   const content = h("div", { class: "msg-text", dataset: { content: true } });
@@ -223,7 +224,7 @@ export function renderMessage(
     const upgradeMarker = "[[LOAD_ON_DEVICE_MODEL]]";
     const upgradePrompt = (message.content || "").includes(upgradeMarker);
     const displayText = (message.content || "").replace(upgradeMarker, "").trim();
-    content.innerHTML = renderMarkdown(displayText);
+    setHTML(content, renderMarkdown(displayText));
     body.append(content);
     if (upgradePrompt) {
       content.append(
@@ -377,22 +378,24 @@ export function renderWelcome({
     ["check", "No account needed"],
   ] as const) {
     const stat = h("span", { class: "hero-stat" });
-    stat.innerHTML = icon(iconName);
+    setHTML(stat, icon(iconName));
     stat.append(h("span", { text: label }));
     stats.append(stat);
   }
   copy.append(stats);
 
   const orb = h("div", { class: "hero-orb", "aria-hidden": "true" });
-  orb.innerHTML =
+  setHTML(
+    orb,
     '<span class="orb-glow"></span>' +
-    '<span class="orb-ring orb-ring-1"></span>' +
-    '<span class="orb-ring orb-ring-2"></span>' +
-    '<span class="orb-ring orb-ring-3"></span>' +
-    `<span class="orb-core">${iconLogo("")}</span>` +
-    '<span class="orb-spark orb-spark-1"></span>' +
-    '<span class="orb-spark orb-spark-2"></span>' +
-    '<span class="orb-spark orb-spark-3"></span>';
+      '<span class="orb-ring orb-ring-1"></span>' +
+      '<span class="orb-ring orb-ring-2"></span>' +
+      '<span class="orb-ring orb-ring-3"></span>' +
+      `<span class="orb-core">${iconLogo("")}</span>` +
+      '<span class="orb-spark orb-spark-1"></span>' +
+      '<span class="orb-spark orb-spark-2"></span>' +
+      '<span class="orb-spark orb-spark-3"></span>',
+  );
 
   hero.append(copy, orb);
   welcome.append(hero);
@@ -443,7 +446,7 @@ export function renderWelcome({
 
 export function renderNotice(text: string, warn = false) {
   const notice = h("p", { class: `notice${warn ? " warn" : ""}` });
-  notice.innerHTML = icon(warn ? "info" : "lock");
+  setHTML(notice, icon(warn ? "info" : "lock"));
   notice.append(h("span", { text }));
   return notice;
 }

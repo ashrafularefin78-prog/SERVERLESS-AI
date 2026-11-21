@@ -17,6 +17,10 @@ const CSP = [
   "child-src 'self' blob:",
   "manifest-src 'self'",
   "object-src 'none'",
+  // Every HTML sink goes through one audited policy in src/trusted-types.ts.
+  // `dompurify` is allowed because DOMPurify creates its own internal policy.
+  "require-trusted-types-for 'script'",
+  "trusted-types localmind dompurify",
   "base-uri 'self'",
   "form-action 'none'",
 ].join("; ");

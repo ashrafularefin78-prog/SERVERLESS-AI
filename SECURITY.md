@@ -35,8 +35,9 @@ This is a small project, not an audited product.
 - Images are not rendered, so image-based tracking and `onerror` payloads do not run.
 - Streaming text is inserted with `textContent`; markdown parsing happens only after the reply finishes.
 - A CSP forbids inline scripts, eval, non-self scripts, and non-self connections. On-device inference requires `wasm-unsafe-eval` (to compile the pinned runtime) and network access limited to the model hosts. Those are the only widenings; the policy must be revisited in the same change as any new capability.
+- Trusted Types enforcement (`require-trusted-types-for 'script'`) rejects a raw string assigned to `innerHTML`. Every HTML sink in the app goes through `setHTML()` in `src/trusted-types.ts`, whose `localmind` policy sanitizes on the way through, so a bug at a call site cannot skip the sanitizer. The policy allows `<use href="#...">` for the inline icon sprite and refuses any other `use` reference; the only script URL it will mint is same-origin. Where the browser has no Trusted Types (Firefox, Safari), the same sanitizing path assigns a plain string.
 
-**Residual risk:** Sanitizer bypasses are possible. Keep DOMPurify updated; do not add raw HTML rendering paths.
+**Residual risk:** Sanitizer bypasses are possible. Keep DOMPurify updated; do not add raw HTML rendering paths, and never assign to `innerHTML` outside `setHTML()` — `npm run test:e2e:preview` fails if a policy violation is raised while the app renders or chats.
 
 ### Prompt injection
 

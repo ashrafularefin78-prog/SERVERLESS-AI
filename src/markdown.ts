@@ -1,7 +1,7 @@
 import { marked } from "marked";
-import DOMPurify from "dompurify";
 import { highlightToHtml } from "./coder/highlight.js";
 import { languageByFence } from "./coder/languages.js";
+import { sanitizeWith, setHTML } from "./trusted-types.js";
 
 const LANG_LABELS: Record<string, string> = {
   js: "JavaScript",
@@ -242,9 +242,9 @@ export function renderMarkdown(text: string) {
     raw = `<p>${escapeHtml(source)}</p>`;
   }
 
-  const clean = DOMPurify.sanitize(raw, SANITIZE_OPTIONS);
+  const clean = sanitizeWith(raw, SANITIZE_OPTIONS);
   const root = document.createElement("div");
-  root.innerHTML = clean;
+  setHTML(root, clean);
 
   for (const link of root.querySelectorAll("a")) {
     const href = link.getAttribute("href") || "";
@@ -283,16 +283,21 @@ export function renderMarkdown(text: string) {
     button.type = "button";
     button.className = "code-copy";
     button.dataset.copyCode = "true";
-    button.innerHTML =
-      '<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-copy"></use></svg><span>Copy</span>';
+    setHTML(
+      button,
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-copy"></use></svg><span>Copy</span>',
+    );
 
     if (languageId) {
       const highlighted = highlightToHtml(code.textContent || "", languageId);
       if (highlighted) {
-        code.innerHTML = DOMPurify.sanitize(highlighted, {
-          ALLOWED_TAGS: ["span"],
-          ALLOWED_ATTR: ["class"],
-        });
+        setHTML(
+          code,
+          sanitizeWith(highlighted, {
+            ALLOWED_TAGS: ["span"],
+            ALLOWED_ATTR: ["class"],
+          }),
+        );
         code.classList.add("hljs");
         wrapper.dataset.language = languageId;
       }

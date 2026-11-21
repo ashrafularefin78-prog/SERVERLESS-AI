@@ -21,6 +21,7 @@ Open an issue or a Discussion before starting anything from **Next** or **Later*
 - **License gate before downloads** — every model download that lacks verified terms asks for explicit review and acceptance, remembered per license; the app never guesses a license from a model name (`src/engine/model-licenses.ts`).
 - **Privacy policy and architecture whitepaper** — [PRIVACY.md](PRIVACY.md) maps data handling to GDPR obligations with the code that implements each one; [docs/whitepaper.md](docs/whitepaper.md) documents the crypto, storage, worker, and retrieval design and how to verify the claims.
 - **Issue triage automation** — stale issue sweeping that exempts security and roadmap labels, plus a first-time contributor welcome pointing at the guides.
+- **Trusted Types** — `require-trusted-types-for 'script'` is enforced, every HTML sink goes through one sanitizing policy (`src/trusted-types.ts`), and a browser test fails if rendering or chatting raises a violation.
 
 ## Next
 
@@ -29,7 +30,6 @@ Open an issue or a Discussion before starting anything from **Next** or **Later*
 - **Full SHA-256 model verification.** Today the app pins commit URLs, checks the catalogue size, and keeps the validator (ETag) for resumable transfers. A complete content hash needs a streaming digest: WebCrypto has no incremental API, and `crypto.subtle.digest` on a multi-GB blob would exhaust memory on the low-RAM devices this app targets. Tracked as blocked on either a streaming SHA-256 implementation in a Worker or upstream hashes in the catalogue.
 - **Plugin SDK / tool calling.** WebLLM already exposes `tools` and `tool_choice`, so the model side exists. What is missing is the safety design: plugins cannot be remote JavaScript under the current CSP, so the first version should be a typed local tool registry executed in a Worker, with the model choosing a tool and its arguments. Start there; a marketplace needs hosting, review, and a CSP story.
 - **Speculative decoding.** Not available in the installed WebLLM: there is no `draftModel` or speculative-decoding symbol in its API, and the runtime owns the KV cache and sampling loop. This needs an upstream feature or a fork, not app code.
-- **Trusted Types.** The CSP currently forbids `unsafe-eval` and restricts scripts to the origin. `require-trusted-types-for 'script'` needs every `innerHTML` assignment routed through a policy, including DOMPurify and highlight.js output. Doable, but it must land with a browser test proving the sanitizer still runs.
 - **WebNN backend.** Transformers.js can target the WebNN execution provider on some builds; WebLLM cannot today. Adding a backend selector means real hardware to test on (NPUs on Apple Silicon, Qualcomm, Intel), so it needs a contributor with that hardware first.
 - **SharedArrayBuffer / COOP+COEP.** Multi-threaded WASM needs cross-origin isolation headers. GitHub Pages cannot set response headers, and isolation would also require every model host to serve compatible CORP/CORS headers. Provide opt-in `_headers` files for Netlify and Cloudflare Pages, documented as experimental, rather than enabling it by default.
 

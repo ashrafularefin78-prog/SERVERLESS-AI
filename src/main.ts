@@ -1,4 +1,5 @@
 import { boot } from "./app.js";
+import { trustedScriptURL } from "./trusted-types.js";
 
 boot().catch((error) => {
   console.error("LocalMind failed to start", error);
@@ -8,7 +9,7 @@ boot().catch((error) => {
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
-      .register(new URL("sw.js", document.baseURI).href)
+      .register(trustedScriptURL(new URL("sw.js", document.baseURI).href) as string)
       .catch((error) => console.warn("Service worker registration failed", error));
   });
 }
