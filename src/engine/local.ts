@@ -1,7 +1,15 @@
 // Keep both inference runtimes lazy so built-in chat needs no model download.
 import type { ChatMessage, ModelProgress, StreamChunk } from "../types.js";
+import { recordDiagnostic } from "../diagnostics.js";
 import { MODEL_CACHE, modelById } from "./models.js";
 import type { LocalModel } from "./models.js";
+import {
+  isCacheResponse,
+  isOutOfMemoryMessage,
+  type CacheOperation,
+  type CacheRequest,
+  type WorkerCrashReport,
+} from "./worker-protocol.js";
 
 type WebLLMApi = typeof import("@mlc-ai/web-llm");
 type WebLLMEngine = import("@mlc-ai/web-llm").WebWorkerMLCEngine;
@@ -12,14 +20,53 @@ let cacheWorker: Worker | null = null;
 let loadedModelId: string | null = null;
 let ggufBackend: typeof import("./gguf.js") | null = null;
 
-interface CacheResponse {
-  kind: "localmind:cache-result";
-  id: number;
-  ok: boolean;
-  value?: unknown;
-  error?: string;
+/** Model crashes the page should surface, once per dead worker. */
+export type ModelCrash = Omit<WorkerCrashReport, "kind">;
+const crashListeners = new Set<(crash: ModelCrash) => void>();
+
+/** Subscribe to unexpected inference-worker deaths. Returns an unsubscribe. */
+export function onModelCrash(listener: (crash: ModelCrash) => void): () => void {
+  crashListeners.add(listener);
+  return () => crashListeners.delete(listener);
 }
 
+function reportCrash(modelId: string | null, error: unknown): void {
+  const raw = error instanceof Error ? error.message : String(error ?? "");
+  const message = raw.trim() || "The on-device model stopped unexpectedly.";
+  const reason = isOutOfMemoryMessage(message) ? "oom" : "crash";
+
+  recordDiagnostic({
+    level: "error",
+    source: `model-worker (${reason})`,
+    message,
+    detail: modelId ? `model: ${modelId}` : undefined,
+  });
+
+  for (const listener of crashListeners) listener({ reason, message, modelId });
+}
+
+/**
+ * A worker that dies takes its GPU/heap with it. Report once, then release the
+ * engine so the next request cannot hang on a dead message channel.
+ */
+function watchWorker(target: Worker, modelId: string | null): void {
+  let reported = false;
+  const handle = (error: unknown) => {
+    if (reported) return;
+    reported = true;
+    void unload().catch(() => {});
+    reportCrash(modelId, error);
+  };
+
+  target.addEventListener("error", (event) => {
+    event.preventDefault();
+    const detail = event as ErrorEvent;
+    handle(detail.error ?? detail.message ?? "The model worker crashed.");
+  });
+  target.addEventListener("messageerror", () => {
+    handle("The model worker sent a message that could not be read.");
+  });
+}
 let cacheRequestId = 0;
 const cacheRequests = new Map<
   number,
@@ -38,8 +85,8 @@ function ensureCacheWorker(): Worker {
     type: "module",
   });
   nextWorker.onmessage = (event: MessageEvent) => {
-    const data = event.data as CacheResponse | undefined;
-    if (!data || data.kind !== "localmind:cache-result") return;
+    const data = event.data as unknown;
+    if (!isCacheResponse(data)) return;
     const pending = cacheRequests.get(data.id);
     if (!pending) return;
     cacheRequests.delete(data.id);
@@ -51,7 +98,7 @@ function ensureCacheWorker(): Worker {
   return nextWorker;
 }
 
-function cacheRequest<T>(op: "has" | "delete", modelId: string): Promise<T> {
+function cacheRequest<T>(op: CacheOperation, modelId: string): Promise<T> {
   const target = ensureCacheWorker();
   const id = ++cacheRequestId;
 
@@ -73,7 +120,8 @@ function cacheRequest<T>(op: "has" | "delete", modelId: string): Promise<T> {
     });
 
     try {
-      target.postMessage({ kind: "localmind:cache", id, op, modelId });
+      const message: CacheRequest = { kind: "localmind:cache", id, op, modelId };
+      target.postMessage(message);
     } catch (error) {
       cacheRequests.delete(id);
       clearTimeout(timer);
@@ -228,7 +276,14 @@ export async function loadModel(
 
   if (model.runtime === "gguf") {
     ggufBackend = await import("./gguf.js");
-    await ggufBackend.loadModel(modelId, onProgress);
+    try {
+      await ggufBackend.loadModel(modelId, onProgress);
+    } catch (error) {
+      // A CPU runtime that runs out of memory leaves nothing usable behind.
+      const raw = error instanceof Error ? error.message : String(error ?? "");
+      if (isOutOfMemoryMessage(raw)) reportCrash(modelId, error);
+      throw error;
+    }
     loadedModelId = modelId;
     return;
   }
@@ -246,6 +301,7 @@ export async function loadModel(
   const nextWorker = new Worker(new URL("./model-worker.ts", import.meta.url), {
     type: "module",
   });
+  watchWorker(nextWorker, modelId);
 
   const nextEngine = new api.WebWorkerMLCEngine(nextWorker, {
     appConfig: appConfig(api),

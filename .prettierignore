@@ -8,3 +8,4 @@ package-lock.json
 plan
 src/coder/languages.js
 src/coder/programs.js
+docs/api

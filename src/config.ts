@@ -105,6 +105,7 @@ export const DEFAULT_SETTINGS: Settings = {
   memoryVault: null,
   modelId: "",
   effort: "medium",
+  hardwareStats: false,
 };
 
 /** Character-based safeguards for local context (roughly 3 chars per token). */

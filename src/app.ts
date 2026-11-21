@@ -29,6 +29,14 @@ import {
   recordAAD,
 } from "./crypto.js";
 import { analyzeIntent, expandShorthand, normalizeText, understandingHint } from "./understand.js";
+import {
+  clearDiagnostics,
+  formatDiagnostics,
+  listDiagnostics,
+  recordDiagnostic,
+  subscribeDiagnostics,
+  type DiagnosticEntry,
+} from "./diagnostics.js";
 import { compactHistory, formatCompactionNote } from "./context.js";
 import * as engine from "./engine/manager.js";
 import {
@@ -163,6 +171,15 @@ interface Dom {
   "theme-select": HTMLSelectElement;
   "export-data": HTMLButtonElement;
   "clear-data": HTMLButtonElement;
+  "hardware-stats": HTMLInputElement;
+  "diagnostic-list": HTMLUListElement;
+  "diagnostics-copy": HTMLButtonElement;
+  "diagnostics-clear": HTMLButtonElement;
+  "engine-alert": HTMLElement;
+  "engine-alert-title": HTMLElement;
+  "engine-alert-text": HTMLElement;
+  "engine-alert-reload": HTMLButtonElement;
+  "engine-alert-dismiss": HTMLButtonElement;
   "confirm-dialog": HTMLDialogElement;
   "confirm-title": HTMLElement;
   "confirm-body": HTMLElement;
@@ -248,10 +265,14 @@ export async function boot() {
 
   await initModelPanel();
   await refreshKnowledge();
+  // A previous out-of-memory crash asked us not to reload the same model again.
+  const skipRestore = readSessionFlag(SKIP_MODEL_RESTORE_FLAG);
+  writeSessionFlag(SKIP_MODEL_RESTORE_FLAG, false);
   await engine.init({
-    modelId: engine.models.some((model) => model.id === state.settings.modelId)
-      ? state.settings.modelId
-      : null,
+    modelId:
+      !skipRestore && engine.models.some((model) => model.id === state.settings.modelId)
+        ? state.settings.modelId
+        : null,
   });
 
   autoResize();
@@ -345,6 +366,15 @@ function cacheDom() {
     "theme-select",
     "export-data",
     "clear-data",
+    "hardware-stats",
+    "diagnostic-list",
+    "diagnostics-copy",
+    "diagnostics-clear",
+    "engine-alert",
+    "engine-alert-title",
+    "engine-alert-text",
+    "engine-alert-reload",
+    "engine-alert-dismiss",
     "confirm-dialog",
     "confirm-title",
     "confirm-body",
@@ -500,6 +530,18 @@ function bindEvents() {
   dom["clear-data"].addEventListener("click", clearAllData);
   dom["clear-data-link"].addEventListener("click", clearAllData);
 
+  dom["hardware-stats"].addEventListener("change", () => {
+    void saveSettingsPatch({ hardwareStats: dom["hardware-stats"].checked });
+  });
+  dom["diagnostics-copy"].addEventListener("click", () => void copyDiagnostics());
+  dom["diagnostics-clear"].addEventListener("click", () => {
+    clearDiagnostics();
+    toast("Diagnostics cleared.");
+  });
+  dom["engine-alert-reload"].addEventListener("click", reloadApp);
+  dom["engine-alert-dismiss"].addEventListener("click", hideEngineAlert);
+  subscribeDiagnostics(() => renderDiagnostics());
+
   dom["chat-scroll"].addEventListener("scroll", () => {
     const distance =
       dom["chat-scroll"].scrollHeight -
@@ -543,6 +585,18 @@ function onEngineState(snapshot: EngineState) {
   state.engine = snapshot;
   updateEngineChrome(snapshot);
   if (snapshot.error && snapshot.error !== previous.error) toast(snapshot.error);
+
+  // A later successful load clears the previous failure banner.
+  if (!snapshot.error && !snapshot.crash && (previous.error || previous.crash)) hideEngineAlert();
+
+  if (snapshot.crash && snapshot.crash !== previous.crash) {
+    const outOfMemory = snapshot.crash === "oom";
+    showEngineAlert(
+      outOfMemory ? "The model ran out of memory" : "The on-device model stopped",
+      snapshot.error || "The built-in assistant is still available.",
+    );
+    if (outOfMemory && !previous.generating) scheduleMemoryReload();
+  }
   if (
     snapshot.phase !== previous.phase ||
     snapshot.mode !== previous.mode ||
@@ -740,6 +794,8 @@ function syncSettingsForm() {
   updateComposerPlaceholder();
   renderMemoryList();
   renderVaultControls();
+  dom["hardware-stats"].checked = Boolean(state.settings.hardwareStats);
+  renderDiagnostics();
 }
 
 function renderMemoryList() {
@@ -2400,6 +2456,113 @@ function toast(message: string) {
   state.toastTimer = window.setTimeout(() => {
     dom.toast.classList.remove("show");
   }, 2800);
+}
+
+/* ---------------------------------------------------------------
+   Diagnostics
+--------------------------------------------------------------- */
+
+const SKIP_MODEL_RESTORE_FLAG = "localmind:skip-model-restore";
+const MEMORY_RELOAD_FLAG = "localmind:memory-reload";
+
+function readSessionFlag(key: string): boolean {
+  try {
+    return sessionStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeSessionFlag(key: string, value: boolean): void {
+  try {
+    if (value) sessionStorage.setItem(key, "1");
+    else sessionStorage.removeItem(key);
+  } catch {
+    // Session storage may be blocked; the flags are only a loop guard.
+  }
+}
+
+/** Context is copy-only. Nothing here is ever sent over the network. */
+function diagnosticsContext(): Record<string, string> {
+  const context: Record<string, string> = {
+    app: `LocalMind ${APP_VERSION}`,
+    engine:
+      state.engine.mode === "model" ? `on-device model (${state.engine.modelId})` : "built-in",
+  };
+  if (state.settings.hardwareStats && state.deviceProfile) {
+    context.device = deviceSummary(state.deviceProfile);
+    context.screen = `${window.screen.width}x${window.screen.height}`;
+    context.browser = navigator.userAgent;
+  }
+  return context;
+}
+
+function renderDiagnostics() {
+  const list = dom["diagnostic-list"];
+  list.textContent = "";
+  const entries = listDiagnostics().slice().reverse();
+
+  if (!entries.length) {
+    list.append(h("li", { class: "log-empty", text: "No local errors recorded." }));
+    dom["diagnostics-copy"].disabled = true;
+    return;
+  }
+
+  dom["diagnostics-copy"].disabled = false;
+  for (const entry of entries.slice(0, 20)) list.append(diagnosticRow(entry));
+}
+
+function diagnosticRow(entry: DiagnosticEntry): HTMLElement {
+  const time = new Date(entry.at).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  return h(
+    "li",
+    {
+      class: `log-entry${entry.level === "error" ? " is-error" : entry.level === "warn" ? " is-warn" : ""}`,
+    },
+    h("span", { text: `${time} · ${entry.source}` }),
+    h("div", { text: entry.message }),
+    ...(entry.detail ? [h("div", { text: entry.detail })] : []),
+  );
+}
+
+async function copyDiagnostics() {
+  const text = formatDiagnostics(listDiagnostics(), diagnosticsContext());
+  if (await copyText(text)) toast("Diagnostics copied. Review it before sharing.");
+}
+
+function showEngineAlert(title: string, message: string) {
+  dom["engine-alert-title"].textContent = title;
+  dom["engine-alert-text"].textContent = message;
+  dom["engine-alert"].hidden = false;
+}
+
+function hideEngineAlert() {
+  dom["engine-alert"].hidden = true;
+}
+
+function reloadApp() {
+  window.location.reload();
+}
+
+/**
+ * Reload once after an out-of-memory kill so the GPU context is released. The
+ * reload skips the previous model, otherwise restoring it would crash again.
+ */
+function scheduleMemoryReload() {
+  if (readSessionFlag(MEMORY_RELOAD_FLAG)) return;
+  writeSessionFlag(MEMORY_RELOAD_FLAG, true);
+  writeSessionFlag(SKIP_MODEL_RESTORE_FLAG, true);
+  recordDiagnostic({
+    level: "warn",
+    source: "app",
+    message: "Reloading after an out-of-memory model crash.",
+  });
+  announce("Out of memory. Reloading without the model.");
+  window.setTimeout(() => window.location.reload(), 3500);
 }
 
 let activeConfirm: ((value: boolean) => void) | null = null;

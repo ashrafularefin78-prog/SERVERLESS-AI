@@ -39,6 +39,26 @@ jobs:
           path: sbom.cdx.json
           retention-days: 30
 
+  preview:
+    name: Preview build
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # Download the artifact and serve it with any static file server to review
+      # a pull request exactly as it would ship.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: preview-dist
+          path: dist
+          retention-days: 14
+
   osv:
     name: OSV dependency scan
     permissions:

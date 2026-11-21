@@ -11,6 +11,7 @@ import {
   loadModel as loadLocalModel,
   loadedModel,
   modelSupportReason,
+  onModelCrash,
   storageUsage,
   streamModel,
   unload,
@@ -33,6 +34,7 @@ const state: {
   modelId: string | null;
   progress: ModelProgress | null;
   error: string | null;
+  crash: EngineState["crash"];
 } = {
   phase: "idle",
   generating: false,
@@ -40,11 +42,43 @@ const state: {
   modelId: null,
   progress: null,
   error: null,
+  crash: null,
 };
 
 let generationController: AbortController | null = null;
+let crashWatching = false;
+
+export const OUT_OF_MEMORY_MESSAGE =
+  "Your device ran out of memory while running the on-device model. The built-in assistant still works. Try a smaller model, or close other tabs and reload.";
 
 const listeners = new Set<(state: EngineState) => void>();
+
+/**
+ * A dead inference worker (usually an OOM kill, a lost GPU device, or a browser
+ * reclaim) must never leave the UI stuck in "generating". Abort the run, drop
+ * back to the built-in engine, and let the app explain what happened.
+ */
+function watchForModelCrashes(): void {
+  if (crashWatching) return;
+  crashWatching = true;
+
+  onModelCrash((crash) => {
+    generationController?.abort();
+    generationController = null;
+    patch({
+      phase: "ready",
+      generating: false,
+      mode: "builtin",
+      modelId: null,
+      progress: null,
+      crash: crash.reason,
+      error:
+        crash.reason === "oom"
+          ? OUT_OF_MEMORY_MESSAGE
+          : `The on-device model stopped unexpectedly: ${crash.message}`,
+    });
+  });
+}
 
 /**
  * Subscribe to engine state changes. The listener fires immediately with the
@@ -66,6 +100,7 @@ export function getState(): EngineState {
     modelId: state.modelId,
     progress: state.progress ? { ...state.progress } : null,
     error: state.error,
+    crash: state.crash,
   };
 }
 
@@ -89,6 +124,7 @@ export { detectSupport, modelSupportReason, storageUsage };
  */
 export async function init({ modelId = null }: { modelId?: string | null } = {}): Promise<void> {
   await stop();
+  watchForModelCrashes();
   patch({
     phase: "ready",
     generating: false,
@@ -96,6 +132,7 @@ export async function init({ modelId = null }: { modelId?: string | null } = {})
     modelId: null,
     progress: null,
     error: null,
+    crash: null,
   });
 
   if (modelId) {
@@ -126,6 +163,7 @@ export async function useModel(modelId: string): Promise<void> {
     modelId,
     progress: { text: "Preparing on-device model...", progress: 0 },
     error: null,
+    crash: null,
   });
 
   try {
@@ -138,6 +176,7 @@ export async function useModel(modelId: string): Promise<void> {
       modelId,
       progress: null,
       error: null,
+      crash: null,
     });
   } catch (error) {
     await unload().catch(() => {});
@@ -148,6 +187,7 @@ export async function useModel(modelId: string): Promise<void> {
       modelId: null,
       progress: null,
       error: message,
+      crash: null,
     });
     throw new Error(message);
   }
@@ -157,7 +197,7 @@ export async function useModel(modelId: string): Promise<void> {
 export async function unloadModel(): Promise<void> {
   if (state.generating) await stop();
   await unload();
-  patch({ phase: "ready", mode: "builtin", modelId: null, progress: null });
+  patch({ phase: "ready", mode: "builtin", modelId: null, progress: null, crash: null });
 }
 
 export async function deleteModel(modelId: string): Promise<void> {

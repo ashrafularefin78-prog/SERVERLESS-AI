@@ -69,6 +69,8 @@ If formatting fails, run `npm run format` and review the diff.
 
 For details, read [docs/architecture.md](docs/architecture.md) and [docs/rule-engine.md](docs/rule-engine.md).
 
+The engine, retrieval, crypto, and diagnostics modules are documented with TypeDoc. Run `npm run docs:api` to generate `docs/api/`; the output is not committed, so it always matches the source you are reading.
+
 ## Adding a rule
 
 1. Choose the narrowest resolver in `src/chat/replies.js` (identity, emotion, planning, and so on).
@@ -101,11 +103,29 @@ See [docs/adding-languages.md](docs/adding-languages.md) for the metadata fields
 
 ## Commits and pull requests
 
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/). `husky` installs a `commit-msg` hook on `npm ci`, so a local commit like `Fix the model picker` is rejected; write `fix: keep the model picker focused after selection` instead.
+
+Allowed types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore`, `revert`. A breaking change gets `!` after the type (`feat!: ...`) and a `BREAKING CHANGE:` footer. CI lints both the pull request title and every commit in the branch, so keep the title conventional too: it usually becomes the squash-merge message.
+
 - Keep each pull request focused.
 - Describe the user-visible change, the approach, and how you tested it.
 - Link the issue it resolves.
 - Update `README.md`, `SECURITY.md`, or docs when behavior or risk changes.
 - Do not include `dist/`, coverage output, or `node_modules/` in commits.
+
+### Changelog entries
+
+User-visible changes need a changeset:
+
+```bash
+npm run changeset
+```
+
+Pick `patch`, `minor`, or `major`, and write one sentence a user would understand. The Release workflow keeps a **Version Packages** pull request open; merging it bumps the version and writes `CHANGELOG.md`. Documentation-only and test-only changes do not need a changeset.
+
+### Preview builds
+
+Every pull request produces a `preview-dist` CI artifact: download it, serve the folder with any static file server, and you have the exact production build. `npm run test:e2e:preview` already does this locally. Pull requests do not get a hosted URL because the project deploys to GitHub Pages, which publishes only the `main` branch. If you want per-pull-request URLs, connect the repository to Netlify, Vercel, or Cloudflare Pages and leave the existing Pages deploy in place.
 
 ## Security and privacy
 

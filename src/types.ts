@@ -29,6 +29,9 @@ export type Theme = "system" | "dark" | "light";
 
 export type ThinkingEffort = "low" | "medium" | "high";
 
+/** Why the on-device model stopped: out of memory, or an unclassified crash. */
+export type EngineCrash = "oom" | "crash";
+
 export interface EncryptedBlob {
   iv: string;
   data: string;
@@ -54,6 +57,11 @@ export interface Settings {
   modelId: string;
   /** How much reasoning the reply should spend: low, medium, or high. */
   effort: ThinkingEffort;
+  /**
+   * Opt-in, off by default. Adds a coarse hardware summary to the diagnostic
+   * text the user copies. Nothing is ever transmitted by the app itself.
+   */
+  hardwareStats: boolean;
 }
 
 export interface Mode {
@@ -145,4 +153,6 @@ export interface EngineState {
   modelId: string | null;
   progress: ModelProgress | null;
   error: string | null;
+  /** Set when the inference worker died on its own rather than being unloaded. */
+  crash: EngineCrash | null;
 }

@@ -11,21 +11,7 @@ import {
   prebuiltAppConfig,
 } from "@mlc-ai/web-llm";
 import { MODEL_CACHE } from "./models.js";
-
-interface CacheRequest {
-  kind: "localmind:cache";
-  id: number;
-  op: "has" | "delete";
-  modelId: string;
-}
-
-interface CacheResponse {
-  kind: "localmind:cache-result";
-  id: number;
-  ok: boolean;
-  value?: unknown;
-  error?: string;
-}
+import { isCacheRequest, type CacheResponse } from "./worker-protocol.js";
 
 const appConfig = {
   ...prebuiltAppConfig,
@@ -39,14 +25,6 @@ const scope = self as unknown as {
   onmessage: ((event: MessageEvent) => void) | null;
   postMessage: (message: unknown) => void;
 };
-
-function isCacheRequest(data: unknown): data is CacheRequest {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    (data as { kind?: unknown }).kind === "localmind:cache"
-  );
-}
 
 scope.onmessage = (event: MessageEvent) => {
   const data = event.data as unknown;

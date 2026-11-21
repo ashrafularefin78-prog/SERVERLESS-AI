@@ -1,5 +1,11 @@
 # LocalMind
 
+[**Try the live demo →**](https://ashrafularefin78-prog.github.io/SERVERLESS-AI/)
+
+[![Live demo](https://img.shields.io/badge/live-demo-f0445e)](https://ashrafularefin78-prog.github.io/SERVERLESS-AI/)
+[![CI](https://github.com/ashrafularefin78-prog/SERVERLESS-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/ashrafularefin78-prog/SERVERLESS-AI/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-MIT-8a6f78)](LICENSE)
+
 A private AI chat that runs entirely in your browser. It ships with a **built-in rule assistant** that answers instantly and offline, and can optionally run a **real neural model on your GPU** through WebGPU. There is no backend, no API key, and no account. Nothing is uploaded.
 
 - **Built-in assistant:** natural small talk, on-device memory, language/task detection, and coding scaffolding. Replies come from local rules and templates. No download needed.
@@ -11,6 +17,7 @@ A private AI chat that runs entirely in your browser. It ships with a **built-in
 - **Memory:** notes you ask it to remember ("remember ...", "forget ..."), kept on-device and carried into every chat. Manage them in Settings.
 - **Understanding:** cleans up messy input - smart quotes, zero-width characters, and chat shorthand ("pls", "doesnt", "idk") - while your chat history keeps the original wording and code blocks are left untouched. Vague messages ("it doesn't work") prompt one targeted clarifying question instead of a guess.
 - **Offline:** installable PWA. The app shell is cached after the first online visit.
+- **Self-diagnosis:** failures (a crashed model worker, a failed embedding, a rejected download) are written to a local log in Settings. Copy it into a bug report; nothing is uploaded, and device details are only added when you opt in.
 
 > Honest limit: the built-in assistant uses rules, not a neural network. It can chat, remember notes, and scaffold code, but it cannot reason or write arbitrary answers. That is what the optional on-device model is for; small local models are useful, not frontier-grade.
 
@@ -64,8 +71,9 @@ RAG is the difference between a chat toy and an assistant that knows your materi
 1. **Ingest.** A text, markdown, or PDF file (up to 200k characters, 20 documents) is read in the page, normalised and chunked into ~900-character passages with 120-character overlap. Chunking is deterministic. PDFs are parsed on-device by pdf.js, which is loaded only when a PDF is added and runs with eval disabled; the file is passed in memory, so parsing makes no network request. Scanned pages without a text layer need OCR first, and PDFs are capped at 25 MB.
 2. **Embed.** `@huggingface/transformers` runs `onnx-community/all-MiniLM-L6-v2-ONNX` (384 dimensions, q8) inside `src/rag/embed-worker.ts`. The model downloads once on first use and is cached by the browser; the ONNX Runtime WebAssembly binary ships from this origin, not a CDN.
 3. **Store.** `src/rag/store.ts` writes documents and chunk vectors to two new IndexedDB stores. The database moves to version 2 with an additive upgrade, so existing chats and settings are untouched.
-4. **Retrieve.** A query is embedded the same way, scored against every stored chunk with cosine similarity (a flat scan is both exact and fast at browser scale), and the top four passages above a score floor are formatted into a numbered grounding block.
-5. **Ground.** The block is added to the system prompt with an explicit instruction that document text is data, not instructions. The reply records which documents contributed, and the UI shows "From your documents: ..." under the answer.
+4. **Retrieve.** A query is embedded the same way, then ranked twice: an exact flat cosine scan for meaning and a small BM25 term ranking for exact names, error codes, and identifiers. The two lists are merged with reciprocal-rank fusion, which keeps semantic matches without losing literal ones.
+5. **Ground.** The top passages go into the system prompt inside a `<context> ... </context>` block. The instructions say the block is untrusted data, never instructions, so text inside a document cannot take over the conversation; anything that looks like a closing delimiter or a chat-template token is stripped first.
+6. **Abstain when unsure.** If the best passage is below the relevance floor and the query terms barely appear, the prompt tells the model to answer exactly "I cannot find the answer in the provided documents." instead of guessing. The same sentence is repeated in the grounding rules, so a model that half-matches still has a safe path. Abstained replies cite no documents.
 
 Removing a document deletes its chunks and vectors immediately. Retrieval failures never block a reply: the chat falls back to the conversation alone.
 
@@ -73,24 +81,43 @@ Grounding applies to the on-device model path. The built-in rule engine cannot r
 
 ## How it works
 
-```
-index.html, src/main.ts
-        |
-        +-- src/app.ts              UI orchestration, state, persistence
-        +-- src/understand.ts       input normalization, shorthand expansion, intent hints
-        +-- src/memory.ts           on-device memory commands and prompt block
-        +-- src/ui/render.ts        history, messages, welcome
-        +-- src/markdown.ts         marked + DOMPurify + safe code blocks
-        +-- src/storage/db.ts       IndexedDB conversations and settings
-        +-- src/engine/demo.ts      built-in reply engine and streaming
-        +-- src/engine/models.ts    on-device model catalogue and cache config
-        +-- src/engine/local.ts     WebGPU session: cache, worker, streaming
-        +-- src/engine/model-worker.ts  WebLLM engine inside a Worker
-        +-- src/engine/manager.ts   generation lifecycle for both backends
-        +-- src/rag/                chunking, embeddings, IndexedDB vectors, retrieval
+```mermaid
+flowchart LR
+  subgraph Main["Main thread (UI)"]
+    UI["Chat UI, settings,<br/>welcome screen"]
+    APP["app.ts<br/>state + persistence"]
+    RAG["rag/<br/>chunk, embed, rank"]
+    DIAG["diagnostics.ts<br/>local error log"]
+  end
+
+  subgraph Worker["Web Worker (inference)"]
+    WLLM["model-worker.ts<br/>WebLLM engine"]
+    WLLAMA["wllama (WASM)<br/>community GGUF"]
+  end
+
+  IDB[("IndexedDB<br/>chats, settings,<br/>RAG vectors")]
+  OPFS[("OPFS<br/>model weights,<br/>partial downloads")]
+  GPU["WebGPU device"]
+  CPU["CPU / WASM"]
+
+  UI --> APP
+  APP --> RAG
+  APP -- "typed postMessage<br/>generate, stop, cache" --> WLLM
+  APP -- "typed postMessage" --> WLLAMA
+  WLLM --> GPU
+  WLLAMA --> CPU
+  APP --> IDB
+  RAG --> IDB
+  APP --> OPFS
+  WLLM --> OPFS
+  APP --> DIAG
 ```
 
-The rule engine runs on the main thread; an on-device model runs in a Worker and streams tokens back over `postMessage`. Either way the UI receives the same chunk stream.
+The rule engine runs on the main thread; an on-device model runs in a Worker and streams tokens back over `postMessage`. Either way the UI receives the same chunk stream. Message shapes live in `src/engine/worker-protocol.ts` as discriminated unions, so the page and the worker cannot drift apart silently.
+
+Community GGUF weights download through `src/engine/resumable-download.ts`, which stores partial bytes in OPFS and continues with an HTTP `Range` request after a reload. WebLLM's artifact cache exposes no partial-download API, so a WebGPU model that is interrupted restarts; its completed weights are still cached.
+
+If the inference worker dies, usually from running out of memory, the app aborts the reply, records the error in the local diagnostics log, falls back to the built-in assistant, and explains what happened. An out-of-memory crash during model loading reloads the page once without that model so the GPU context is released.
 
 For a deeper tour, see [docs/architecture.md](docs/architecture.md), [docs/rule-engine.md](docs/rule-engine.md), and [docs/adding-languages.md](docs/adding-languages.md).
 
@@ -144,6 +171,9 @@ Do not enter passwords, private keys, or other secrets. Built-in replies can rep
 | `npm run lint`             | ESLint checks                      |
 | `npm run format:check`     | Verify Prettier formatting         |
 | `npm run format`           | Apply Prettier formatting          |
+| `npm run changeset`        | Describe a user-visible change     |
+| `npm run version`          | Bump versions and write CHANGELOG  |
+| `npm run docs:api`         | Generate TypeDoc into `docs/api/`  |
 
 ## Testing and quality
 
@@ -170,6 +200,10 @@ Rule-engine evals (`tests/evals/cases.json`) assert exact properties of determin
 The harness itself is covered by unit tests (`tests/unit/model-eval.test.js`), including the regression gate.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the local workflow.
+
+## Community
+
+Questions and ideas go to [GitHub Discussions](https://github.com/ashrafularefin78-prog/SERVERLESS-AI/discussions); bugs belong in the issue templates. If Discussions is not visible yet, a maintainer needs to enable it once in **Settings → General → Features**.
 
 ## Contributing
 

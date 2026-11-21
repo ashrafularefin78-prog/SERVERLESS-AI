@@ -6,10 +6,12 @@
 // was not asked about.
 import { newId } from "../storage/db.js";
 import type { KnowledgeDoc, KnowledgeProgress, StoredChunk } from "../types.js";
+import { recordDiagnostic } from "../diagnostics.js";
 import { chunkText } from "./chunk.js";
+import { assessRetrieval, MIN_TERM_COVERAGE } from "./confidence.js";
 import { embedTexts, setEmbeddingProgressListener } from "./embeddings.js";
 import { isPdfFile } from "./pdf-text.js";
-import { buildKnowledgeBlock, type KnowledgeBlock } from "./prompt.js";
+import { buildAbstainBlock, buildKnowledgeBlock, type KnowledgeBlock } from "./prompt.js";
 import { rankByHybrid } from "./similarity.js";
 import { deleteKnowledgeDoc, listKnowledgeDocs, loadAllChunks, saveKnowledgeDoc } from "./store.js";
 
@@ -21,6 +23,7 @@ export const RAG = {
   overlapChars: 120,
   topK: 4,
   candidateK: 10,
+  minTermCoverage: MIN_TERM_COVERAGE,
   promptChars: 2600,
   embedBatch: 8,
 } as const;
@@ -148,13 +151,36 @@ export async function retrieveKnowledge(query: string): Promise<KnowledgeBlock |
   const [vector] = await embedTexts([trimmed]);
   if (!vector?.length) return null;
 
-  const hits = rankByHybrid(trimmed, vector, chunks, RAG.topK, RAG.candidateK).map(
-    ({ item, score }) => ({
+  const hits = rankByHybrid(trimmed, vector, chunks, RAG.topK, RAG.candidateK);
+  if (!hits.length) return buildAbstainBlock();
+
+  const top = hits[0]!;
+  const assessment = assessRetrieval({
+    query: trimmed,
+    vector,
+    items: chunks,
+    topText: `${top.item.title} ${top.item.text}`,
+    minCoverage: RAG.minTermCoverage,
+  });
+  if (!assessment.grounded) {
+    recordDiagnostic({
+      level: "info",
+      source: "rag",
+      message: "Knowledge search was too weak to answer from; asking the model to abstain.",
+      detail: `semantic ${assessment.semantic.toFixed(2)}, term coverage ${assessment.coverage.toFixed(2)}`,
+    });
+    return buildAbstainBlock();
+  }
+
+  const block = buildKnowledgeBlock(
+    hits.map(({ item, score }) => ({
       title: item.title,
       text: item.text,
       score,
-    }),
+    })),
+    RAG.promptChars,
   );
 
-  return buildKnowledgeBlock(hits, RAG.promptChars);
+  // Nothing fit the budget, so there is no context to ground on.
+  return block ?? buildAbstainBlock();
 }

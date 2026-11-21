@@ -538,3 +538,44 @@ test("makes no cross-origin requests during a chat", async ({ page }) => {
 
   expect(external).toEqual([]);
 });
+
+test("shows a local diagnostics log in Settings", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#open-settings").click();
+
+  await expect(page.locator("#diagnostic-list")).toContainText("No local errors recorded.");
+  await expect(page.locator("#diagnostics-copy")).toBeDisabled();
+  await expect(page.locator("#hardware-stats")).not.toBeChecked();
+
+  await page.locator("#hardware-stats").check();
+  await expect(page.locator("#diagnostics-copy")).toBeDisabled();
+
+  // Wait for the IndexedDB write rather than racing it with the reload.
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const db = await new Promise((resolve, reject) => {
+          const request = indexedDB.open("localmind");
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        const value = await new Promise((resolve, reject) => {
+          const row = db
+            .transaction("settings", "readonly")
+            .objectStore("settings")
+            .get("hardwareStats");
+          row.onsuccess = () => resolve(row.result?.value);
+          row.onerror = () => reject(row.error);
+        });
+        db.close();
+        return value;
+      }),
+    )
+    .toBe(true);
+
+  // The opt-in survives a reload because it is a normal setting.
+  await page.reload();
+  await page.locator("#open-settings").click();
+  await expect(page.locator("#hardware-stats")).toBeChecked();
+  await expect(page.locator("#engine-alert")).toBeHidden();
+});

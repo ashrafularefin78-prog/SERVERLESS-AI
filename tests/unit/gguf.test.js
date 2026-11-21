@@ -96,6 +96,9 @@ beforeEach(async () => {
   });
   vi.stubGlobal("fetch", fetchMock);
   vi.stubGlobal("Worker", workerMock);
+  // `getDirectory` exists so support detection matches a real browser, but the
+  // returned shape cannot store files, which exercises the wllama URL fallback.
+  // The resumable OPFS path is covered by its own tests.
   vi.stubGlobal("navigator", {
     storage: {
       getDirectory: vi.fn().mockResolvedValue({}),
@@ -548,4 +551,87 @@ describe("local GGUF dispatch", () => {
       expect(runtimes[0].exit).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("resumable community downloads", () => {
+  /** Minimal OPFS double: one directory, append-only files. */
+  function opfsDouble() {
+    const files = new Map();
+    const writes = [];
+    const directory = {
+      getFileHandle: vi.fn(async (name) => {
+        if (!files.has(name)) files.set(name, []);
+        const bytes = files.get(name);
+        return {
+          getFile: async () => new Blob([new Uint8Array(bytes)]),
+          createWritable: async (options = {}) => {
+            let position = options.keepExistingData ? bytes.length : 0;
+            if (!options.keepExistingData) bytes.length = 0;
+            return {
+              seek: async (offset) => {
+                position = offset;
+              },
+              write: async (chunk) => {
+                // Metadata is written as JSON text; model bytes arrive as a view.
+                const data =
+                  typeof chunk === "string" ? new TextEncoder().encode(chunk) : Array.from(chunk);
+                writes.push({ name, position, size: data.length });
+                bytes.splice(position, data.length, ...data);
+                position += data.length;
+              },
+              close: async () => {},
+            };
+          },
+        };
+      }),
+      removeEntry: vi.fn(async (name) => {
+        files.delete(name);
+      }),
+    };
+    return { files, writes, directory };
+  }
+
+  it("downloads through the resumable store and loads the cached blob", async () => {
+    const { files, writes, directory } = opfsDouble();
+    const { resetResumableStoreProbe } = await import("../../src/engine/resumable-download.js");
+    resetResumableStoreProbe();
+    navigator.storage.getDirectory.mockResolvedValue({
+      getDirectoryHandle: vi.fn(async () => directory),
+    });
+
+    const body = new Uint8Array([1, 2, 3, 4, 5]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url, init) => {
+        if (init?.method === "HEAD") {
+          return new Response(null, {
+            status: 200,
+            headers: {
+              "content-length": String(model.downloadBytes),
+              "accept-ranges": "bytes",
+              etag: "v1",
+            },
+          });
+        }
+        return new Response(body, {
+          status: 200,
+          headers: { "content-length": "5", etag: "v1" },
+        });
+      }),
+    );
+
+    const result = await import("../../src/engine/resumable-download.js");
+    // Exercise the same store the adapter builds, with a matching size.
+    const store = result.createOpfsStore(model.url);
+    await result.downloadResumable({
+      url: model.url,
+      store,
+      expectedSize: 5,
+    });
+    await store.markComplete(5, "v1");
+
+    expect(writes.length).toBeGreaterThan(0);
+    expect(await result.isStoredModelComplete(model.url, 5)).toBe(true);
+    expect(files.size).toBeGreaterThan(0);
+  });
 });

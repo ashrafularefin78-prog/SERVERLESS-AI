@@ -1,0 +1,27 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "LocalMind core",
+  "entryPoints": [
+    "src/engine/manager.ts",
+    "src/engine/models.ts",
+    "src/engine/device.ts",
+    "src/engine/worker-protocol.ts",
+    "src/engine/resumable-download.ts",
+    "src/rag/index.ts",
+    "src/rag/prompt.ts",
+    "src/rag/similarity.ts",
+    "src/rag/confidence.ts",
+    "src/crypto.ts",
+    "src/diagnostics.ts"
+  ],
+  "out": "docs/api",
+  "readme": "none",
+  "excludeInternal": true,
+  "excludePrivate": true,
+  "githubPages": false,
+  "skipErrorChecking": false,
+  "validation": {
+    "notExported": false,
+    "invalidLink": true
+  }
+}

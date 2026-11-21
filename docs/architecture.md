@@ -25,6 +25,7 @@ index.html
        |     |-- src/rag/embed-worker.ts  MiniLM embeddings in a Worker
        |     |-- src/rag/pdf.ts      lazy pdf.js text extraction for PDF ingestion
        |     `-- src/rag/store.ts    IndexedDB documents and chunk vectors
+       |-- src/diagnostics.ts      local error log (never uploaded)
        `-- src/storage/db.ts      IndexedDB conversations and settings
 ```
 
@@ -103,9 +104,27 @@ See [rule-engine.md](rule-engine.md) for the rule order and extension points.
 - `embeddings.ts` owns a dedicated Worker (`embed-worker.ts`) that lazily loads `onnx-community/all-MiniLM-L6-v2-ONNX` through Transformers.js and pools to normalized 384-dimension vectors. No embeddings are computed unless the user adds or asks about documents.
 - `store.ts` persists documents and chunk vectors in IndexedDB. Vectors are stored as `Float32Array`; removal deletes via the `docId` index.
 - `similarity.ts` combines an exact flat cosine ranking with a small BM25-style keyword ranking using reciprocal-rank fusion. This keeps semantic matches while recovering exact names, error codes, and identifiers; it avoids an approximate index and adds no model or runtime download.
-- `prompt.ts` formats the grounding block and enforces the character budget. Document text is labelled as data, not instructions.
+- `confidence.ts` decides whether a result may be answered from. A passage must either clear the cosine floor or, for multi-word queries, cover most query terms exactly. Single shared words never count, because they prove nothing.
+- `prompt.ts` formats the grounding block and enforces the character budget. Excerpts sit inside `<context> ... </context>`; the rules say the block is untrusted data and repeat the exact abstain sentence. Document text is escaped first: anything resembling a closing delimiter or a `<|...|>` control token is replaced, so a file cannot break out of the block.
+- When retrieval is too weak, `buildAbstainBlock()` is used instead of excerpts. It tells the model to reply "I cannot find the answer in the provided documents." for document questions, and to answer normally (without claiming document coverage) for ordinary conversation. Abstained replies record no sources.
 
 Embedding runs on the CPU (ONNX Runtime Web, asyncify build) and is independent of WebGPU, so retrieval works even when the chat model cannot run.
+
+## Model worker lifecycle
+
+`src/engine/worker-protocol.ts` holds the only message shapes that cross the worker boundary: cache requests/responses and crash reports. Both sides import the same discriminated unions and guards, so a stale handler fails to compile rather than silently ignoring a request.
+
+`local.ts` attaches `error` and `messageerror` listeners to the inference worker. A dead worker is reported once, the engine is released, and `manager.ts` aborts the in-flight generation, drops back to the built-in assistant, and marks the state with `crash: "oom" | "crash"`. Out-of-memory detection matches explicit messages (`out of memory`, `device lost`, `allocation failed`, `memory access out of bounds`) so ordinary bugs are not mislabelled. The app explains the fallback and, for an OOM during model loading, reloads once with a session flag that skips restoring the same model.
+
+Downloading is separate from running. `resumable-download.ts` owns the HTTP side for community GGUF weights: a `HEAD` probe supplies the validator and size, partial bytes live in OPFS, and a resume sends `Range` plus `If-Range`. A changed ETag, a partial larger than the expected size, or a server that ignores ranges all restart cleanly rather than splicing two file versions. Completed weights are checked against the catalogue size and loaded from the stored blob. WebLLM's artifact cache has no partial-download interface, so WebGPU models restart if interrupted.
+
+The app never type-checks model bytes cryptographically on this path; the catalogue pins URLs to a commit and the size is verified. WebLLM models keep their SRI verification.
+
+## Diagnostics
+
+`src/diagnostics.ts` is a bounded, local ring buffer (60 entries) persisted in `sessionStorage` with an in-memory fallback. Entries record a level, a source, a short message, and an optional detail. Callers must not record prompts, documents, or chat text; the module truncates and flattens fields but cannot know what a caller passes.
+
+Settings shows the log with copy and clear actions. Copying includes the app version and engine mode; a coarse device summary and the user agent are added only when the opt-in "include device details" setting is on. Nothing is transmitted by the app: the copied text goes wherever the user pastes it.
 
 ## Rendering and security boundary
 

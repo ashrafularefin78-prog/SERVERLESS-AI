@@ -3260,6 +3260,102 @@ select optgroup {
   color: var(--danger);
 }
 
+/* Inference worker died: keep the explanation visible without blocking chat. */
+.engine-alert {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0;
+  padding: 12px 18px;
+  border-bottom: 1px solid color-mix(in srgb, var(--danger) 34%, var(--border));
+  background: color-mix(in srgb, var(--danger) 10%, var(--bg-soft));
+  color: var(--text);
+}
+
+.engine-alert[hidden] {
+  display: none;
+}
+
+.engine-alert-body {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.engine-alert-body strong {
+  display: block;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.engine-alert-body p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.engine-alert-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.check-row {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  margin: 4px 0 6px;
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.check-row input {
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+
+.log-list {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  margin: 8px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.log-entry {
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--muted);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--panel-2) 70%, transparent);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.log-entry.is-error {
+  border-left-color: var(--danger);
+  color: var(--danger);
+}
+
+.log-entry.is-warn {
+  border-left-color: var(--warn);
+}
+
+.log-empty {
+  padding: 8px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 [data-theme="light"] .device-check {
   background:
     linear-gradient(120deg, rgba(197, 34, 64, 0.07), rgba(255, 255, 255, 0.72) 62%),

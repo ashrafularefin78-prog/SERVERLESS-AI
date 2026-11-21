@@ -194,6 +194,17 @@
           </div>
         </header>
 
+        <div class="engine-alert" id="engine-alert" role="alert" hidden>
+          <div class="engine-alert-body">
+            <strong id="engine-alert-title">The on-device model stopped</strong>
+            <p id="engine-alert-text"></p>
+          </div>
+          <div class="engine-alert-actions">
+            <button class="btn subtle" id="engine-alert-reload" type="button">Reload app</button>
+            <button class="btn ghost" id="engine-alert-dismiss" type="button">Dismiss</button>
+          </div>
+        </div>
+
         <div class="chat-scroll" id="chat-scroll">
           <section class="messages" id="messages" aria-label="Conversation"></section>
         </div>
@@ -479,6 +490,29 @@
             <div class="setting-actions">
               <button class="btn subtle" id="export-data" type="button">Export chats</button>
               <button class="btn danger" id="clear-data" type="button">Clear all data</button>
+            </div>
+          </section>
+
+          <section class="setting-section">
+            <h3>Diagnostics</h3>
+            <p class="memory-note">
+              Errors are recorded in this tab only and never uploaded. If a model fails, copy the
+              log into a GitHub issue so it can be fixed.
+            </p>
+            <label class="check-row">
+              <input id="hardware-stats" type="checkbox" />
+              <span>Include device details in copied diagnostics</span>
+            </label>
+            <p class="memory-note small">
+              Off by default. Nothing is sent anywhere: this only adds a coarse hardware summary to
+              the text you copy yourself.
+            </p>
+            <ul class="log-list" id="diagnostic-list"></ul>
+            <div class="setting-actions">
+              <button class="btn subtle" id="diagnostics-copy" type="button">
+                Copy diagnostics
+              </button>
+              <button class="btn subtle" id="diagnostics-clear" type="button">Clear log</button>
             </div>
           </section>
 

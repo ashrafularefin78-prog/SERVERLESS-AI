@@ -36,6 +36,32 @@ function terms(text: string): string[] {
   );
 }
 
+/** Number of distinct searchable terms in a query. */
+export function distinctTermCount(query: string): number {
+  return new Set(terms(query)).size;
+}
+
+/** Fraction of distinct query terms that appear anywhere in `text`. */
+export function queryTermCoverage(query: string, text: string): number {
+  const queryTerms = [...new Set(terms(query))];
+  if (!queryTerms.length) return 0;
+  const documentTerms = new Set(terms(text));
+  return queryTerms.filter((term) => documentTerms.has(term)).length / queryTerms.length;
+}
+
+/** Highest cosine score in a candidate list, or 0 when there is nothing to score. */
+export function bestSimilarity(
+  query: ArrayLike<number>,
+  items: { vector: ArrayLike<number> }[],
+): number {
+  let best = 0;
+  for (const item of items) {
+    const score = cosineSimilarity(query, item.vector);
+    if (score > best) best = score;
+  }
+  return best;
+}
+
 /** BM25-style lexical ranking for exact names, identifiers, and rare terms. */
 export function rankByKeyword<T extends { text: string; title?: string }>(
   query: string,
