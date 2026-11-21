@@ -77,18 +77,51 @@ test("theme toggle swaps palettes and the choice survives a reload", async ({ pa
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   }
   expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(
-    "rgb(10, 15, 26)",
+    "rgb(16, 11, 18)",
   );
 
   await page.locator("#theme-toggle").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(
-    "rgb(244, 247, 251)",
+    "rgb(255, 247, 248)",
   );
 
   await page.waitForTimeout(400);
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+});
+
+test("red palettes and ambient interface animations are active", async ({ page }) => {
+  await page.goto("/");
+  if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== "dark") {
+    await page.locator("#theme-toggle").click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  }
+
+  const darkPalette = await page.evaluate(() => {
+    const styles = getComputedStyle(document.documentElement);
+    return ["--accent", "--accent-2", "--accent-3"].map((name) =>
+      styles.getPropertyValue(name).trim(),
+    );
+  });
+  expect(darkPalette).toEqual(["#f0445e", "#ff6b68", "#ff9caf"]);
+
+  const animations = await page.evaluate(() =>
+    [".aurora-a", ".brand-mark", ".welcome h2 span", ".suggestion"].map(
+      (selector) => getComputedStyle(document.querySelector(selector)).animationName,
+    ),
+  );
+  expect(animations).toEqual(["aurora-a", "brand-breathe", "red-gradient", "suggestion-in"]);
+
+  await page.locator("#theme-toggle").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  const lightPalette = await page.evaluate(() => {
+    const styles = getComputedStyle(document.documentElement);
+    return ["--accent", "--accent-2", "--accent-3"].map((name) =>
+      styles.getPropertyValue(name).trim(),
+    );
+  });
+  expect(lightPalette).toEqual(["#c52240", "#e74855", "#a61836"]);
 });
 
 test("light theme faint text meets AA contrast", async ({ page }) => {

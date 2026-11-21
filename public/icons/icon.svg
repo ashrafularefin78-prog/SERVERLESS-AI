@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="LocalMind">
-  <rect width="512" height="512" rx="120" fill="#0a0f1a" />
+  <rect width="512" height="512" rx="120" fill="#100b12" />
   <path
     d="M256 84l42.5 115.9L420 256l-121.5 56.1L256 428l-42.5-115.9L92 256l121.5-56.1L256 84z"
-    fill="#5b8cff"
+    fill="#f0445e"
   />
-  <circle cx="256" cy="256" r="30" fill="#0a0f1a" />
+  <circle cx="256" cy="256" r="30" fill="#100b12" />
 </svg>
