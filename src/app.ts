@@ -30,6 +30,12 @@ import {
 } from "./crypto.js";
 import { analyzeIntent, expandShorthand, normalizeText, understandingHint } from "./understand.js";
 import {
+  offlineModeSupported,
+  readOfflineModeMarker,
+  refreshServiceWorker,
+  writeOfflineModeMarker,
+} from "./offline.js";
+import {
   clearDiagnostics,
   formatDiagnostics,
   listDiagnostics,
@@ -172,6 +178,9 @@ interface Dom {
   "export-data": HTMLButtonElement;
   "clear-data": HTMLButtonElement;
   "hardware-stats": HTMLInputElement;
+  "offline-mode": HTMLInputElement;
+  "offline-mode-note": HTMLElement;
+  "offline-badge": HTMLElement;
   "diagnostic-list": HTMLUListElement;
   "diagnostics-copy": HTMLButtonElement;
   "diagnostics-clear": HTMLButtonElement;
@@ -267,6 +276,7 @@ export async function boot() {
   state.conversations = vaulted ? [] : await listConversations();
 
   applyTheme();
+  await reconcileOfflineMode();
   syncSettingsForm();
   updateModeSelect();
 
@@ -378,6 +388,9 @@ function cacheDom() {
     "export-data",
     "clear-data",
     "hardware-stats",
+    "offline-mode",
+    "offline-mode-note",
+    "offline-badge",
     "diagnostic-list",
     "diagnostics-copy",
     "diagnostics-clear",
@@ -540,6 +553,8 @@ function bindEvents() {
 
   dom["clear-data"].addEventListener("click", clearAllData);
   dom["clear-data-link"].addEventListener("click", clearAllData);
+
+  dom["offline-mode"].addEventListener("change", () => void setOfflineMode());
 
   dom["hardware-stats"].addEventListener("change", () => {
     void saveSettingsPatch({ hardwareStats: dom["hardware-stats"].checked });
@@ -829,6 +844,7 @@ function syncSettingsForm() {
   renderMemoryList();
   renderVaultControls();
   dom["hardware-stats"].checked = Boolean(state.settings.hardwareStats);
+  renderOfflineMode();
   renderDiagnostics();
 }
 
@@ -1189,6 +1205,14 @@ function renderKnowledgePanel() {
 }
 
 async function addKnowledgeFiles(files: File[]) {
+  if (offlineModeActive()) {
+    // The first embedding run downloads MiniLM; afterwards indexing is local.
+    toast(
+      "Offline mode is on. Index a document once with it off so the embedding model is cached.",
+    );
+    return;
+  }
+
   state.knowledgeBusy = true;
   renderKnowledgePanel();
 
@@ -1683,6 +1707,11 @@ async function downloadSelectedModel() {
 async function loadSelectedModel(id: string) {
   const model = engine.models.find((item) => item.id === id) ?? null;
   if (!model) return;
+
+  if (offlineModeActive() && !(await engine.hasCachedModel(id))) {
+    toast("Offline mode is on. Turn it off in Settings to download a model.");
+    return;
+  }
 
   state.settings.modelId = id;
   await saveSettingsPatch({ modelId: id });
@@ -2503,6 +2532,74 @@ function toast(message: string) {
   state.toastTimer = window.setTimeout(() => {
     dom.toast.classList.remove("show");
   }, 2800);
+}
+
+/* ---------------------------------------------------------------
+   Offline mode
+--------------------------------------------------------------- */
+
+function offlineModeActive(): boolean {
+  return Boolean(state.settings.offlineMode);
+}
+
+function renderOfflineMode() {
+  const supported = offlineModeSupported();
+  const active = offlineModeActive();
+
+  dom["offline-mode"].checked = active;
+  dom["offline-mode"].disabled = !supported;
+  dom["offline-badge"].hidden = !active;
+  dom["offline-mode-note"].textContent = !supported
+    ? "This browser cannot enforce offline mode: it needs service workers and Cache Storage over HTTPS."
+    : active
+      ? "On. Every request to another origin is refused by the service worker. Model downloads and document embedding downloads will fail until you turn this off."
+      : "Off. Downloads are allowed only when you start them from Settings.";
+}
+
+async function setOfflineMode() {
+  const enabled = dom["offline-mode"].checked;
+
+  if (enabled && !offlineModeSupported()) {
+    toast("This browser cannot enforce offline mode.");
+    renderOfflineMode();
+    return;
+  }
+
+  const written = await writeOfflineModeMarker(enabled);
+  if (enabled && !written) {
+    toast("Could not arm offline mode in this browser.");
+    renderOfflineMode();
+    return;
+  }
+
+  await saveSettingsPatch({ offlineMode: enabled });
+  await refreshServiceWorker();
+  renderOfflineMode();
+  recordDiagnostic({
+    level: "info",
+    source: "offline",
+    message: enabled ? "Offline mode enabled." : "Offline mode disabled.",
+  });
+  announce(
+    enabled
+      ? "Offline mode on. The app will refuse every outbound network request."
+      : "Offline mode off.",
+  );
+  toast(
+    enabled
+      ? "Offline mode on: network access is blocked."
+      : "Offline mode off: downloads are allowed again.",
+  );
+}
+
+/**
+ * Keep the stored setting and the service worker marker in sync. A stale marker
+ * from a previous session must never block a user who turned the switch off.
+ */
+async function reconcileOfflineMode() {
+  const armed = await readOfflineModeMarker();
+  if (armed === offlineModeActive()) return;
+  await writeOfflineModeMarker(offlineModeActive());
 }
 
 /* ---------------------------------------------------------------

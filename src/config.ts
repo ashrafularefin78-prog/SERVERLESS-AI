@@ -106,6 +106,7 @@ export const DEFAULT_SETTINGS: Settings = {
   modelId: "",
   effort: "medium",
   hardwareStats: false,
+  offlineMode: false,
 };
 
 /** Character-based safeguards for local context (roughly 3 chars per token). */

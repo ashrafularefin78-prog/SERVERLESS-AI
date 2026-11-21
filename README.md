@@ -17,6 +17,7 @@ A private AI chat that runs entirely in your browser. It ships with a **built-in
 - **Memory:** notes you ask it to remember ("remember ...", "forget ..."), kept on-device and carried into every chat. Manage them in Settings.
 - **Understanding:** cleans up messy input - smart quotes, zero-width characters, and chat shorthand ("pls", "doesnt", "idk") - while your chat history keeps the original wording and code blocks are left untouched. Vague messages ("it doesn't work") prompt one targeted clarifying question instead of a guess.
 - **Offline:** installable PWA. The app shell is cached after the first online visit.
+- **Offline mode (kill switch):** one toggle makes the service worker refuse every cross-origin request, whatever its method. Nothing can leave the tab while it is armed, and the state survives a reload. Model downloads and first-time embedding runs need it off.
 - **Self-diagnosis:** failures (a crashed model worker, a failed embedding, a rejected download) are written to a local log in Settings. Copy it into a bug report; nothing is uploaded, and device details are only added when you opt in.
 
 > Honest limit: the built-in assistant uses rules, not a neural network. It can chat, remember notes, and scaffold code, but it cannot reason or write arbitrary answers. That is what the optional on-device model is for; small local models are useful, not frontier-grade.
@@ -201,6 +202,12 @@ Rule-engine evals (`tests/evals/cases.json`) assert exact properties of determin
 The harness itself is covered by unit tests (`tests/unit/model-eval.test.js`), including the regression gate.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the local workflow.
+
+## Offline mode
+
+Settings → **Offline mode** arms a service worker that answers any cross-origin request with `503` and a short explanation, for every method: `fetch`, `XMLHttpRequest`, beacons, and subresource loads from the page and its workers. Same-origin assets keep working from the cache, so the app stays usable from what is already on the device.
+
+Honest scope: the worker must be active to enforce it (the first visit installs it; the badge shows the armed state), and it does not intercept WebSocket traffic or a user clicking a link to another site. It also cannot stop a browser extension or malware outside the page — see [SECURITY.md](SECURITY.md).
 
 ## Long chats
 

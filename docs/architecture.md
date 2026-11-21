@@ -123,6 +123,14 @@ Downloading is separate from running. `resumable-download.ts` owns the HTTP side
 
 The app never type-checks model bytes cryptographically on this path; the catalogue pins URLs to a commit and the size is verified. WebLLM models keep their SRI verification.
 
+## Offline mode
+
+`src/offline.ts` owns the policy and the marker; `public/sw.js` enforces it. The marker is a Cache Storage entry (`localmind-offline-mode`), chosen because the page and the service worker share it and it survives reloads without a message round-trip that a terminated worker could miss.
+
+The worker reads the marker per request, so arming the switch takes effect immediately. Cross-origin requests are routed through an explicit check for every method before the cache logic runs; previously non-GET requests were ignored entirely, which would have left POST beacons unguarded. `activate` preserves the marker cache so a version upgrade cannot silently disarm the switch, and `reconcileOfflineMode()` on boot rewrites the marker from the stored setting so a stale marker cannot block a user who turned it off.
+
+The app also fails fast with a readable message when offline mode is on and a model or embedding download would be required, instead of surfacing a bare network error.
+
 ## Diagnostics
 
 `src/diagnostics.ts` is a bounded, local ring buffer (60 entries) persisted in `sessionStorage` with an in-memory fallback. Entries record a level, a source, a short message, and an optional detail. Callers must not record prompts, documents, or chat text; the module truncates and flattens fields but cannot know what a caller passes.

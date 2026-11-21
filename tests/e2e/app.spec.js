@@ -699,3 +699,62 @@ test("shows retrieval scores behind a grounded reply", async ({ page }) => {
   await expect(trace).toContainText("term coverage 100%");
   await expect(trace).toContainText("Refunds take five business days from approval.");
 });
+
+test("offline mode blocks outbound requests from the service worker", async ({ page }) => {
+  const MODEL_URL = "https://huggingface.co/org/repo/resolve/abc/model.gguf";
+
+  // The service worker answers a blocked request with a 503 carrying this text,
+  // so the payload is the signal: a status alone is not enough.
+  const probe = () =>
+    page.evaluate(async (url) => {
+      try {
+        const response = await fetch(url);
+        const body = await response.text();
+        return { status: response.status, body: body.slice(0, 200) };
+      } catch (error) {
+        return { status: 0, body: String(error) };
+      }
+    }, MODEL_URL);
+
+  await page.goto("/");
+  // The worker must control the page before it can block anything.
+  await page.waitForFunction(() => Boolean(navigator.serviceWorker?.controller), null, {
+    timeout: 15_000,
+  });
+
+  await page.locator("#open-settings").click();
+  const toggle = page.locator("#offline-mode");
+  await expect(toggle).not.toBeChecked();
+  await expect(page.locator("#offline-badge")).toBeHidden();
+  await toggle.check();
+
+  await expect(page.locator("#offline-badge")).toBeVisible();
+  await expect(page.locator("#offline-mode-note")).toContainText("Every request to another origin");
+
+  const armed = await probe();
+  expect(armed.status).toBe(503);
+  expect(armed.body).toContain("Offline mode is on");
+
+  // Same-origin traffic still works, so the app itself is not broken.
+  const local = await page.evaluate(async () => {
+    const response = await fetch("./manifest.webmanifest", { cache: "no-store" });
+    return response.ok;
+  });
+  expect(local).toBe(true);
+
+  // A model download is refused with a readable message instead of a failed fetch.
+  await pickModel(page, GGUF_MODELS[0].id);
+  await page.locator("#model-load").click();
+  await expect(page.locator("#toast")).toContainText("Offline mode is on");
+
+  // The switch survives a reload and can be turned off again.
+  await page.reload();
+  await page.locator("#open-settings").click();
+  await expect(page.locator("#offline-mode")).toBeChecked();
+  await expect(page.locator("#offline-badge")).toBeVisible();
+  expect((await probe()).body).toContain("Offline mode is on");
+
+  await page.locator("#offline-mode").uncheck();
+  await expect(page.locator("#offline-badge")).toBeHidden();
+  expect((await probe()).body).not.toContain("Offline mode is on");
+});

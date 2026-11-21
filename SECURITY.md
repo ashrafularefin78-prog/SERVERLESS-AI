@@ -107,6 +107,19 @@ Build provenance is attested in CI: the deploy workflow archives `dist/`, signs 
 
 **Residual risk:** A compromised origin can always serve a malicious worker. HTTPS and host account security are essential.
 
+### Offline mode (kill switch)
+
+**Threat:** Silent exfiltration by a compromised dependency, a malicious rule, or a future bug — the risk a "no backend" claim only partly addresses.
+
+**Mitigation:** Settings → Offline mode writes a marker into Cache Storage. While it exists, `public/sw.js` answers every cross-origin request with `503` and a JSON explanation. The check runs for every HTTP method, not only `GET`, so a POST beacon cannot slip past the asset cache path. The page and the service worker share the marker, so the state survives reloads, and the sidebar shows a visible badge.
+
+**Coverage and limits, stated plainly:**
+
+- Covered: `fetch`, `XMLHttpRequest`, `sendBeacon`, and subresource loads (`img`, `script`, `link`) issued by the page and by its Web Workers, including `no-cors` requests.
+- Not covered: WebSocket and WebTransport traffic (separate event type; the app opens none), a user clicking a link to another site, and anything outside the page such as a browser extension or malware.
+- Enforcement requires an active service worker. The first visit installs it; the toggle explains when the browser cannot enforce the switch (no service workers or Cache Storage, or not HTTPS).
+- The same-origin shell is served from cache, so arming the switch does not strand the app offline.
+
 ### Local diagnostics
 
 **Threat:** A debugging log can become a privacy leak if it records prompts, document text, or is uploaded automatically.

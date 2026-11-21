@@ -1,8 +1,15 @@
 /* LocalMind service worker: caches the app shell and same-origin assets.
    Model weights are deliberately not precached and never handled here: they
-   are fetched by WebLLM on explicit request and stored in OPFS. */
+   are fetched by WebLLM on explicit request and stored in OPFS.
+
+   It also enforces offline ("kill switch") mode: when the marker exists in
+   Cache Storage, every cross-origin request is refused, whatever its method.
+   That marker is written by the page (src/offline.ts), which shares this
+   origin's Cache Storage. */
 
 const VERSION = "localmind-v2";
+const OFFLINE_MODE_CACHE = "localmind-offline-mode";
+const OFFLINE_MODE_KEY = "/__localmind-offline-mode__";
 const SHELL = [
   "./",
   "./index.html",
@@ -27,19 +34,55 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      await Promise.all(keys.filter((key) => key !== VERSION).map((key) => caches.delete(key)));
+      await Promise.all(
+        keys
+          .filter((key) => key !== VERSION && key !== OFFLINE_MODE_CACHE)
+          .map((key) => caches.delete(key)),
+      );
       await self.clients.claim();
     })(),
   );
 });
 
+async function offlineModeEnabled() {
+  try {
+    const cache = await caches.open(OFFLINE_MODE_CACHE);
+    return Boolean(await cache.match(OFFLINE_MODE_KEY));
+  } catch {
+    return false;
+  }
+}
+
+function blockedResponse() {
+  return new Response(
+    JSON.stringify({
+      error: "Offline mode is on. LocalMind blocked a request that would leave this page.",
+    }),
+    {
+      status: 503,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    },
+  );
+}
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
-  if (request.method !== "GET") return;
-
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
   if (url.pathname.endsWith("/sw.js")) return;
+
+  // Cross-origin traffic is checked for every method: a POST beacon must not
+  // slip past just because the cache below only handles GET.
+  if (url.origin !== self.location.origin) {
+    event.respondWith(
+      (async () => {
+        if (await offlineModeEnabled()) return blockedResponse();
+        return fetch(request);
+      })(),
+    );
+    return;
+  }
+
+  if (request.method !== "GET") return;
 
   if (request.mode === "navigate") {
     event.respondWith(networkFirst(request));

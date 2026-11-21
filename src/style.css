@@ -3350,6 +3350,32 @@ select optgroup {
   border-left-color: var(--warn);
 }
 
+/* Offline mode: a visible claim, not a hidden setting. */
+.offline-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.offline-badge[hidden] {
+  display: none;
+}
+
+.offline-badge svg {
+  width: 11px;
+  height: 11px;
+}
+
 /* Long chats: only a page of messages is in the DOM at once. */
 .earlier-bar {
   display: flex;

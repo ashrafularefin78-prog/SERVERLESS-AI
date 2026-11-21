@@ -80,6 +80,11 @@ export interface Settings {
    * text the user copies. Nothing is ever transmitted by the app itself.
    */
   hardwareStats: boolean;
+  /**
+   * Offline ("kill switch") mode. While on, the service worker refuses every
+   * cross-origin request, so the tab cannot reach the network at all.
+   */
+  offlineMode: boolean;
 }
 
 export interface Mode {

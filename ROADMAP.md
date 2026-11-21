@@ -15,12 +15,16 @@ Open an issue or a Discussion before starting anything from **Next** or **Later*
 - **Resumable downloads** — community GGUF weights continue with HTTP `Range` requests after an interrupted transfer.
 - **Typed worker protocol** — page and worker share one discriminated-union module (`src/engine/worker-protocol.ts`).
 - **Local diagnostics** — bounded, opt-in-detail error log with copy/clear, never uploaded.
+- **Offline kill switch** — a service worker refuses every cross-origin request, whatever its method, while the switch is armed; state survives reloads and the sidebar shows a badge.
+- **CodeQL** — `security-extended` static analysis on pushes, pull requests, and weekly.
 - **Release automation** — Conventional Commits enforced by commitlint/husky, changesets version PRs, per-PR preview artifact, TypeDoc API docs, signed build provenance on deploy.
 
 ## Next
 
 - **Bring your own model (BYOM).** Paste a Hugging Face URL or a GGUF link. Constraints: the CSP allows only Hugging Face hosts, so the UI must validate the host, pin or warn about the revision, probe the size, and reuse the resumable downloader. Needs a design for models without a catalogue entry (size unknown, no license metadata).
 - **Full SHA-256 model verification.** Today the app pins commit URLs, checks the catalogue size, and keeps the validator (ETag) for resumable transfers. A complete content hash needs a streaming digest: WebCrypto has no incremental API, and `crypto.subtle.digest` on a multi-GB blob would exhaust memory on the low-RAM devices this app targets. Tracked as blocked on either a streaming SHA-256 implementation in a Worker or upstream hashes in the catalogue.
+- **Plugin SDK / tool calling.** WebLLM already exposes `tools` and `tool_choice`, so the model side exists. What is missing is the safety design: plugins cannot be remote JavaScript under the current CSP, so the first version should be a typed local tool registry executed in a Worker, with the model choosing a tool and its arguments. Start there; a marketplace needs hosting, review, and a CSP story.
+- **Speculative decoding.** Not available in the installed WebLLM: there is no `draftModel` or speculative-decoding symbol in its API, and the runtime owns the KV cache and sampling loop. This needs an upstream feature or a fork, not app code.
 - **Trusted Types.** The CSP currently forbids `unsafe-eval` and restricts scripts to the origin. `require-trusted-types-for 'script'` needs every `innerHTML` assignment routed through a policy, including DOMPurify and highlight.js output. Doable, but it must land with a browser test proving the sanitizer still runs.
 - **WebNN backend.** Transformers.js can target the WebNN execution provider on some builds; WebLLM cannot today. Adding a backend selector means real hardware to test on (NPUs on Apple Silicon, Qualcomm, Intel), so it needs a contributor with that hardware first.
 - **SharedArrayBuffer / COOP+COEP.** Multi-threaded WASM needs cross-origin isolation headers. GitHub Pages cannot set response headers, and isolation would also require every model host to serve compatible CORP/CORS headers. Provide opt-in `_headers` files for Netlify and Cloudflare Pages, documented as experimental, rather than enabling it by default.

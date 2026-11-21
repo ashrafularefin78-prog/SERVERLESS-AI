@@ -145,6 +145,10 @@
             </span>
           </div>
           <div class="foot-row">
+            <span class="offline-badge" id="offline-badge" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-lock" /></svg>
+              Network blocked
+            </span>
             <span class="local-note"
               ><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-lock" /></svg>100%
               local</span
@@ -491,6 +495,20 @@
               <button class="btn subtle" id="export-data" type="button">Export chats</button>
               <button class="btn danger" id="clear-data" type="button">Clear all data</button>
             </div>
+          </section>
+
+          <section class="setting-section">
+            <h3>Offline mode</h3>
+            <p class="memory-note">
+              A hard kill switch: while it is on, the service worker refuses every request that
+              leaves this page, including uploads, beacons, and model downloads. The app keeps
+              working from what is already stored on this device.
+            </p>
+            <label class="check-row">
+              <input id="offline-mode" type="checkbox" />
+              <span>Block all network access from this app</span>
+            </label>
+            <p class="memory-note small" id="offline-mode-note"></p>
           </section>
 
           <section class="setting-section">
