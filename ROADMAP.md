@@ -28,6 +28,8 @@ Open an issue or a Discussion before starting anything from **Next** or **Later*
 - **iOS tab budget** — iOS reports no `deviceMemory`, so model fit is judged against Safari's roughly 1 GB per-tab limit instead (`assessModelFit` in `src/engine/device.ts`).
 - **Cloud dev environment** — [.devcontainer](.devcontainer/README.md) gives a Codespace with Node 22 and Chromium, so onboarding needs no local install.
 - **RAG load guard** — a 50,000-word document is chunked and ranked in bounded time, asserted by `tests/unit/rag-load.test.js`.
+- **Quantized KV cache** — community GGUF models load with an `q8_0` key/value cache and flash attention, roughly halving the working memory of a long conversation, with an automatic retry on the runtime's defaults if the build rejects them (`src/engine/gguf-cache.ts`).
+- **Vulnerability response policy** — reporting channel, severity-based targets, and an embargo policy in `SECURITY.md`; OpenSSF badge evidence collected in [docs/openssf-badge.md](docs/openssf-badge.md).
 
 ## Next
 
@@ -38,6 +40,53 @@ Open an issue or a Discussion before starting anything from **Next** or **Later*
 - **Speculative decoding.** Not available in the installed WebLLM: there is no `draftModel` or speculative-decoding symbol in its API, and the runtime owns the KV cache and sampling loop. This needs an upstream feature or a fork, not app code.
 - **WebNN backend.** Transformers.js can target the WebNN execution provider on some builds; WebLLM cannot today. Adding a backend selector means real hardware to test on (NPUs on Apple Silicon, Qualcomm, Intel), so it needs a contributor with that hardware first.
 - **SharedArrayBuffer / COOP+COEP.** Multi-threaded WASM needs cross-origin isolation headers. GitHub Pages cannot set response headers, and isolation would also require every model host to serve compatible CORP/CORS headers. Provide opt-in `_headers` files for Netlify and Cloudflare Pages, documented as experimental, rather than enabling it by default.
+
+## Declined with reasons
+
+Each of these was considered for a "1.0 endgame" pass and rejected. They are not
+backlog items; they are decisions, with the constraint that decides them named.
+
+- **Speculative decoding.** Needs a draft model and a verification loop inside the
+  runtime. The installed WebLLM exposes no `draftModel` or speculative-decoding
+  API, and wllama runs llama.cpp's single-model decode loop. Implementing it in app
+  code would mean forking the runtime, not calling it.
+- **Mixture-of-Experts routing by classifier.** Routing a prompt to one of four
+  _separate_ models is not MoE, and it increases memory: four experts resident
+  means four weight sets and four KV caches. Real MoE needs a model whose
+  architecture has sparse experts, where the runtime loads the union of weights
+  once. Nothing in the current catalogue is such a model, and low-RAM devices are
+  the target.
+- **Post-quantum cryptography (ML-KEM).** There is nothing to replace. The vault
+  derives an AES-256-GCM key from the user's passphrase with PBKDF2; there is no
+  RSA, no key exchange, and no long-term key that a quantum computer could break.
+  Grover's algorithm halves symmetric security, which leaves AES-256 as strong as
+  AES-128 — not a reason to add a WebAssembly dependency. A lattice KEM would only
+  matter for a future feature that transmits or shares keys between devices.
+- **Sandboxed tool execution (`<iframe sandbox>`).** There are no tools to sandbox.
+  Agentic tools are already deferred above because model-selected tool calls are a
+  prompt-injection amplifier; building the sandbox before the tools would be code
+  with no caller. When tools do arrive, the iframe plus `postMessage` bridge is the
+  design to build, not `eval`.
+- **MCP client.** Model Context Protocol servers are local processes reached over
+  stdio or a local socket. A static page cannot spawn a process, the CSP allows no
+  such origin, and every MCP server is by definition an untrusted tool surface —
+  the same reason tool execution is deferred. The honest version of this feature is
+  a desktop wrapper with a permission UI, which is a different product.
+- **OpenAI-compatible endpoint.** A service worker can intercept same-origin
+  requests, so `POST /v1/chat/completions` on the app's own origin is technically
+  reachable. It is declined for three reasons: any page that can reach the origin
+  could drive the user's GPU (cross-origin requires CORS plus a per-session bearer
+  token, and a drive-by page can still burn the device's battery), a browser tab's
+  endpoint disappears when the tab sleeps or navigates, so "local API" clients would
+  fail unpredictably, and infinite-context abuse of an endpoint with no rate limit
+  is a denial-of-service on the user's own machine. A real implementation needs a
+  desktop shell, not a static site.
+- **OpenSSF badge registration.** Applying needs an account and a project entry on
+  bestpractices.dev, which cannot be created from a repository. The evidence is
+  [collected](docs/openssf-badge.md) so applying is mechanical.
+- **Foundation transition (SFC, Apache).** A governance decision for whoever holds
+  the trademark and the repository, not a code change. It also needs sustained
+  contribution volume that this project does not have yet.
 
 ## Ecosystem integration (out of scope for this repository)
 

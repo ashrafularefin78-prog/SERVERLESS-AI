@@ -1,6 +1,12 @@
 import { CacheManager, Wllama } from "@wllama/wllama";
 import wasmURL from "@wllama/wllama/esm/wasm/wllama.wasm?url";
 import { recordDiagnostic } from "../diagnostics.js";
+import {
+  describeLoadPlan,
+  ggufLoadPlans,
+  shouldRetryWithDefaultCache,
+  type GgufLoadPlan,
+} from "./gguf-cache.js";
 import { modelById } from "./models.js";
 import {
   createOpfsStore,
@@ -62,6 +68,47 @@ export async function loadModel(
   await unload();
   await navigator.storage.persist?.().catch(() => false);
 
+  const plans = ggufLoadPlans();
+  let failure: unknown = null;
+
+  for (const [index, plan] of plans.entries()) {
+    try {
+      await loadAttempt(model, plan, onProgress);
+      onProgress?.({ text: "Community model ready on your CPU.", progress: 1 });
+      recordDiagnostic({ level: "info", source: "gguf", message: describeLoadPlan(plan) });
+      return;
+    } catch (error) {
+      failure = error;
+      await unload();
+      const isLast = index === plans.length - 1;
+      if (isLast || !shouldRetryWithDefaultCache(error)) break;
+      // The download is complete on disk by now, so retrying only rebuilds the
+      // context with the runtime's own cache settings.
+      recordDiagnostic({
+        level: "warn",
+        source: "gguf",
+        message: `The ${plan.note} was rejected (${error instanceof Error ? error.message : String(error)}). Retrying with defaults.`,
+        detail: `model: ${modelId}`,
+      });
+      onProgress?.({ text: "Retrying with the default cache...", progress: 0.9 });
+    }
+  }
+
+  recordDiagnostic({
+    level: "error",
+    source: "gguf",
+    message: failure instanceof Error ? failure.message : String(failure),
+    detail: `model: ${modelId}`,
+  });
+  throw failure;
+}
+
+/** One load attempt: a fresh runtime, the weights, and the plan's cache options. */
+async function loadAttempt(
+  model: NonNullable<ReturnType<typeof modelById>> & { runtime: "gguf" },
+  plan: GgufLoadPlan,
+  onProgress?: (progress: ModelProgress) => void,
+): Promise<void> {
   const next = new Wllama(
     { default: wasmURL },
     { allowOffline: true, cacheManager: modelCache(), suppressNativeLog: true },
@@ -69,72 +116,56 @@ export async function loadModel(
   next.setCompat(null);
   runtime = next;
 
-  try {
-    const params = {
-      n_threads: 1,
-      n_gpu_layers: 0,
-      n_ctx: model.contextWindow ?? 4096,
-      n_parallel: 1,
-      jinja: true,
-    };
+  const params = {
+    n_threads: 1,
+    n_gpu_layers: 0,
+    n_ctx: model.contextWindow ?? 4096,
+    n_parallel: 1,
+    jinja: true,
+    ...plan.params,
+  };
 
-    if (await supportsResumableStore()) {
-      // Download through our own store so an interrupted transfer resumes.
-      const store = createOpfsStore(model.url);
-      try {
-        const result = await downloadResumable({
-          url: model.url,
-          store,
-          expectedSize: model.downloadBytes,
-          onProgress: ({ loaded, total, resumedFrom }) => {
-            const progress = Math.min(loaded / (total || model.downloadBytes), 1) * 0.9;
-            const resumed =
-              resumedFrom > 0 && loaded >= resumedFrom
-                ? ` (resuming at ${Math.round((resumedFrom / (total || model.downloadBytes)) * 100)}%)`
-                : "";
-            onProgress?.({
-              text:
-                loaded < (total || model.downloadBytes)
-                  ? `Downloading community model: ${Math.round(progress * 100)}%${resumed}`
-                  : "Loading community model on your CPU...",
-              progress,
-            });
-          },
+  if (await supportsResumableStore()) {
+    // Download through our own store so an interrupted transfer resumes.
+    const store = createOpfsStore(model.url);
+    const result = await downloadResumable({
+      url: model.url,
+      store,
+      expectedSize: model.downloadBytes,
+      onProgress: ({ loaded, total, resumedFrom }) => {
+        const progress = Math.min(loaded / (total || model.downloadBytes), 1) * 0.9;
+        const resumed =
+          resumedFrom > 0 && loaded >= resumedFrom
+            ? ` (resuming at ${Math.round((resumedFrom / (total || model.downloadBytes)) * 100)}%)`
+            : "";
+        onProgress?.({
+          text:
+            loaded < (total || model.downloadBytes)
+              ? `Downloading community model: ${Math.round(progress * 100)}%${resumed}`
+              : "Loading community model on your CPU...",
+          progress,
         });
-        await store.markComplete(result.bytes, result.etag);
-        onProgress?.({ text: "Loading community model on your CPU...", progress: 0.9 });
-        await next.loadModel([result.blob], params);
-      } catch (error) {
-        // Partial bytes stay on disk so the next attempt resumes, but a hard
-        // failure must still surface to the caller.
-        throw error;
-      }
-    } else {
-      await next.loadModelFromUrl(model.url, {
-        ...params,
-        progressCallback: ({ loaded, total }) => {
-          const progress = Math.min(loaded / (total || model.downloadBytes), 1);
-          onProgress?.({
-            text:
-              progress < 1
-                ? `Downloading community model: ${Math.round(progress * 100)}%`
-                : "Loading community model on your CPU...",
-            progress: progress * 0.9,
-          });
-        },
-      });
-    }
-    onProgress?.({ text: "Community model ready on your CPU.", progress: 1 });
-  } catch (error) {
-    recordDiagnostic({
-      level: "error",
-      source: "gguf",
-      message: error instanceof Error ? error.message : String(error),
-      detail: `model: ${modelId}`,
+      },
     });
-    await unload();
-    throw error;
+    await store.markComplete(result.bytes, result.etag);
+    onProgress?.({ text: "Loading community model on your CPU...", progress: 0.9 });
+    await next.loadModel([result.blob], params);
+    return;
   }
+
+  await next.loadModelFromUrl(model.url, {
+    ...params,
+    progressCallback: ({ loaded, total }) => {
+      const progress = Math.min(loaded / (total || model.downloadBytes), 1);
+      onProgress?.({
+        text:
+          progress < 1
+            ? `Downloading community model: ${Math.round(progress * 100)}%`
+            : "Loading community model on your CPU...",
+        progress: progress * 0.9,
+      });
+    },
+  });
 }
 
 export function interrupt(): void {

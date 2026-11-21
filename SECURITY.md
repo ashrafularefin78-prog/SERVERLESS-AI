@@ -178,6 +178,64 @@ Review this threat model when any of the following changes:
 
 The description of the app must stay honest. LocalMind is intentionally model-free; any proposal to add model loading must revisit the trust boundaries, asset list, and network metadata sections before it is built.
 
-## Reporting
+## Reporting a vulnerability
 
-If you find a vulnerability, open a private security advisory on the repository rather than a public issue with exploit details.
+**Do not open a public issue with exploit details.**
+
+Use GitHub's **Private vulnerability reporting**: the repository's **Security** tab →
+**Report a vulnerability**. That opens a private advisory visible only to the
+maintainers, with a place to attach a proof of concept. If the advisory form is
+unavailable, open a public issue that says only "security report, please contact me"
+and nothing about the vulnerability.
+
+This file lives at the repository root rather than `.github/SECURITY.md` because
+GitHub reads either location and a single file avoids two copies drifting apart.
+
+### What to include
+
+- The version or commit you tested (see `APP_VERSION` in diagnostics output).
+- Browser and OS.
+- Which threat-model row the issue falls under, if it maps to one.
+- Steps to reproduce, ideally with the smallest HTML or prompt that triggers it.
+- What you expected and what happened, including the console output.
+- Whether the issue needs a hostile document, a hostile model file, a compromised
+  browser profile, or only the app.
+
+### What to expect
+
+| Stage                                                                     | Target          |
+| ------------------------------------------------------------------------- | --------------- |
+| Acknowledgement that a human has read the report                          | 3 working days  |
+| Initial assessment, severity, and whether it is in scope                  | 10 working days |
+| Fix for a critical issue (code execution, data exfiltration, auth bypass) | 30 days         |
+| Fix for a high or moderate issue                                          | 90 days         |
+| Credit in the advisory and `CHANGELOG.md`, if you want it                 | With the fix    |
+
+These are targets for a volunteer-maintained project, not a contractual SLA. If a
+deadline will slip, the advisory gets a status comment rather than silence.
+
+### Coordinated disclosure
+
+- The advisory stays private until a fix ships, or 90 days after the report,
+  whichever comes first.
+- If the project cannot or will not fix an issue, that is stated plainly in the
+  advisory, including the reasoning, so the decision is reviewable.
+- Reporters may publish after the embargo ends. Credit is given unless you ask
+  otherwise.
+- A regression test is added with every fix, so the same class of bug cannot come
+  back silently. If the bug cannot be tested, the advisory says why.
+
+### Scope
+
+In scope: the app's own code, its CSP and service worker, the vault and its
+cryptography, document retrieval and prompt construction, and the documented
+supply-chain story.
+
+Out of scope, and explained in the threat model: vulnerabilities in the browsers
+themselves, in WebLLM or llama.cpp, or in a model's weights (report those upstream),
+attacks that require an already-compromised device, and the absence of features
+this project does not claim (no server, no accounts, no multi-user isolation).
+
+This project has no bounty program and cannot pay for reports. It also does not
+run a bug-bounty platform, because a static app with no server has no
+infrastructure budget to fund one honestly.

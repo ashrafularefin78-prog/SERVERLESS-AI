@@ -73,7 +73,9 @@ export const GGUF_MODELS: GGUFModel[] = COMMUNITY_MODELS.map((model) => ({
     `${model.note} ` +
     "Runs locally on your CPU with WebAssembly, without an API key or WebGPU. " +
     "Requires a current Chrome or Edge with WebAssembly JSPI support. " +
-    "CPU generation can be slow and needs free RAM beyond the download size. 4096-token context.",
+    "CPU generation can be slow and needs free RAM beyond the download size. " +
+    "The key/value cache is stored at 8 bits to halve conversation memory, and falls back to the default cache if this build rejects it. " +
+    "4096-token context.",
 }));
 
 export const LOCAL_MODELS: LocalModel[] = [...GGUF_MODELS, ...WEBLLM_MODELS];

@@ -177,6 +177,12 @@ The model is the only large allocation in the app, and it is released three ways
 | Ten idle minutes | `createIdleRelease()` in `src/engine/memory.ts` | The countdown is suspended while a reply streams; weights stay cached. |
 | Page hide        | `pagehide` handler in `src/app.ts`              | Skipped for the back/forward cache, where the model must survive.      |
 
+Community GGUF models request an 8-bit key/value cache with flash attention
+(`src/engine/gguf-cache.ts`), which roughly halves the working set of a long
+conversation on the CPU path. The plan is a request, not a requirement: a build
+that rejects it is retried once with the runtime's defaults, and the failure is
+recorded in diagnostics rather than shown as a download error.
+
 `unload()` interrupts generation, calls `MLCEngine.unload()` (which drops the KV
 cache and the weights), then terminates the worker, which tears down the
 `GPUDevice` and every buffer allocated on it. App code never calls
