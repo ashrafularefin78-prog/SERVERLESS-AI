@@ -107,6 +107,7 @@ export const DEFAULT_SETTINGS: Settings = {
   effort: "medium",
   hardwareStats: false,
   offlineMode: false,
+  acceptedLicenses: [],
 };
 
 /** Character-based safeguards for local context (roughly 3 chars per token). */

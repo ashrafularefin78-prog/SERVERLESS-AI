@@ -85,6 +85,8 @@ export interface Settings {
    * cross-origin request, so the tab cannot reach the network at all.
    */
   offlineMode: boolean;
+  /** License keys the user has accepted, so a download is not re-gated. */
+  acceptedLicenses: string[];
 }
 
 export interface Mode {

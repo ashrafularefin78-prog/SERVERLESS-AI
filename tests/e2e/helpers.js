@@ -18,3 +18,18 @@ export async function pickModel(page, id) {
   await row.click();
   await expect(pop).toBeHidden();
 }
+
+/**
+ * Answer the license gate that appears before a download with unverified or
+ * restricted terms. Accepting is remembered per license, so later downloads of
+ * the same license in the same profile skip the prompt.
+ */
+export async function acceptLicenseIfShown(page) {
+  const dialog = page.locator("#license-dialog");
+  // The gate opens after an async cache probe, so this waits for it to appear.
+  await expect(dialog).toBeVisible({ timeout: 15_000 });
+  await page.locator("#license-accept").check();
+  await page.locator("#license-ok").click();
+  await expect(dialog).toBeHidden();
+  return true;
+}

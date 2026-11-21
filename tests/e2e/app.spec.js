@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { GGUF_MODELS, LOCAL_MODELS } from "../../src/engine/models.js";
-import { pickModel } from "./helpers.js";
+import { acceptLicenseIfShown, pickModel } from "./helpers.js";
 
 test("sends a message and streams a local reply", async ({ page }) => {
   const errors = [];
@@ -512,6 +512,7 @@ test("keeps built-in chat usable after a failed community model download", async
   await page.locator("#open-settings").click();
   await pickModel(page, GGUF_MODELS[0].id);
   await page.locator("#model-load").click();
+  await acceptLicenseIfShown(page);
   await expect(page.locator("#toast")).toBeVisible();
   await expect(page.locator("#model-select")).toBeEnabled();
   await expect(page.locator("#model-load")).toBeEnabled();
@@ -757,4 +758,77 @@ test("offline mode blocks outbound requests from the service worker", async ({ p
   await page.locator("#offline-mode").uncheck();
   await expect(page.locator("#offline-badge")).toBeHidden();
   expect((await probe()).body).not.toContain("Offline mode is on");
+});
+
+test("asks for license acceptance before a community download", async ({ page, context }) => {
+  const downloads = [];
+  await context.route("https://huggingface.co/**", (route) => {
+    downloads.push(route.request().url());
+    return route.fulfill({ status: 503, body: "Unavailable" });
+  });
+
+  await page.goto("/");
+  await page.locator("#open-settings").click();
+  await pickModel(page, GGUF_MODELS[0].id);
+  await page.locator("#model-load").click();
+
+  const dialog = page.locator("#license-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("no verified license metadata");
+  await expect(page.locator("#license-link")).toHaveAttribute(
+    "href",
+    /^https:\/\/huggingface\.co\//,
+  );
+  await expect(page.locator("#license-link")).toHaveAttribute("rel", /noopener/);
+  // The confirm button stays disabled until the box is checked.
+  await expect(page.locator("#license-ok")).toBeDisabled();
+
+  // Escape must settle the prompt rather than leave the download hanging.
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(page.locator("#toast")).toContainText("license was not accepted");
+  expect(downloads).toEqual([]);
+
+  await page.locator("#model-load").click();
+  await expect(dialog).toBeVisible();
+  await page.locator("#license-cancel").click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator("#toast")).toContainText("license was not accepted");
+  expect(downloads).toEqual([]);
+  await expect(page.locator("#model-load")).toHaveText("Download and load");
+
+  // Accepting proceeds to the download, which the mocked host refuses.
+  await page.locator("#model-load").click();
+  await expect(dialog).toBeVisible();
+  await page.locator("#license-accept").check();
+  await expect(page.locator("#license-ok")).toBeEnabled();
+  await page.locator("#license-ok").click();
+  await expect(dialog).toBeHidden();
+  // The download starts asynchronously; wait for the request rather than a toast
+  // that may still be showing the earlier cancellation.
+  await expect.poll(() => downloads.length, { timeout: 20_000 }).toBeGreaterThan(0);
+});
+
+test("does not ask again once a license has been accepted", async ({ page, context }) => {
+  const downloads = [];
+  await context.route("https://huggingface.co/**", (route) => {
+    downloads.push(route.request().url());
+    return route.fulfill({ status: 503, body: "Unavailable" });
+  });
+
+  await page.goto("/");
+  await page.locator("#open-settings").click();
+  await pickModel(page, GGUF_MODELS[0].id);
+  await page.locator("#model-load").click();
+  await page.locator("#license-accept").check();
+  await page.locator("#license-ok").click();
+  await expect.poll(() => downloads.length, { timeout: 20_000 }).toBeGreaterThan(0);
+
+  await page.reload();
+  await page.locator("#open-settings").click();
+  await pickModel(page, GGUF_MODELS[0].id);
+  const before = downloads.length;
+  await page.locator("#model-load").click();
+  await expect(page.locator("#license-dialog")).toBeHidden();
+  await expect.poll(() => downloads.length, { timeout: 20_000 }).toBeGreaterThan(before);
 });

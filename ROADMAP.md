@@ -18,16 +18,29 @@ Open an issue or a Discussion before starting anything from **Next** or **Later*
 - **Offline kill switch** — a service worker refuses every cross-origin request, whatever its method, while the switch is armed; state survives reloads and the sidebar shows a badge.
 - **CodeQL** — `security-extended` static analysis on pushes, pull requests, and weekly.
 - **Release automation** — Conventional Commits enforced by commitlint/husky, changesets version PRs, per-PR preview artifact, TypeDoc API docs, signed build provenance on deploy.
+- **License gate before downloads** — every model download that lacks verified terms asks for explicit review and acceptance, remembered per license; the app never guesses a license from a model name (`src/engine/model-licenses.ts`).
+- **Privacy policy and architecture whitepaper** — [PRIVACY.md](PRIVACY.md) maps data handling to GDPR obligations with the code that implements each one; [docs/whitepaper.md](docs/whitepaper.md) documents the crypto, storage, worker, and retrieval design and how to verify the claims.
+- **Issue triage automation** — stale issue sweeping that exempts security and roadmap labels, plus a first-time contributor welcome pointing at the guides.
 
 ## Next
 
-- **Bring your own model (BYOM).** Paste a Hugging Face URL or a GGUF link. Constraints: the CSP allows only Hugging Face hosts, so the UI must validate the host, pin or warn about the revision, probe the size, and reuse the resumable downloader. Needs a design for models without a catalogue entry (size unknown, no license metadata).
+- **Bring your own model (BYOM).** Paste a Hugging Face URL or a GGUF link. Constraints: the CSP allows only Hugging Face hosts, so the UI must validate the host, pin or warn about the revision, probe the size, and reuse the resumable downloader. The license gate already handles models with no verified metadata, so the missing piece is size probing and revision pinning.
+- **Verified license metadata at sync time.** The curated list in `src/engine/model-licenses.ts` intentionally covers only a few families, because the WebLLM catalogue ships no license fields. The fix is to read license metadata from upstream model cards during `npm run models:sync` and fail the check when a model has none, rather than inferring anything from a name.
 - **Full SHA-256 model verification.** Today the app pins commit URLs, checks the catalogue size, and keeps the validator (ETag) for resumable transfers. A complete content hash needs a streaming digest: WebCrypto has no incremental API, and `crypto.subtle.digest` on a multi-GB blob would exhaust memory on the low-RAM devices this app targets. Tracked as blocked on either a streaming SHA-256 implementation in a Worker or upstream hashes in the catalogue.
 - **Plugin SDK / tool calling.** WebLLM already exposes `tools` and `tool_choice`, so the model side exists. What is missing is the safety design: plugins cannot be remote JavaScript under the current CSP, so the first version should be a typed local tool registry executed in a Worker, with the model choosing a tool and its arguments. Start there; a marketplace needs hosting, review, and a CSP story.
 - **Speculative decoding.** Not available in the installed WebLLM: there is no `draftModel` or speculative-decoding symbol in its API, and the runtime owns the KV cache and sampling loop. This needs an upstream feature or a fork, not app code.
 - **Trusted Types.** The CSP currently forbids `unsafe-eval` and restricts scripts to the origin. `require-trusted-types-for 'script'` needs every `innerHTML` assignment routed through a policy, including DOMPurify and highlight.js output. Doable, but it must land with a browser test proving the sanitizer still runs.
 - **WebNN backend.** Transformers.js can target the WebNN execution provider on some builds; WebLLM cannot today. Adding a backend selector means real hardware to test on (NPUs on Apple Silicon, Qualcomm, Intel), so it needs a contributor with that hardware first.
 - **SharedArrayBuffer / COOP+COEP.** Multi-threaded WASM needs cross-origin isolation headers. GitHub Pages cannot set response headers, and isolation would also require every model host to serve compatible CORP/CORS headers. Provide opt-in `_headers` files for Netlify and Cloudflare Pages, documented as experimental, rather than enabling it by default.
+
+## Ecosystem integration (out of scope for this repository)
+
+Adding LocalMind as a LangChain.js vector store or LlamaIndex provider, an AI SDK `AIStream` adapter, or a Hugging Face Space means publishing packages under a name this project does not own and opening pull requests in third-party repositories. Those need maintainer accounts and an npm publish token, so they cannot be done from a fork. The browser-compatible building blocks exist and are documented in [docs/whitepaper.md](docs/whitepaper.md):
+
+- `src/rag/store.ts` is already a small, framework-agnostic document store with `add`, `search`, and `delete` semantics that map onto a vector-store interface.
+- `src/engine/local.ts` streams `StreamChunk` deltas, which is the shape an `AIStream` adapter needs.
+
+A contributor with publishing access can wrap those without changing the app.
 
 ## Later / needs a design
 

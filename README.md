@@ -121,7 +121,9 @@ Community GGUF weights download through `src/engine/resumable-download.ts`, whic
 
 If the inference worker dies, usually from running out of memory, the app aborts the reply, records the error in the local diagnostics log, falls back to the built-in assistant, and explains what happened. An out-of-memory crash during model loading reloads the page once without that model so the GPU context is released.
 
-For a deeper tour, see [docs/architecture.md](docs/architecture.md), [docs/rule-engine.md](docs/rule-engine.md), and [docs/adding-languages.md](docs/adding-languages.md).
+For a deeper tour, see [docs/architecture.md](docs/architecture.md), [docs/whitepaper.md](docs/whitepaper.md), [docs/rule-engine.md](docs/rule-engine.md), and [docs/adding-languages.md](docs/adding-languages.md).
+
+Everything the app stores stays in this browser; [PRIVACY.md](PRIVACY.md) states what is kept, where, and how to erase it, with the code that implements each claim.
 
 ## Browsers and devices
 
@@ -234,6 +236,14 @@ Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md), follow the [
 - Retrieval is small-scale by design: up to 20 documents, flat cosine search, top four passages, no reranking. A small local model may still ignore or misread the passages.
 - Encryption is opt-in and session-scoped. While the tab is unlocked, chats are plaintext in memory and readable by anything running on the page. Record ids, timestamps, and ciphertext sizes stay visible to someone with the profile files, and a weak passphrase can be guessed offline. Lost passphrases cannot be recovered.
 - Conversational prompts and local memory shape tone and continuity; they do not add reasoning ability.
+
+## Model licenses
+
+The app's own source is MIT, but model weights are not. A model you load keeps its own license, and LocalMind does not infer that license from a model's name — forks, merges, and re-uploads share names but not terms. Models with a verified record show the license and, where the terms require it, ask you to accept before the download starts; models without one are labelled **not verified by LocalMind**, link to the model card, and ask you to review it first. Acceptances are remembered per license. `npm run models:licenses` prints the same information as an inventory, and `npm run models:ai-bom` writes an AI bill of materials.
+
+## Sponsorship
+
+There is no funding account for this project yet, so there is nothing to donate to and no paid tier. If that changes, a `FUNDING.yml` and this section will be updated together — the absence of one is deliberate, not an oversight. The most useful contribution right now is a reproducible bug report or a run of `npm run evals:model:compare` on WebGPU hardware.
 
 ## License
 

@@ -557,6 +557,31 @@
       </div>
     </dialog>
 
+    <dialog class="modal" id="license-dialog" aria-labelledby="license-title">
+      <div class="modal-card confirm-card">
+        <h2 id="license-title">Before you download</h2>
+        <p id="license-model"></p>
+        <p id="license-terms" class="memory-note"></p>
+        <p class="memory-note small" id="license-link-row" hidden>
+          <a id="license-link" href="#" target="_blank" rel="noopener noreferrer"
+            >Open the license</a
+          >
+        </p>
+        <label class="check-row">
+          <input id="license-accept" type="checkbox" />
+          <span id="license-accept-label"
+            >I have reviewed this model's license and accept its terms.</span
+          >
+        </label>
+        <div class="confirm-actions">
+          <button class="btn ghost" id="license-cancel" type="button">Cancel</button>
+          <button class="btn primary" id="license-ok" type="button" disabled>
+            Agree and download
+          </button>
+        </div>
+      </div>
+    </dialog>
+
     <dialog class="modal" id="vault-dialog" aria-labelledby="vault-title">
       <div class="modal-card confirm-card">
         <h2 id="vault-title">Unlock chats</h2>

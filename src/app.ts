@@ -52,7 +52,14 @@ import {
   recommendDeviceModel,
 } from "./engine/device.js";
 import { groupModelsByFamily, modelFamily } from "./engine/model-families.js";
+import {
+  isLicenseAccepted,
+  licenseAcceptanceKey,
+  licenseFor,
+  needsLicenseAcceptance,
+} from "./engine/model-licenses.js";
 import type { DeviceProfile } from "./engine/device.js";
+import type { LocalModel } from "./engine/models.js";
 import {
   clearDatabase,
   createConversation,
@@ -184,6 +191,15 @@ interface Dom {
   "diagnostic-list": HTMLUListElement;
   "diagnostics-copy": HTMLButtonElement;
   "diagnostics-clear": HTMLButtonElement;
+  "license-dialog": HTMLDialogElement;
+  "license-model": HTMLElement;
+  "license-terms": HTMLElement;
+  "license-link-row": HTMLElement;
+  "license-link": HTMLAnchorElement;
+  "license-accept": HTMLInputElement;
+  "license-accept-label": HTMLElement;
+  "license-cancel": HTMLButtonElement;
+  "license-ok": HTMLButtonElement;
   "engine-alert": HTMLElement;
   "engine-alert-title": HTMLElement;
   "engine-alert-text": HTMLElement;
@@ -394,6 +410,15 @@ function cacheDom() {
     "diagnostic-list",
     "diagnostics-copy",
     "diagnostics-clear",
+    "license-dialog",
+    "license-model",
+    "license-terms",
+    "license-link-row",
+    "license-link",
+    "license-accept",
+    "license-accept-label",
+    "license-cancel",
+    "license-ok",
     "engine-alert",
     "engine-alert-title",
     "engine-alert-text",
@@ -555,6 +580,18 @@ function bindEvents() {
   dom["clear-data-link"].addEventListener("click", clearAllData);
 
   dom["offline-mode"].addEventListener("change", () => void setOfflineMode());
+  dom["license-accept"].addEventListener("change", () => {
+    dom["license-ok"].disabled = !dom["license-accept"].checked;
+  });
+  dom["license-cancel"].addEventListener("click", () => resolveLicense(false));
+  dom["license-ok"].addEventListener("click", () => resolveLicense(dom["license-accept"].checked));
+  // Escape closes a native <dialog> without running either button handler, so
+  // settle the pending decision here as well instead of waiting forever.
+  dom["license-dialog"].addEventListener("close", () => {
+    const resolve = activeLicense;
+    activeLicense = null;
+    resolve?.(false);
+  });
 
   dom["hardware-stats"].addEventListener("change", () => {
     void saveSettingsPatch({ hardwareStats: dom["hardware-stats"].checked });
@@ -1704,13 +1741,71 @@ async function downloadSelectedModel() {
   await loadSelectedModel(model.id);
 }
 
+let activeLicense: ((value: boolean) => void) | null = null;
+
+function resolveLicense(value: boolean) {
+  const resolve = activeLicense;
+  activeLicense = null;
+  if (dom["license-dialog"].open) dom["license-dialog"].close();
+  resolve?.(value);
+}
+
+/**
+ * Ask before a download when the model's terms require it. Verified permissive
+ * licenses and previously accepted licenses pass straight through.
+ */
+function confirmLicense(model: LocalModel): Promise<boolean> {
+  if (!needsLicenseAcceptance(model)) return Promise.resolve(true);
+  if (isLicenseAccepted(model, state.settings.acceptedLicenses)) return Promise.resolve(true);
+
+  const license = licenseFor(model);
+  dom["license-model"].textContent = `You are about to download ${model.label}.`;
+  dom["license-terms"].textContent =
+    license.source === "unverified"
+      ? "LocalMind has no verified license metadata for this model, so it cannot tell you the terms. Review the model card before downloading; the license may restrict commercial use or require attribution."
+      : `This model is published under the ${license.name}. Accepting is required before the download starts.`;
+  dom["license-accept-label"].textContent =
+    license.source === "unverified"
+      ? "I have reviewed this model's card and license, and I accept its terms."
+      : `I accept the ${license.name}.`;
+  dom["license-accept"].checked = false;
+  dom["license-ok"].disabled = true;
+
+  const link = dom["license-link"];
+  dom["license-link-row"].hidden = !license.url;
+  if (license.url) link.href = license.url;
+
+  return new Promise<boolean>((resolve) => {
+    if (activeLicense) activeLicense(false);
+    activeLicense = resolve;
+    if (!dom["license-dialog"].open) dom["license-dialog"].showModal();
+    dom["license-accept"].focus();
+  });
+}
+
 async function loadSelectedModel(id: string) {
   const model = engine.models.find((item) => item.id === id) ?? null;
   if (!model) return;
 
-  if (offlineModeActive() && !(await engine.hasCachedModel(id))) {
+  const cached = await engine.hasCachedModel(id);
+  if (offlineModeActive() && !cached) {
     toast("Offline mode is on. Turn it off in Settings to download a model.");
     return;
+  }
+
+  // A cached model is only being loaded, so there is nothing new to accept.
+  if (!cached) {
+    if (!(await confirmLicense(model))) {
+      toast("Download cancelled. The license was not accepted.");
+      renderModelPanel();
+      return;
+    }
+    // Record the acceptance itself: a download that later fails must not ask
+    // the user to accept the same terms again.
+    const key = licenseAcceptanceKey(model);
+    if (!state.settings.acceptedLicenses.includes(key)) {
+      await saveSettingsPatch({ acceptedLicenses: [...state.settings.acceptedLicenses, key] });
+    }
   }
 
   state.settings.modelId = id;
