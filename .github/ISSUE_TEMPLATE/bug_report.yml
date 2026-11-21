@@ -44,6 +44,17 @@ body:
     attributes:
       label: Device and OS
       placeholder: "Windows 11 desktop, iPhone 15 / iOS 18"
+    validations:
+      required: true
+  - type: input
+    id: memory
+    attributes:
+      label: RAM, and GPU if you know it
+      description: >-
+        Open the app's Settings and copy the "Device checks" line, which reports
+        WebGPU support, reported RAM, and core count. That line is more useful
+        than a guess.
+      placeholder: "16 GB, Apple M2 / 8 GB, Intel Iris Xe"
   - type: dropdown
     id: install
     attributes:

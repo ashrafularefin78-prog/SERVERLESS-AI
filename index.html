@@ -217,13 +217,9 @@
         </div>
 
         <div class="scroll-cue-wrap">
-          <button
-            class="scroll-cue"
-            id="scroll-bottom"
-            type="button"
-            hidden
-            aria-label="Scroll to the newest message"
-          >
+          <!-- The visible label is the accessible name: an aria-label that
+               reworded it would violate WCAG 2.5.3 (label in name). -->
+          <button class="scroll-cue" id="scroll-bottom" type="button" hidden>
             <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-arrow-down" /></svg>
             <span id="scroll-bottom-label">Scroll to bottom</span>
           </button>
@@ -556,7 +552,19 @@
               <p class="muted small">
                 Built-in rule assistant plus an optional on-device model - no backend, no tracking.
               </p>
+              <p class="muted small">
+                There is no feedback server. This opens a GitHub issue with your version and browser
+                already filled in; it is only sent when you submit it there.
+              </p>
             </div>
+            <a
+              class="btn subtle"
+              id="report-bug"
+              href="https://github.com/ashrafularefin78-prog/SERVERLESS-AI/issues/new"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Report a bug</a
+            >
           </section>
         </div>
       </div>

@@ -120,6 +120,71 @@ and a link post gets one line of context. Answer the first two hours of comments
 >
 > Links: demo, source, whitepaper.
 
+## Assets
+
+Regenerate the screenshots any time the UI changes:
+
+```bash
+npm run screenshots   # builds, captures docs/screenshots/, writes network-log.txt
+```
+
+That produces:
+
+| File                                 | Use                                          |
+| ------------------------------------ | -------------------------------------------- |
+| `docs/screenshots/welcome-dark.png`  | Product Hunt thumbnail, README hero          |
+| `docs/screenshots/welcome-light.png` | second gallery slot                          |
+| `docs/screenshots/chat-dark.png`     | the main "it renders markdown and code" shot |
+| `docs/screenshots/chat-light.png`    | light-theme gallery slot                     |
+| `docs/screenshots/settings.png`      | the device check and model panel             |
+| `docs/screenshots/mobile.png`        | mobile gallery slot                          |
+| `docs/screenshots/network-log.txt`   | the proof: three requests, all same-origin   |
+
+The script is also the network proof: it prints every request the app made while
+capturing, and fails if any of them is cross-origin. Quote the file when someone
+in the comments asks "how do I know it doesn't phone home".
+
+**GIF for Product Hunt.** `ffmpeg` is not installed here, so the animated demo is
+the one thing not generated. Record it with any screen recorder: two seconds of
+the welcome screen, the FizzBuzz reply streaming, then the DevTools Network tab
+with a single document request. Or build one from frames:
+
+```bash
+# requires ffmpeg
+ffmpeg -framerate 2 -pattern_type glob -i 'docs/screenshots/*.png' -vf scale=1200:-1 demo.gif
+```
+
+## Likely questions, and short answers
+
+Answer these honestly and quickly; hedging is what turns an HN thread.
+
+- **"It's not local, it downloads the model."** Correct. The app downloads weights
+  from Hugging Face once, then runs offline. The claim is about your prompts and
+  documents, not about installation. Offline mode makes the service worker refuse
+  every cross-origin request.
+- **"Why not use the OpenAI API?"** Because the point is that the text and the
+  documents never leave the machine. A frontier model is better at most things;
+  this is a different trade.
+- **"A 360M model is useless."** For open-ended generation, mostly. For questions
+  about a document you just handed it, the retrieval does the heavy lifting, and
+  when retrieval is weak it says so.
+- **"How is this different from a local Llama GUI?"** It runs in a tab with no
+  install, and the interesting part is the retrieval and the encryption, not the
+  inference.
+- **"What happens if the tab crashes?"** The model is unloaded and the app falls
+  back to the rule engine with an explanation; chats are saved continuously to
+  IndexedDB.
+- **"Is the encryption audited?"** No. It is WebCrypto with documented parameters,
+  there is no third-party audit, and documents are not covered yet.
+- **"WebGPU in Safari?"** Partially, and iOS caps a tab at roughly 1 GB, so model
+  fit is judged against that budget and large models are flagged before download.
+- **"Why no sync?"** No backend is the product. Export is a JSON file.
+- **"Reranking?"** Deliberately not: a cross-encoder means a second model download
+  and per-query latency. Cosine plus BM25 with reciprocal-rank fusion is the
+  trade.
+- **"Can I use it with VS Code / Ollama?"** Not today. An OpenAI-compatible
+  endpoint is documented as declined in `ROADMAP.md`, with the reasons.
+
 ## Before posting
 
 Only a maintainer can do these; each is a repository setting or an external
@@ -135,10 +200,13 @@ account.
 - [ ] Register the project on [bestpractices.dev](https://www.bestpractices.dev/)
       using [docs/openssf-badge.md](openssf-badge.md), and answer the gaps honestly.
 - [ ] Tag `v1.0.0` and publish the GitHub release with `CHANGELOG.md` as the body.
-- [ ] Add a `good first issue` label and 5–10 small tasks, so the first
-      contributors have somewhere to start.
-- [ ] Decide the funding story. Right now the README says plainly that there is no
-      funding account; do not add a Sponsors button until one exists.
+- [ ] Create the `good first issue` label and file 5–10 of the drafts in
+      [docs/good-first-issues.md](good-first-issues.md), so the first contributors
+      have somewhere to start.
+- [ ] Decide the funding story. `.github/FUNDING.yml` is in place but inert until
+      the account is enrolled at github.com/sponsors. The README says plainly that
+      there is no funding programme yet; update it in the same change that
+      enrols.
 - [ ] Check the demo on a phone before posting, including the on-screen keyboard and
       the scroll cue, because that is where a launch thread sends traffic first.
 

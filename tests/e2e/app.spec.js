@@ -832,3 +832,34 @@ test("does not ask again once a license has been accepted", async ({ page, conte
   await expect(page.locator("#license-dialog")).toBeHidden();
   await expect.poll(() => downloads.length, { timeout: 20_000 }).toBeGreaterThan(before);
 });
+
+test("offers a pre-filled bug report without collecting anything", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#open-settings").click();
+
+  const link = page.locator("#report-bug");
+  await expect(link).toBeVisible();
+  const href = await link.getAttribute("href");
+  const url = new URL(href);
+  expect(url.pathname).toBe("/ashrafularefin78-prog/SERVERLESS-AI/issues/new");
+  // It opens in a new tab, without handing over the opener.
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(link).toHaveAttribute("rel", /noopener/);
+
+  const body = url.searchParams.get("body");
+  expect(body).toContain("App version:** 1.0.0");
+  // The browser's own user-agent string, not a guess from the app.
+  expect(body).toMatch(/Chrome\/|Chromium\//);
+  // The description is left for the reporter, and no chat text travels along.
+  expect(body).toContain("Replace this line");
+
+  // Chat with the dialog closed, then look at the link again: nothing from the
+  // conversation may have been added to it.
+  await page.locator("#settings-dialog [data-close-dialog]").click();
+  await page.locator("#input").fill("secret phrase about my private notes");
+  await page.locator("#send").click();
+  await expect(page.locator(".msg.assistant").last()).toBeVisible();
+  await page.locator("#open-settings").click();
+  const afterChat = new URL(await link.getAttribute("href")).searchParams.get("body");
+  expect(afterChat).not.toContain("private notes");
+});

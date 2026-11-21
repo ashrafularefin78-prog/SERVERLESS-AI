@@ -241,6 +241,16 @@ Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md), follow the [
 
 The app's own source is MIT, but model weights are not. A model you load keeps its own license, and LocalMind does not infer that license from a model's name — forks, merges, and re-uploads share names but not terms. Models with a verified record show the license and, where the terms require it, ask you to accept before the download starts; models without one are labelled **not verified by LocalMind**, link to the model card, and ask you to review it first. Acceptances are remembered per license. `npm run models:licenses` prints the same information as an inventory, and `npm run models:ai-bom` writes an AI bill of materials.
 
+## Contributors
+
+<a href="https://github.com/ashrafularefin78-prog/SERVERLESS-AI/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=ashrafularefin78-prog/SERVERLESS-AI" alt="Contributors to LocalMind" />
+</a>
+
+Small, well-scoped fixes are the most useful contributions, and the `good first
+issue` label marks ones with no prerequisite knowledge. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the checks CI runs.
+
 ## Sponsorship
 
 There is no funding account for this project yet, so there is nothing to donate to and no paid tier. If that changes, a `FUNDING.yml` and this section will be updated together — the absence of one is deliberate, not an oversight. The most useful contribution right now is a reproducible bug report or a run of `npm run evals:model:compare` on WebGPU hardware.

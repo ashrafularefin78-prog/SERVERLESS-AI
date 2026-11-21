@@ -22,6 +22,7 @@
     "evals:model:record": "node scripts/model-eval.mjs --record --update-baseline",
     "test:e2e": "playwright test",
     "test:e2e:preview": "node scripts/e2e-preview.mjs",
+    "screenshots": "npm run build && node scripts/screenshots.mjs",
     "check:size": "node scripts/check-size.mjs",
     "qa:visual": "node scripts/qa-visual.mjs",
     "sbom": "npm sbom --sbom-format=cyclonedx",

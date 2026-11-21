@@ -68,6 +68,17 @@ export default [
     },
   },
   {
+    // Playwright capture script: the callbacks passed to `page.evaluate` and
+    // `page.waitForFunction` are serialized and run in the browser, so they use
+    // browser globals even though the script itself is Node.
+    files: ["scripts/screenshots.mjs"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: { ...globals.node, ...globals.browser },
+    },
+  },
+  {
     files: ["*.config.js", "eslint.config.js", "scripts/**/*.mjs"],
     languageOptions: {
       ecmaVersion: "latest",

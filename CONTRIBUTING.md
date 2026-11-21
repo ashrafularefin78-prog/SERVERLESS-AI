@@ -11,6 +11,10 @@ Neither is needed if you use a cloud workspace: the **Code** button on the
 repository page offers a Codespace with Node, Chromium, and the editor
 extensions already installed (see [.devcontainer/README.md](.devcontainer/README.md)).
 
+Looking for a first task? [docs/good-first-issues.md](docs/good-first-issues.md)
+has small, self-contained ones with a definition of done, and none of them need
+the model runtime.
+
 ## Setup
 
 ```bash

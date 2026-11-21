@@ -1,6 +1,8 @@
 import type { Mode, Settings, ThinkingEffort } from "./types.js";
 
 export const APP_NAME = "LocalMind";
+/** Canonical repository, used for issue and documentation links. */
+export const REPO_URL = "https://github.com/ashrafularefin78-prog/SERVERLESS-AI";
 export const APP_VERSION = "1.0.0";
 
 export const MODES: Mode[] = [

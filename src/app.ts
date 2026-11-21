@@ -53,6 +53,7 @@ import {
 } from "./engine/device.js";
 import { groupModelsByFamily, modelFamily } from "./engine/model-families.js";
 import { createIdleRelease, shouldReleaseOnHide } from "./engine/memory.js";
+import { buildBugReportUrl, readPlatform } from "./feedback.js";
 import {
   isLicenseAccepted,
   licenseAcceptanceKey,
@@ -192,6 +193,7 @@ interface Dom {
   "offline-mode-note": HTMLElement;
   "offline-badge": HTMLElement;
   "diagnostic-list": HTMLUListElement;
+  "report-bug": HTMLAnchorElement;
   "diagnostics-copy": HTMLButtonElement;
   "diagnostics-clear": HTMLButtonElement;
   "license-dialog": HTMLDialogElement;
@@ -304,6 +306,7 @@ export async function boot() {
 
   state.conversation = await initialConversation();
   renderAll();
+  syncBugReportLink();
   engine.subscribe(onEngineState);
 
   await initModelPanel();
@@ -416,6 +419,7 @@ function cacheDom() {
     "offline-mode-note",
     "offline-badge",
     "diagnostic-list",
+    "report-bug",
     "diagnostics-copy",
     "diagnostics-clear",
     "license-dialog",
@@ -687,6 +691,7 @@ function onEngineState(snapshot: EngineState) {
   const previous = state.engine;
   state.engine = snapshot;
   updateEngineChrome(snapshot);
+  syncBugReportLink();
   if (snapshot.error && snapshot.error !== previous.error) toast(snapshot.error);
 
   // A later successful load clears the previous failure banner.
@@ -848,6 +853,24 @@ function updateComposerState() {
   dom.input.disabled = false;
   dom["mode-select"].disabled = false;
   dom.messages.classList.toggle("is-generating", busy);
+}
+
+/**
+ * Point the feedback link at an issue pre-filled with what the user can see in
+ * the app. Called whenever the engine changes, because the engine and model are
+ * the first questions a maintainer asks.
+ */
+function syncBugReportLink() {
+  const snapshot = state.engine;
+  dom["report-bug"].href = buildBugReportUrl({
+    environment: {
+      engine: `${snapshot.mode === "model" ? "On-device model" : "Built-in assistant"} (${snapshot.phase})`,
+      modelId: snapshot.modelId,
+      userAgent: navigator.userAgent,
+      platform: readPlatform(navigator as { platform?: string }),
+      language: navigator.language,
+    },
+  });
 }
 
 function updateEngineChrome(snapshot: EngineState) {

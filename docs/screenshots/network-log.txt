@@ -1,0 +1,8 @@
+Captured 2026-11-21T23:12:00.414Z against the production build.
+
+Requests made while capturing: 3
+Cross-origin requests: 0
+
+GET http://127.0.0.1:4183/
+GET http://127.0.0.1:4183/assets/index-BaYbMmrJ.js
+GET http://127.0.0.1:4183/assets/index-D5ty0E8-.css

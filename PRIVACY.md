@@ -38,6 +38,7 @@ Only these cases exist, and each one needs you to start it:
 1. **Loading the app** — your browser fetches the static files from whichever host you opened. That host sees a normal web request.
 2. **Downloading an on-device model** — after you pick a model in Settings, the app fetches weights from Hugging Face (or the pinned host in the catalogue) and from the model-library host. The request contains the file URL and your IP address; it contains no chat, document, or memory content.
 3. **The first embedding run** — the first time you add a document or ask about one, the app downloads `all-MiniLM-L6-v2` for on-device embeddings. Same properties as above.
+4. **Links you click** — a license link, the "Report a bug" button, or a documentation link opens a page in a new tab. That is a normal navigation you started, and the destination sees the request. The bug-report link carries your app version, engine mode, user agent string, and platform in the URL, visible and editable in the issue form before anything is submitted; no chat text, memory note, document title, or vault content is ever added to it.
 
 Everything else — chatting, retrieval, encryption, summarising, exporting — runs locally. The Content Security Policy in `vite.config.js` restricts `connect-src` to those model hosts, so a bug could not quietly reach another origin.
 
