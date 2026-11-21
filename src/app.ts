@@ -1,7 +1,7 @@
 import {
   APP_VERSION,
   CONVERSATION_SKILLS,
-  CONTEXT_LIMITS,
+  contextLimitsFor,
   DEFAULT_SETTINGS,
   SUGGESTIONS,
   SYSTEM_GUARDRAIL,
@@ -2022,7 +2022,7 @@ async function runGeneration(assistantId: string) {
     for await (const chunk of engine.generate({
       messages: messagesForEngine,
       signal: state.streamSignal,
-      maxTokens: effortById(state.settings.effort).maxTokens,
+      maxTokens: generationOutputBudget(messagesForEngine),
       demo: {
         buildDemoReply: state.settings.mode === "coder" ? demoCodingReply : null,
         memory: state.settings.memory || [],
@@ -2097,6 +2097,19 @@ async function runGeneration(assistantId: string) {
   focusInput();
 }
 
+function generationOutputBudget(messages: ChatMessage[]): number {
+  const requested = effortById(state.settings.effort).maxTokens;
+  const modelId = engine.getState().modelId;
+  const contextWindow = modelId
+    ? (engine.models.find((model) => model.id === modelId)?.contextWindow ?? null)
+    : null;
+  return contextLimitsFor({
+    contextWindow,
+    systemPromptChars: messages.reduce((total, message) => total + message.content.length, 0),
+    outputTokens: requested,
+  }).maxOutputTokens;
+}
+
 function buildEngineMessages(
   conversation: Conversation,
   excludeId: string,
@@ -2143,7 +2156,17 @@ function buildEngineMessages(
 
   const measure = (message: ChatMessage) =>
     message.role === "user" ? expandShorthand(normalizeText(message.content)) : message.content;
-  const { kept, summary } = compactHistory(history, CONTEXT_LIMITS, measure);
+  const activeModelId = engine.getState().modelId;
+  const contextWindow = activeModelId
+    ? (engine.models.find((model) => model.id === activeModelId)?.contextWindow ?? null)
+    : null;
+  const contextLimits = contextLimitsFor({
+    contextWindow,
+    // Include room for the extractive summary appended after the dropped turns are known.
+    systemPromptChars: systemPrompt.length + 600,
+    outputTokens: effort.maxTokens,
+  });
+  const { kept, summary } = compactHistory(history, contextLimits, measure);
   const note = formatCompactionNote(summary);
   if (note) systemPrompt += `\n\n${note}`;
 

@@ -412,7 +412,8 @@ export async function* streamModel(
     async function* chunks(): AsyncGenerator<StreamChunk> {
       for await (const chunk of stream) {
         if (signal?.aborted) return;
-        const text = chunk.choices[0]?.delta?.content ?? "";
+        const delta = chunk.choices[0]?.delta?.content;
+        const text = typeof delta === "string" ? delta : "";
         if (text) yield { text };
         if (chunk.usage) {
           yield {

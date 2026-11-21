@@ -7,7 +7,7 @@ import {
   readCompactionSummary,
   recapReply,
 } from "../../src/context.js";
-import { CONTEXT_LIMITS } from "../../src/config.js";
+import { BUILTIN_CONTEXT_LIMITS, contextLimitsFor } from "../../src/config.js";
 import { demoChatReply } from "../../src/chat/replies.js";
 
 const msg = (role, content) => ({ role, content });
@@ -43,14 +43,34 @@ describe("compactHistory", () => {
     expect(measured.kept).toHaveLength(2);
   });
 
-  it("keeps the whole conversation when the app limits are infinite", () => {
+  it("provides a bounded built-in context window", () => {
+    expect(BUILTIN_CONTEXT_LIMITS).toEqual({ maxMessages: 16, maxChars: 8_000 });
     const history = Array.from({ length: 400 }, (_, index) =>
       msg(index % 2 ? "assistant" : "user", "x".repeat(400)),
     );
-    const result = compactHistory(history, CONTEXT_LIMITS);
-    expect(result.kept).toEqual(history);
-    expect(result.dropped).toEqual([]);
-    expect(result.summary).toBeNull();
+    const result = compactHistory(history, BUILTIN_CONTEXT_LIMITS);
+    expect(result.kept.length).toBeLessThanOrEqual(BUILTIN_CONTEXT_LIMITS.maxMessages);
+    expect(result.dropped.length).toBeGreaterThan(0);
+    expect(result.summary).toBeTruthy();
+  });
+
+  it("budgets model history for system prompts and generation output", () => {
+    const roomy = contextLimitsFor({
+      contextWindow: 8192,
+      systemPromptChars: 500,
+      outputTokens: 512,
+    });
+    const constrained = contextLimitsFor({
+      contextWindow: 2048,
+      systemPromptChars: 1200,
+      outputTokens: 1800,
+    });
+    expect(roomy.maxChars).toBeGreaterThan(constrained.maxChars);
+    expect(constrained.maxOutputTokens).toBeLessThan(1800);
+    expect(constrained.maxOutputTokens).toBeGreaterThan(0);
+    expect(constrained.maxChars).toBeGreaterThanOrEqual(0);
+    expect(constrained.maxChars).toBeLessThanOrEqual(roomy.maxChars);
+    expect(constrained.maxMessages).toBeGreaterThanOrEqual(1);
   });
 
   it("always keeps at least the newest message even if it alone exceeds maxChars", () => {
@@ -58,6 +78,14 @@ describe("compactHistory", () => {
     const result = compactHistory(history, { maxMessages: 16, maxChars: 10 });
     expect(result.kept).toHaveLength(1);
     expect(result.dropped).toEqual([]);
+  });
+
+  it("drops all prior turns when no room remains for them", () => {
+    const history = [msg("user", "old topic"), msg("assistant", "old answer")];
+    const result = compactHistory(history, { maxMessages: 1, maxChars: 0 });
+    expect(result.kept).toEqual([history[1]]);
+    expect(result.dropped).toEqual([history[0]]);
+    expect(result.summary).toContain("old topic");
   });
 });
 

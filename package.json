@@ -7,6 +7,8 @@
   "license": "MIT",
   "scripts": {
     "models:sync": "node scripts/sync-model-catalogue.mjs",
+    "models:licenses": "node scripts/check-model-licenses.mjs",
+    "models:ai-bom": "node scripts/check-model-licenses.mjs ai-bom.json",
     "predev": "npm run models:sync",
     "dev": "vite",
     "prebuild": "npm run models:sync",

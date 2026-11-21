@@ -107,15 +107,52 @@ export const DEFAULT_SETTINGS: Settings = {
   effort: "medium",
 };
 
-/**
- * The app itself never trims a conversation: every stored turn is sent with the
- * next prompt. A loaded model's own context window is the only remaining limit,
- * and its runtime enforces it.
- */
-export const CONTEXT_LIMITS = {
-  maxMessages: Number.POSITIVE_INFINITY,
-  maxChars: Number.POSITIVE_INFINITY,
+/** Character-based safeguards for local context (roughly 3 chars per token). */
+export const BUILTIN_CONTEXT_LIMITS = {
+  maxMessages: 16,
+  maxChars: 8_000,
 } as const;
+
+/**
+ * Fit the retained conversation into the selected model's context window.
+ * Reserve space for the system/grounding prompt, the requested completion, and
+ * a safety margin. The built-in engine has no tokenizer or model window, so it
+ * uses a generous fixed cap to prevent unbounded prompt growth.
+ */
+export function contextLimitsFor({
+  contextWindow,
+  systemPromptChars,
+  outputTokens,
+}: {
+  contextWindow?: number | null;
+  systemPromptChars: number;
+  outputTokens: number;
+}): { maxMessages: number; maxChars: number; maxOutputTokens: number } {
+  if (!contextWindow || !Number.isFinite(contextWindow) || contextWindow <= 0) {
+    return { ...BUILTIN_CONTEXT_LIMITS, maxOutputTokens: outputTokens };
+  }
+
+  const charsPerToken = 3;
+  const safetyTokens = Math.min(512, Math.floor(contextWindow * 0.15));
+  const systemTokens = Math.ceil(Math.max(0, systemPromptChars) / charsPerToken);
+  const maxOutputTokens = Math.min(
+    Math.max(0, outputTokens),
+    Math.max(1, contextWindow - systemTokens - safetyTokens),
+  );
+  const usableChars =
+    contextWindow * charsPerToken -
+    Math.max(0, systemPromptChars) -
+    (maxOutputTokens + safetyTokens) * charsPerToken;
+  const maxChars = Math.max(0, Math.min(BUILTIN_CONTEXT_LIMITS.maxChars, usableChars));
+  return {
+    maxMessages: Math.min(
+      BUILTIN_CONTEXT_LIMITS.maxMessages,
+      Math.max(1, Math.floor(maxChars / 250)),
+    ),
+    maxChars,
+    maxOutputTokens,
+  };
+}
 
 export const SYSTEM_GUARDRAIL =
   "Answer in the same language as the user. Keep formatting valid markdown. Do not output raw HTML, scripts, or iframes.";
