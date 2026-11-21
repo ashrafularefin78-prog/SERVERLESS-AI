@@ -77,13 +77,13 @@ test("theme toggle swaps palettes and the choice survives a reload", async ({ pa
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   }
   expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(
-    "rgb(5, 8, 10)",
+    "rgb(10, 15, 26)",
   );
 
   await page.locator("#theme-toggle").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(
-    "rgb(247, 243, 239)",
+    "rgb(244, 247, 251)",
   );
 
   await page.waitForTimeout(400);
