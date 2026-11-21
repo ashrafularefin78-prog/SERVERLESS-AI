@@ -52,17 +52,20 @@ If formatting fails, run `npm run format` and review the diff.
 
 ## Project layout
 
-| Path                    | Responsibility                                       |
-| ----------------------- | ---------------------------------------------------- |
-| `src/app.js`            | UI orchestration, state, and persistence             |
-| `src/understand.js`     | Unicode cleanup, shorthand expansion, intent hints   |
-| `src/memory.js`         | Explicit memory commands and prompt blocks           |
-| `src/engine/demo.js`    | Built-in reply engine and streaming                  |
-| `src/engine/manager.js` | Generation lifecycle and backend selection           |
-| `src/chat/replies.js`   | Conversational reply rules                           |
-| `src/coder/`            | Language detection, task detection, and code recipes |
-| `src/storage/db.js`     | IndexedDB conversations and settings                 |
-| `public/sw.js`          | Offline app-shell caching                            |
+| Path                        | Responsibility                                                    |
+| --------------------------- | ----------------------------------------------------------------- |
+| `src/app.ts`                | UI orchestration, state, and persistence                          |
+| `src/understand.ts`         | Unicode cleanup, shorthand expansion, intent hints                |
+| `src/memory.ts`             | Explicit memory commands and prompt blocks                        |
+| `src/engine/demo.ts`        | Built-in reply engine and streaming                               |
+| `src/engine/manager.ts`     | Generation lifecycle and backend selection                        |
+| `src/engine/local.ts`       | Optional local-model worker and streaming                         |
+| `src/chat/replies.ts`       | Conversational reply rules                                        |
+| `src/rag/`                  | On-device document chunking, embeddings, retrieval, and grounding |
+| `src/coder/`                | Language detection, task detection, and code recipes              |
+| `src/storage/db.ts`         | IndexedDB conversations, settings, and knowledge documents        |
+| `tests/unit/`, `tests/e2e/` | Unit/evaluation and browser tests                                 |
+| `public/sw.js`              | Offline app-shell caching                                         |
 
 For details, read [docs/architecture.md](docs/architecture.md) and [docs/rule-engine.md](docs/rule-engine.md).
 
@@ -82,6 +85,7 @@ See [docs/adding-languages.md](docs/adding-languages.md) for the metadata fields
 
 ## Code style
 
+- The application uses strict TypeScript. Keep new app code in `.ts` files and run `npm run typecheck`; `src/coder/` still contains a documented JavaScript code-generation cluster.
 - ESLint and Prettier are enforced. Formatting is not a review topic.
 - Prefer small pure functions. Keep DOM access in `src/app.js` and `src/ui/`.
 - Use JSDoc for exported functions in core modules.

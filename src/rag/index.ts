@@ -10,7 +10,7 @@ import { chunkText } from "./chunk.js";
 import { embedTexts, setEmbeddingProgressListener } from "./embeddings.js";
 import { isPdfFile } from "./pdf-text.js";
 import { buildKnowledgeBlock, type KnowledgeBlock } from "./prompt.js";
-import { rankBySimilarity } from "./similarity.js";
+import { rankByHybrid } from "./similarity.js";
 import { deleteKnowledgeDoc, listKnowledgeDocs, loadAllChunks, saveKnowledgeDoc } from "./store.js";
 
 export const RAG = {
@@ -20,7 +20,7 @@ export const RAG = {
   chunkChars: 900,
   overlapChars: 120,
   topK: 4,
-  minScore: 0.28,
+  candidateK: 10,
   promptChars: 2600,
   embedBatch: 8,
 } as const;
@@ -148,11 +148,13 @@ export async function retrieveKnowledge(query: string): Promise<KnowledgeBlock |
   const [vector] = await embedTexts([trimmed]);
   if (!vector?.length) return null;
 
-  const hits = rankBySimilarity(vector, chunks, RAG.topK, RAG.minScore).map(({ item, score }) => ({
-    title: item.title,
-    text: item.text,
-    score,
-  }));
+  const hits = rankByHybrid(trimmed, vector, chunks, RAG.topK, RAG.candidateK).map(
+    ({ item, score }) => ({
+      title: item.title,
+      text: item.text,
+      score,
+    }),
+  );
 
   return buildKnowledgeBlock(hits, RAG.promptChars);
 }

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { chunkText } from "../../src/rag/chunk.js";
 import { buildKnowledgeBlock } from "../../src/rag/prompt.js";
-import { cosineSimilarity, rankBySimilarity } from "../../src/rag/similarity.js";
+import {
+  cosineSimilarity,
+  rankByHybrid,
+  rankByKeyword,
+  rankBySimilarity,
+} from "../../src/rag/similarity.js";
 
 describe("chunkText", () => {
   it("returns nothing for empty input", () => {
@@ -53,6 +58,36 @@ describe("cosineSimilarity", () => {
     expect(cosineSimilarity([1, 0], [0, 1])).toBe(0);
     expect(cosineSimilarity([0, 0], [1, 1])).toBe(0);
     expect(cosineSimilarity([1, 2], [1, 2, 3])).toBe(0);
+  });
+});
+
+describe("hybrid retrieval ranking", () => {
+  const items = [
+    {
+      id: "semantic",
+      title: "Concepts",
+      text: "A fruit with a sweet taste.",
+      vector: [0.95, 0.05],
+    },
+    {
+      id: "exact",
+      title: "RFC 9110",
+      text: "HTTP 418 is the exact status code in RFC 9110.",
+      vector: [0.2, 0.8],
+    },
+    { id: "other", title: "Notes", text: "A different unrelated passage.", vector: [0, 1] },
+  ];
+
+  it("finds exact identifiers with lexical ranking", () => {
+    const ranked = rankByKeyword("RFC 9110", items, 2);
+    expect(ranked[0]?.item.id).toBe("exact");
+    expect(ranked[0]?.score).toBeGreaterThan(0);
+  });
+
+  it("fuses semantic and exact-term ranks", () => {
+    const ranked = rankByHybrid("RFC 9110", [1, 0], items, 2);
+    expect(ranked.map(({ item }) => item.id)).toContain("exact");
+    expect(ranked.map(({ item }) => item.id)).toContain("semantic");
   });
 });
 

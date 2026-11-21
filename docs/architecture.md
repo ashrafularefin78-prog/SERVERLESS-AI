@@ -102,7 +102,7 @@ See [rule-engine.md](rule-engine.md) for the rule order and extension points.
 - `chunk.ts` splits normalized text into deterministic ~900-character chunks with 120-character overlap. Paragraphs and sentences are preferred over hard cuts.
 - `embeddings.ts` owns a dedicated Worker (`embed-worker.ts`) that lazily loads `onnx-community/all-MiniLM-L6-v2-ONNX` through Transformers.js and pools to normalized 384-dimension vectors. No embeddings are computed unless the user adds or asks about documents.
 - `store.ts` persists documents and chunk vectors in IndexedDB. Vectors are stored as `Float32Array`; removal deletes via the `docId` index.
-- `similarity.ts` is a flat cosine scan returning the exact top-k. At browser scale this is simpler and more accurate than an approximate graph index.
+- `similarity.ts` combines an exact flat cosine ranking with a small BM25-style keyword ranking using reciprocal-rank fusion. This keeps semantic matches while recovering exact names, error codes, and identifiers; it avoids an approximate index and adds no model or runtime download.
 - `prompt.ts` formats the grounding block and enforces the character budget. Document text is labelled as data, not instructions.
 
 Embedding runs on the CPU (ONNX Runtime Web, asyncify build) and is independent of WebGPU, so retrieval works even when the chat model cannot run.

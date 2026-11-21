@@ -169,6 +169,7 @@ interface Dom {
   "confirm-ok": HTMLButtonElement;
   "confirm-cancel": HTMLButtonElement;
   toast: HTMLElement;
+  announcement: HTMLElement;
 }
 
 interface State {
@@ -350,6 +351,7 @@ function cacheDom() {
     "confirm-ok",
     "confirm-cancel",
     "toast",
+    "announcement",
   ];
   const cache = dom as unknown as Record<string, HTMLElement | null>;
   for (const id of ids) {
@@ -2002,6 +2004,7 @@ async function runGeneration(assistantId: string) {
 
   const runId = ++state.runId;
   state.generating = true;
+  announce("Assistant is responding.");
   state.partialText = "";
   state.streamSignal = engine.newGenerationSignal();
   state.generationDone = new Promise<void>((resolve) => {
@@ -2063,6 +2066,13 @@ async function runGeneration(assistantId: string) {
   assistant.streaming = false;
   assistant.content = accumulated.trimEnd();
   const stoppedByUser = aborted || Boolean(state.streamSignal?.aborted);
+  announce(
+    errorMessage
+      ? `Response failed: ${errorMessage}`
+      : stoppedByUser
+        ? "Response stopped."
+        : "Response complete.",
+  );
   assistant.stopped = stoppedByUser;
 
   if (errorMessage) {
@@ -2374,6 +2384,13 @@ async function copyText(text: string) {
   } finally {
     area.remove();
   }
+}
+
+function announce(message: string) {
+  dom.announcement.textContent = "";
+  window.requestAnimationFrame(() => {
+    dom.announcement.textContent = message;
+  });
 }
 
 function toast(message: string) {

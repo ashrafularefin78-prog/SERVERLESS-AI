@@ -195,12 +195,7 @@
         </header>
 
         <div class="chat-scroll" id="chat-scroll">
-          <section
-            class="messages"
-            id="messages"
-            aria-live="polite"
-            aria-label="Conversation"
-          ></section>
+          <section class="messages" id="messages" aria-label="Conversation"></section>
         </div>
 
         <footer class="composer-wrap">
@@ -215,7 +210,6 @@
                     aria-haspopup="listbox"
                     aria-expanded="false"
                     aria-controls="composer-model-pop"
-                    aria-label="Model"
                   >
                     <span class="model-trigger-text">
                       <span class="model-trigger-value" id="composer-model-trigger-value"
@@ -332,7 +326,7 @@
                 aria-haspopup="listbox"
                 aria-expanded="false"
                 aria-controls="model-pop"
-                aria-labelledby="model-label model-trigger-value"
+                aria-labelledby="model-label model-trigger-value model-trigger-meta"
               >
                 <span class="model-trigger-text">
                   <span class="model-trigger-value" id="model-trigger-value"
@@ -532,6 +526,13 @@
     </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <div
+      class="sr-only"
+      id="announcement"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    ></div>
 
     <noscript>
       <div class="noscript">LocalMind needs JavaScript to run in your browser.</div>
