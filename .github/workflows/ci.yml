@@ -62,20 +62,19 @@ jobs:
 
   osv:
     name: OSV dependency scan
+    # The reusable workflow pinned `--output=`, which the scanner has deprecated:
+    # the file was never written and the reporter failed every run. Calling the
+    # composite action directly avoids flags we cannot control and needs no SARIF
+    # upload, so Code Scanning can stay optional.
+    runs-on: ubuntu-latest
     permissions:
       contents: read
-      # Required by the reusable workflow to read this run's metadata and
-      # artifacts. Without it the called workflow asks for a permission the
-      # caller does not grant, and the whole run fails at startup.
-      actions: read
-      # The reusable workflow declares this for its optional SARIF upload; the
-      # upload stays off so the scan works without Code Scanning enabled.
-      security-events: write
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
-    with:
-      scan-args: |-
-        --lockfile=./package-lock.json
-      upload-sarif: false
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
+        with:
+          scan-args: |-
+            --lockfile=./package-lock.json
 
   e2e:
     name: Playwright
