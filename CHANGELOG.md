@@ -1,5 +1,137 @@
 # Changelog
 
+## 1.1.0
+
+### Minor Changes
+
+- b0473c5: Spanish and German interface, a stated content-safety position, and a community page
+
+  The interface was English-only while the app offered coding help for 66 languages.
+  Navigation, controls, headings, dialog titles, buttons, placeholders, and
+  `aria-label`s now follow the browser in **English, Spanish, or German**, and can be
+  pinned in Settings. English stays in the markup and is its own key, so a missing
+  translation renders English rather than a blank button, and a locale the app does
+  not ship falls back instead of showing a half-translated mix. Locales are separate
+  chunks: a reader who stays on English downloads nothing extra.
+
+  `docs/content-safety.md` states what the app does and does not filter for the 504
+  uncensored community models it lists - and why it does not ship a classifier. An
+  uncensored model now keeps a bordered warning in Settings for as long as it is
+  selected, instead of only a chip in the picker.
+
+  The README gains a Community section covering Discussions (now enabled), the Code of
+  Conduct, CODEOWNERS routing, and the protected branch.
+
+- 3dcd076: Every model download in one list, and a stricter accessibility audit
+
+  Settings now has a Model storage section: each catalogue model whose weights are
+  actually on this device, with its real size, whether it sits in OPFS or cache
+  storage, and a delete button that works on that model rather than only on the one
+  you have selected. Sizes come from the files themselves, not from an estimate, and
+  a model that appears in both stores is counted once. The same panel reports what
+  the site is using against its quota and adds the WebGPU adapter limits that decide
+  whether a model can fit.
+
+  The axe audit now also runs with the mobile drawer open, and it immediately failed:
+  the scroll-to-bottom cue was 23 px tall and the Thinking-effort select was a
+  text-sized touch target. Both now meet the 24x24 minimum, and the drawer is clean.
+
+- d8293f6: Optional prompt redaction, a benchmark, and the design docs to argue with
+
+  Settings has a new opt-in: mask structured identifiers before the text reaches a
+  model. Emails, phone numbers, card numbers (Luhn-checked), IBANs (mod 97), US
+  social security numbers, API tokens, JWTs, and IPv4 addresses become stable
+  placeholders such as `[EMAIL_1]`, in retrieved document passages as well as the
+  prompt. The chat keeps exactly what you typed, the log records counts and never
+  values, and the module is imported only when the setting is on. Names and postal
+  addresses are not detected, and the UI says so.
+
+  `npm run bench` reports time to first token and tokens per second for the current
+  device, from the app's own stored statistics, with the median of several runs and
+  an explicit `estimatedTokens` flag when the runtime reports no usage. Replies now
+  record their time to first token.
+
+  Also: `rfcs/0001-browser-rag-storage.md` specifies the IndexedDB document and
+  chunk schema as implemented, with unimplemented ideas marked as proposals;
+  `rfcs/README.md` describes the (light) process; `docs/webml-feedback.md` collects
+  ten platform gaps found while shipping, each naming the code that worked around
+  it; and an offline-mode assertion no longer depends on which toast won a race.
+
+- d1514b2: A first-run introduction, honest indexing progress, and the enterprise paperwork
+
+  A fresh profile now opens with a short introduction instead of an empty chat: it
+  names what this device can actually run, recommends the built-in assistant as the
+  zero-download path, and offers the model picker only when a model would work. It
+  appears once, and a full data reset brings it back because that is a first run
+  again.
+
+  Indexing a document now shows where the time goes, with a progress bar and a
+  sentence per stage - reading, preparing the embedding model, generating
+  embeddings (n of m chunks), saving - instead of one "loading" line.
+
+  Also: a 375x667 viewport test suite (no sideways overflow, drawer off-screen until
+  asked, `dvh` height, settings reachable), CODEOWNERS routing for the security and
+  supply-chain paths, grouped Dependabot security updates, `npm run deps:licenses`
+  (69 shipped dependencies, all permissive; Node-only binaries excluded with a
+  reason), Mermaid module and sequence diagrams in `docs/architecture.md`, and a
+  tag-triggered CI job that attaches the built archive and SBOM to the GitHub
+  Release.
+
+### Patch Changes
+
+- 1681edd: Local observability you can hand over, and the maintenance docs to go with it
+
+  Settings now reads the environment instead of guessing: the WebGPU adapter and
+  the limits that constrain a model, the device memory budget, and storage usage
+  broken down by OPFS files. `?debug=true` opens that panel directly, which is the
+  link to put in a bug report.
+
+  An "Export bundle" button writes a JSON file with that environment, the user
+  agent, and the local error log, and nothing else: there is no field in the
+  schema that could carry chat, document, or settings content, and an end-to-end
+  test sends a marked message and asserts the marker never appears in the file.
+
+  Also: clearing all data now frees the embedding worker that holds the MiniLM
+  weights, the retrieval numbers live in one module (`src/rag/config.ts`) instead
+  of being repeated as default arguments, lint fails on `any` and on any warning,
+  `MAINTAINERS.md` covers releases, model updates, and the load-bearing decisions,
+  `docs/ci.md` explains every workflow and the SBOM, a throttled-CPU browser test
+  holds the stop button to a response budget, and `docs/release-notes-v1.0.0.md`
+  is the 1.0.0 release body.
+
+- 0ae49f0: Fix workers blocked by the app's own Trusted Types policy
+
+  `require-trusted-types-for 'script'` applies to the Worker constructor, and Vite emits
+  worker URLs that the policy refuses, so PDF ingestion hung on "Reading …" and model
+  loading failed silently in the production build. Workers are now same-origin files
+  created through the app's policy, pdf.js is handed a port instead of a worker URL, and
+  an end-to-end test ingests a real PDF so the regression cannot come back unseen.
+
+  `npm run demo` runs the launch flow against the production build and writes the
+  evidence - screenshots, a full network log, and a report that fails if anything was
+  requested between the question and the answer.
+
+- 27953fb: Close the auto-lock plaintext leak, and make CI tell the truth
+
+  The vault now finishes or cancels the streaming reply and writes one last
+  encrypted save before the key is dropped, and a tab-hide locks after a 60 second
+  grace period instead of instantly. Storage fails closed: with a vault present and
+  no key, a conversation save throws instead of writing readable messages, and
+  migrating a vault re-encrypts leftover plaintext rows rather than blocking the
+  unlock.
+
+  CI's OSV job now grants the `actions: read` permission its reusable workflow
+  declares, which was failing every run at startup. Workflows are pinned to commit
+  SHAs with version comments and checked by `npm run check:workflows`.
+
+  Also in this release: `npm run test:coverage` measures the real tree again after
+  two memory test files collided, the model-upgrade action is offered at the end of
+  the rule chain instead of only for listed topics, capable devices get a GPU
+  recommendation instead of silence, the reasoning-tag filter applies to every
+  model and explains an empty reply, the service worker keeps content-hashed assets
+  across updates, `npm run models:licenses` reads the same curated table as the app,
+  and Firefox runs the browser suite green.
+
 ## 1.0.0
 
 The first release. LocalMind is a private chat assistant that runs in a browser
