@@ -1,6 +1,8 @@
 // Keep both inference runtimes lazy so built-in chat needs no model download.
 import type { ChatMessage, ModelProgress, StreamChunk } from "../types.js";
 import { recordDiagnostic } from "../diagnostics.js";
+import modelWorkerUrl from "./model-worker.ts?worker&url";
+import { trustedScriptURL } from "../trusted-types.js";
 import { MODEL_CACHE, modelById } from "./models.js";
 import type { LocalModel } from "./models.js";
 import {
@@ -81,7 +83,7 @@ const cacheRequests = new Map<
 function ensureCacheWorker(): Worker {
   if (cacheWorker) return cacheWorker;
 
-  const nextWorker = new Worker(new URL("./model-worker.ts", import.meta.url), {
+  const nextWorker = new Worker(trustedScriptURL(modelWorkerUrl) as string | URL, {
     type: "module",
   });
   nextWorker.onmessage = (event: MessageEvent) => {
@@ -181,6 +183,7 @@ export function modelSupportReason(model: LocalModel, support: SupportReport): s
  * expose `navigator.gpu` and still hand back a null adapter (blocklisted GPU,
  * software renderer, disabled flag), so the adapter is the real test.
  */
+
 export async function detectSupport(): Promise<SupportReport> {
   const nav = (typeof navigator === "undefined" ? undefined : navigator) as
     | (Navigator & {
@@ -298,7 +301,7 @@ export async function loadModel(
     // Persistence is a hint, not a requirement.
   }
 
-  const nextWorker = new Worker(new URL("./model-worker.ts", import.meta.url), {
+  const nextWorker = new Worker(trustedScriptURL(modelWorkerUrl) as string | URL, {
     type: "module",
   });
   watchWorker(nextWorker, modelId);

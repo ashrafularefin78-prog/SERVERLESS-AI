@@ -1,6 +1,6 @@
 # Launch notes
 
-Copy for the v1.0.0 release, plus the things only a maintainer can do. Every claim
+Copy for the v1.1.0 release, plus the things only a maintainer can do. Every claim
 below is checkable in this repository; if a statement stops being true, fix the
 statement before posting.
 
@@ -8,7 +8,14 @@ statement before posting.
 
 **Title**
 
-> Show HN: Local-first AI with encrypted RAG, running 100% in the browser
+> Show HN: A private AI chat that runs entirely in your browser (WebGPU, RAG, encryption)
+
+Why not the punchier "100% local AI agent": it is not an agent (there is no tool-use
+loop, no autonomous multi-step execution), and the model runs on WebGPU _or_ on the
+CPU through WebAssembly depending on what your machine has. The title has to survive
+the first comment that says "actually it downloads weights from Hugging Face", and it
+does: the weights are data, the inference is local, nothing about your chat leaves
+the tab.
 
 **Body**
 
@@ -52,9 +59,19 @@ statement before posting.
 >   documents, not a replacement for a frontier model.
 >
 > Stack: TypeScript, no framework, WebGPU/WebLLM, wllama, Transformers.js for
-> embeddings, IndexedDB and OPFS for storage, WebCrypto for the vault. It ships as
-> a static site, and the initial payload is 256 kB gzipped. Trusted Types are
-> enforced and the CSP has no `unsafe-eval`.
+> embeddings, IndexedDB and OPFS for storage, WebCrypto for the vault. It ships as a
+> static site, and the initial payload is 262 kB gzipped. Trusted Types are enforced,
+> the CSP has no `unsafe-eval`, and every CI action is pinned to a commit SHA.
+>
+> Since the last time I posted this, the things I fixed were mostly the boring ones:
+> the interface now speaks English, Spanish, and German; Settings lists every model
+> download on the device with its real measured size; the accessiblity audit runs
+> with the mobile drawer open and found two real WCAG failures; and — the bug I am
+> least proud of — a Trusted Types policy I added myself had been silently blocking
+> every Worker, which meant PDF ingestion and model loading were broken in
+> production for weeks while the tests passed. There is now an end-to-end test that
+> drops a real PDF and waits for it to be indexed, because "the tests are green" was
+> not the same as "the feature runs".
 >
 > Things I would like help with: running the model comparison on real WebGPU
 > hardware (I only have a CPU here), a streaming SHA-256 check for multi-gigabyte
@@ -66,6 +83,87 @@ statement before posting.
 
 Post it as a text post, not a link post: the description is the interesting part,
 and a link post gets one line of context. Answer the first two hours of comments.
+
+## Reddit — r/LocalLLaMA
+
+**Title**
+
+> I built a browser-only local AI: WebGPU or CPU/WASM inference, on-device embeddings, encrypted chats
+
+**Body**
+
+> Model weights come from Hugging Face once and are cached in OPFS/Cache Storage;
+> everything after that is local. Two runtimes, because the machine decides which
+> one works:
+>
+> - **WebGPU** through WebLLM for the MLC catalogue (Qwen 0.5B to 9B).
+> - **CPU/WebAssembly** through wllama for community GGUF builds, with resumable
+>   downloads (`Range` + `If-Range` against a stored ETag) because a 400 MB file on
+>   a laptop that sleeps needs to resume.
+>
+> Retrieval is cosine plus a BM25-style term score fused with reciprocal rank, and
+> weak retrieval abstains rather than guessing. Retrieved text is escaped into a
+> delimited block with an explicit "this is data, not instructions" preamble.
+>
+> Two things I would specifically like this sub's opinion on:
+>
+> 1. The default model is Qwen 0.5B because 1B+ needs more VRAM than many laptops
+>    will give a browser tab. Is 0.5B the right default, or is "download nothing by
+>    default, pick a model" better?
+> 2. I declined to ship a safety classifier (a second 100-700 MB download, and
+>    unverifiable on my hardware). Uncensored community models are labelled and
+>    carry a persistent warning instead. Fair, or a cop-out?
+>
+> There is no ranking model: it would double the query latency. If you have
+> benchmark numbers for a tiny cross-encoder in WASM, I would love to see them.
+
+## Reddit — r/webdev
+
+**Title**
+
+> A 262 kB static AI chat: no backend, no build-time framework, Trusted Types enforced
+
+**Body**
+
+> Two things here might interest this sub more than the AI part.
+>
+> **A static app with a real security posture.** CSP with no `unsafe-eval`,
+> `require-trusted-types-for 'script'` with exactly one sanitizing policy, all seven
+> runtime dependencies audited for licences in CI, every GitHub Action pinned to a
+> 40-character SHA, SBOM attached to each release. The trade: no plugin system, and
+> I wrote down why (`docs/extending.md`) instead of shipping an `eval`-shaped hole.
+>
+> **A build that is measured, not vibed.** The initial payload has a hard 264 kB
+> gzip budget enforced in CI, and a documented list of what each dependency costs
+> (highlight.js alone is 72 kB of it, which is why deferring it is written down as
+> the next real win).
+>
+> The episode worth reading is in the changelog: I added Trusted Types, and it
+> silently broke every `new Worker()` in production because Vite inlined the workers
+> as `data:` URLs and my own policy (correctly) refused them. The Playwright suite
+> passed, because it never ingested an actual PDF. There is now a test that does.
+
+## X / Twitter thread
+
+1/ AI chat with no backend. No account, no API key, no telemetry. The model runs in
+your browser tab. 262 kB to load, and it works offline after that.
+
+2/ Two runtimes: WebGPU for MLC models, CPU/WebAssembly for community GGUF. Weights
+are fetched once from Hugging Face and cached. Your prompts are not.
+
+3/ Drop a PDF in Settings → it is chunked, embedded on-device with MiniLM, and stored
+in IndexedDB. Retrieval is cosine + BM25 fused by reciprocal rank, and it abstains
+instead of inventing an answer.
+
+4/ Chats can be encrypted: PBKDF2-SHA-256 at 600k iterations, AES-256-GCM with
+non-extractable keys and per-record AAD. Lock it with one click.
+
+5/ The honest part: small models are small. Documents aren't covered by the vault
+yet. No sync, no backup, no recovery. Threat model in the repo, limitations in the
+README.
+
+6/ Live demo: <link>. Source: <link>. I would like help testing on real WebGPU
+hardware and on iOS Safari.
 
 ## Product Hunt
 

@@ -1,6 +1,8 @@
 // Main-thread client for the embedding worker. The model is loaded lazily on
 // first use: no embeddings, no download.
 import type { KnowledgeProgress } from "../types.js";
+import embedWorkerUrl from "./embed-worker.ts?worker&url";
+import { trustedScriptURL } from "../trusted-types.js";
 
 interface Pending {
   resolve: (vectors: number[][]) => void;
@@ -23,7 +25,12 @@ export function setEmbeddingProgressListener(
 function ensureWorker(): Worker {
   if (worker) return worker;
 
-  const next = new Worker(new URL("./embed-worker.ts", import.meta.url), { type: "module" });
+  // `?worker&url` asks Vite for a real file next to the bundle and hands back its
+  // URL as a string. The page enforces `require-trusted-types-for 'script'`, which
+  // applies to the Worker constructor, so the string goes through the app's policy.
+  // (The `new Worker(new URL(...))` form Vite would auto-detect passes a URL object
+  // that Vite re-wraps, and the browser then refuses the whole construction.)
+  const next = new Worker(trustedScriptURL(embedWorkerUrl) as string | URL, { type: "module" });
 
   next.onmessage = (event: MessageEvent) => {
     const data = event.data as
