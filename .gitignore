@@ -12,3 +12,4 @@ docs/api/
 
 # Benchmark output is per-machine; attach it to an issue instead of committing it.
 bench/results/
+.demo-profile/

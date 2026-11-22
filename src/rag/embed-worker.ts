@@ -5,6 +5,19 @@ import { env, pipeline, type FeatureExtractionPipeline } from "@huggingface/tran
 
 env.allowLocalModels = false;
 
+// ONNX Runtime Web can spawn its own proxy Worker by setting `script.src` on a
+// blob URL. The page enforces `require-trusted-types-for 'script'`, and that
+// assignment is blocked inside this worker too, so the very first document would
+// hang on "Reading ..." forever. Running the inference here, in the worker we
+// already own, keeps it off the UI thread and needs no second script URL. Threads
+// are pinned to one for the same reason: a multi-threaded runtime sets up
+// SharedArrayBuffer workers, which GitHub Pages cannot enable anyway.
+const wasm = env.backends.onnx.wasm;
+if (wasm) {
+  wasm.proxy = false;
+  wasm.numThreads = 1;
+}
+
 // Xenova's export uses the `model_quantized.onnx` layout Transformers.js maps
 // `dtype: "q8"` to. The onnx-community export uses external data files instead.
 const MODEL_ID = "Xenova/all-MiniLM-L6-v2";

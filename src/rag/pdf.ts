@@ -5,15 +5,21 @@
 // than a URL, so a document cannot make the page fetch anything.
 import workerUrl from "./pdf.worker.ts?worker&url";
 import { installBinaryHelpers } from "./pdf-compat.js";
+import { trustedScriptURL } from "../trusted-types.js";
 import { assemblePageText, type PdfTextItem } from "./pdf-text.js";
 
 export async function extractPdfText(file: File): Promise<string> {
   installBinaryHelpers();
   const pdfjs = await import("pdfjs-dist");
-  pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
+  // pdf.js would create its own Worker from `workerSrc`, and the page enforces
+  // `require-trusted-types-for 'script'`, so that assignment is blocked and a PDF
+  // would sit on "Reading ..." forever. Creating the worker through the policy and
+  // handing pdf.js the port keeps the parser off the UI thread with no script URL
+  // handed to the browser by a library.
+  const worker = new Worker(trustedScriptURL(workerUrl) as string | URL, { type: "module" });
   const data = new Uint8Array(await file.arrayBuffer());
-  const task = pdfjs.getDocument({ data });
+  const task = pdfjs.getDocument({ data, worker: pdfjs.PDFWorker.create({ port: worker }) });
 
   try {
     const pdf = await task.promise;
