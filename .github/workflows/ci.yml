@@ -22,7 +22,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - name: Install dependencies
+        run: |
+          # onnxruntime-node's postinstall downloads ~100 MB from a CDN that the app
+          # never uses (the browser build ships onnxruntime-web). One timeout there
+          # should not fail a job; retry once, then fail for real.
+          npm ci || npm ci
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run check:workflows
       - run: npm run typecheck
@@ -50,7 +55,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - name: Install dependencies
+        run: |
+          # onnxruntime-node's postinstall downloads ~100 MB from a CDN that the app
+          # never uses (the browser build ships onnxruntime-web). One timeout there
+          # should not fail a job; retry once, then fail for real.
+          npm ci || npm ci
       - run: npm run build
       # Download the artifact and serve it with any static file server to review
       # a pull request exactly as it would ship.
@@ -86,7 +96,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - name: Install dependencies
+        run: |
+          # onnxruntime-node's postinstall downloads ~100 MB from a CDN that the app
+          # never uses (the browser build ships onnxruntime-web). One timeout there
+          # should not fail a job; retry once, then fail for real.
+          npm ci || npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run build
       # Against the production build, not the dev server: the CSP header, the
