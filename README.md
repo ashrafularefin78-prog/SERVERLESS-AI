@@ -3,6 +3,7 @@
 [**Try the live demo →**](https://ashrafularefin78-prog.github.io/SERVERLESS-AI/) · [**Open it in StackBlitz →**](https://stackblitz.com/github/ashrafularefin78-prog/SERVERLESS-AI)
 
 [![Live demo](https://img.shields.io/badge/live-demo-f0445e)](https://ashrafularefin78-prog.github.io/SERVERLESS-AI/)
+[![Release](https://img.shields.io/github/v/release/ashrafularefin78-prog/SERVERLESS-AI)](https://github.com/ashrafularefin78-prog/SERVERLESS-AI/releases/latest)
 [![CI](https://github.com/ashrafularefin78-prog/SERVERLESS-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/ashrafularefin78-prog/SERVERLESS-AI/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-8a6f78)](LICENSE)
 
@@ -130,6 +131,11 @@ platform gaps this project hit while shipping.
 Maintaining the project - releasing, updating the model list, and the decisions
 you can break by accident - is in [MAINTAINERS.md](MAINTAINERS.md); the CI,
 SBOM, and deployment pipeline is in [docs/ci.md](docs/ci.md).
+
+The [2-minute demo script](docs/demo-script.md) walks the flow a recording shows, and
+`npm run demo` runs the same flow against the production build and writes the
+evidence — screenshots plus a network log that proves nothing was requested between
+the question and the answer — into `docs/demo/`.
 
 For a deeper tour, see [docs/architecture.md](docs/architecture.md) (with Mermaid
 module and request-sequence diagrams), [docs/whitepaper.md](docs/whitepaper.md),
