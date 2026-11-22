@@ -47,6 +47,20 @@ catches that before CI does.
 `npm run test:e2e:preview` is the local equivalent of the `e2e` job: it builds,
 serves `dist/` with `vite preview`, and runs the same specs.
 
+## When a green build goes red for no reason
+
+Three failures have been seen that are infrastructure, not code. Each is worth
+recognising rather than debugging:
+
+| Symptom                                                                          | Cause                                                                  | What to do                                                         |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `npm ci` fails with `ETIMEDOUT` in `onnxruntime-node`'s postinstall              | that package downloads ~100 MB from a CDN the browser build never uses | the install steps already retry once; if both fail, re-run the job |
+| `actions/attest-build-provenance` fails with `error fetching tlog entry - (404)` | GitHub's transparency log is briefly unavailable                       | re-run the failed jobs; the deploy itself is fine                  |
+| OSV job reports `--output has been deprecated`                                   | the scanner changed a flag under the pinned action                     | update the pinned action, not the workflow logic                   |
+
+Anything else is a real failure, and the first step is to read the step's log rather
+than the job summary.
+
 ## Software bill of materials
 
 Two different artifacts, produced two different ways:
