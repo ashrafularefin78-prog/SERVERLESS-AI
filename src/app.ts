@@ -63,6 +63,14 @@ const loadRedactor = () => import("./privacy/redact.js");
 const diagnosticsBundle = () => import("./diagnostics-bundle.js");
 /** Same reasoning: walking OPFS and Cache Storage is only worth it in Settings. */
 const modelStorage = () => import("./model-storage.js");
+import {
+  LOCALES,
+  applyStaticTranslations,
+  loadCatalog,
+  resolveLocale,
+  setActiveCatalog,
+  t,
+} from "./i18n.js";
 import { compactHistory, formatCompactionNote } from "./context.js";
 import * as engine from "./engine/manager.js";
 import {
@@ -188,6 +196,7 @@ interface Dom {
   "device-check-advice": HTMLElement;
   "device-recommend": HTMLButtonElement;
   "model-warning": HTMLElement;
+  "model-safety-warning": HTMLElement;
   "knowledge-list": HTMLUListElement;
   "knowledge-add": HTMLButtonElement;
   "knowledge-file": HTMLInputElement;
@@ -214,6 +223,7 @@ interface Dom {
   "vault-ok": HTMLButtonElement;
   "vault-cancel": HTMLButtonElement;
   "theme-select": HTMLSelectElement;
+  "language-select": HTMLSelectElement;
   "export-data": HTMLButtonElement;
   "clear-data": HTMLButtonElement;
   "hardware-stats": HTMLInputElement;
@@ -344,6 +354,7 @@ export async function boot() {
   state.conversations = vaulted ? [] : await listConversations();
 
   applyTheme();
+  await applyLanguage(state.settings.language);
   await reconcileOfflineMode();
   syncSettingsForm();
   updateModeSelect();
@@ -453,6 +464,7 @@ function cacheDom() {
     "device-check-advice",
     "device-recommend",
     "model-warning",
+    "model-safety-warning",
     "knowledge-list",
     "knowledge-add",
     "knowledge-file",
@@ -479,6 +491,7 @@ function cacheDom() {
     "vault-ok",
     "vault-cancel",
     "theme-select",
+    "language-select",
     "export-data",
     "clear-data",
     "hardware-stats",
@@ -669,6 +682,13 @@ function bindEvents() {
     state.settings.theme = dom["theme-select"].value as Theme;
     applyTheme();
     saveSettingsPatch({ theme: state.settings.theme });
+  });
+
+  dom["language-select"].addEventListener("change", () => {
+    const value = dom["language-select"].value as Settings["language"];
+    state.settings.language = value;
+    saveSettingsPatch({ language: value });
+    void applyLanguage(value, { rerender: true });
   });
 
   dom["export-data"].addEventListener("click", exportChats);
@@ -1043,6 +1063,7 @@ function renderEffortSelect() {
 function syncSettingsForm() {
   dom["custom-instructions"].value = state.settings.customInstructions || "";
   dom["theme-select"].value = state.settings.theme;
+  dom["language-select"].value = state.settings.language;
   dom["effort-select"].value = effortById(state.settings.effort).id;
   updateModeSelect();
   updateComposerPlaceholder();
@@ -1393,8 +1414,8 @@ function updateModeSelect() {
 function updateComposerPlaceholder() {
   dom.input.placeholder =
     state.settings.mode === "coder"
-      ? "Ask for code, paste a bug, or include an error message..."
-      : "Ask anything...";
+      ? t("Ask for code, paste a bug, or include an error message...")
+      : t("Ask anything...");
 }
 
 function refreshWelcomeSuggestions() {
@@ -1823,7 +1844,7 @@ function renderModelPanel() {
   const load = dom["model-load"];
   load.hidden = !model;
   load.disabled = !model || !supported || loading || active;
-  load.textContent = active ? "Loaded" : cached ? "Load model" : "Download and load";
+  load.textContent = active ? t("Loaded") : cached ? t("Load model") : t("Download and load");
 
   const remove = dom["model-delete"];
   remove.hidden = !model;
@@ -1832,6 +1853,9 @@ function renderModelPanel() {
   dom["model-note"].textContent = model
     ? `${model.note} Weights are cached in this browser's private storage and can be deleted at any time.`
     : "Models run in a Worker with WebGPU or CPU/WebAssembly. Your prompts and replies stay on this device.";
+  // A chip in the picker is not enough of a warning for a model that will not
+  // refuse anything: this stays visible for as long as that model is selected.
+  dom["model-safety-warning"].hidden = !(model?.runtime === "gguf" && model.uncensored);
 
   renderDeviceCheck();
   renderModelFit(model);
@@ -2104,6 +2128,60 @@ async function deleteSelectedModel() {
     toast("Could not delete the model download.");
   }
   await refreshModelPanel({ checkCache: true });
+}
+
+/* ---------------------------------------------------------------
+   Interface language
+--------------------------------------------------------------- */
+
+/**
+ * Translate the marked markup, or put the English back.
+ *
+ * The English text is the key, so an empty catalog restores the markup exactly and
+ * a missing translation degrades to English rather than to a blank button. Only the
+ * static chrome is translated: model descriptions, toasts, and documentation stay
+ * in English, which `docs/i18n.md` states plainly.
+ */
+async function applyLanguage(preference: Settings["language"], { rerender = false } = {}) {
+  const browserLanguages = navigator.languages?.length ? navigator.languages : [navigator.language];
+  const code = resolveLocale(preference, browserLanguages);
+  const catalog = await loadCatalog(code);
+  setActiveCatalog(catalog);
+  document.documentElement.lang = code;
+  applyStaticTranslations(document, catalog);
+  renderLanguageSelect();
+  if (rerender) {
+    // Chrome that is rebuilt from state rather than read from the markup.
+    syncSettingsForm();
+    updateComposerPlaceholder();
+    updateComposerState();
+    renderSidebar();
+  }
+}
+
+function renderLanguageSelect() {
+  const select = dom["language-select"];
+  const current = state.settings.language;
+  const options = [
+    { value: "system", label: t("Follow the browser") },
+    ...LOCALES.map((locale) => ({ value: locale.code, label: locale.native })),
+  ];
+  if (select.options.length !== options.length) {
+    select.replaceChildren(
+      ...options.map((option) => {
+        const element = document.createElement("option");
+        element.value = option.value;
+        element.textContent = option.label;
+        return element;
+      }),
+    );
+  } else {
+    [...select.options].forEach((option, index) => {
+      const label = options[index]?.label;
+      if (label !== undefined && option.textContent !== label) option.textContent = label;
+    });
+  }
+  select.value = current;
 }
 
 /* ---------------------------------------------------------------

@@ -113,7 +113,12 @@
     </svg>
 
     <div class="app" id="app">
-      <aside class="sidebar" id="sidebar" aria-label="Chat history">
+      <aside
+        class="sidebar"
+        id="sidebar"
+        aria-label="Chat history"
+        data-i18n-aria-label="Chat history"
+      >
         <div class="sidebar-head">
           <div class="brand">
             <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
@@ -125,6 +130,7 @@
             class="icon-btn sidebar-close"
             id="sidebar-close"
             aria-label="Close history"
+            data-i18n-aria-label="Close history"
             type="button"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x" /></svg>
@@ -137,7 +143,12 @@
         </button>
 
         <div class="history-scroll">
-          <nav class="history" id="history" aria-label="Conversations"></nav>
+          <nav
+            class="history"
+            id="history"
+            aria-label="Conversations"
+            data-i18n-aria-label="Conversations"
+          ></nav>
         </div>
 
         <div class="sidebar-foot">
@@ -157,7 +168,9 @@
               ><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-lock" /></svg>100%
               local</span
             >
-            <button class="link-btn" id="open-settings" type="button">Settings</button>
+            <button class="link-btn" id="open-settings" type="button" data-i18n="Settings">
+              Settings
+            </button>
           </div>
         </div>
       </aside>
@@ -170,6 +183,7 @@
             class="icon-btn only-mobile"
             id="open-sidebar"
             aria-label="Open history"
+            data-i18n-aria-label="Open history"
             type="button"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-menu" /></svg>
@@ -187,6 +201,7 @@
               class="icon-btn"
               id="theme-toggle"
               aria-label="Toggle color theme"
+              data-i18n-aria-label="Toggle color theme"
               type="button"
             >
               <svg class="theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true">
@@ -196,7 +211,13 @@
                 <use href="#i-sun" />
               </svg>
             </button>
-            <button class="icon-btn" id="open-settings-2" aria-label="Open settings" type="button">
+            <button
+              class="icon-btn"
+              id="open-settings-2"
+              aria-label="Open settings"
+              data-i18n-aria-label="Open settings"
+              type="button"
+            >
               <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-settings" /></svg>
             </button>
           </div>
@@ -208,13 +229,27 @@
             <p id="engine-alert-text"></p>
           </div>
           <div class="engine-alert-actions">
-            <button class="btn subtle" id="engine-alert-reload" type="button">Reload app</button>
-            <button class="btn ghost" id="engine-alert-dismiss" type="button">Dismiss</button>
+            <button
+              class="btn subtle"
+              id="engine-alert-reload"
+              type="button"
+              data-i18n="Reload app"
+            >
+              Reload app
+            </button>
+            <button class="btn ghost" id="engine-alert-dismiss" type="button" data-i18n="Dismiss">
+              Dismiss
+            </button>
           </div>
         </div>
 
         <div class="chat-scroll" id="chat-scroll">
-          <section class="messages" id="messages" aria-label="Conversation"></section>
+          <section
+            class="messages"
+            id="messages"
+            aria-label="Conversation"
+            data-i18n-aria-label="Conversation"
+          ></section>
         </div>
 
         <div class="scroll-cue-wrap">
@@ -262,9 +297,11 @@
                         id="composer-model-search"
                         type="search"
                         placeholder="Search models..."
+                        data-i18n-placeholder="Search models..."
                         autocomplete="off"
                         spellcheck="false"
                         aria-label="Search models"
+                        data-i18n-aria-label="Search models"
                         aria-controls="composer-model-list"
                         aria-autocomplete="list"
                       />
@@ -278,7 +315,11 @@
                 </div>
                 <label class="mode-label effort-label">
                   <span>Thinking</span>
-                  <select id="effort-select" aria-label="Thinking effort"></select>
+                  <select
+                    id="effort-select"
+                    aria-label="Thinking effort"
+                    data-i18n-aria-label="Thinking effort"
+                  ></select>
                 </label>
               </div>
               <span class="local-badge"
@@ -288,19 +329,30 @@
             </div>
             <div class="edit-banner" id="edit-banner" hidden>
               <span>Editing an earlier message. Sending replaces it and everything after.</span>
-              <button class="link-btn" id="edit-cancel" type="button">Cancel</button>
+              <button class="link-btn" id="edit-cancel" type="button" data-i18n="Cancel">
+                Cancel
+              </button>
             </div>
             <form class="composer" id="composer">
               <textarea
                 id="input"
                 rows="1"
                 placeholder="Ask anything..."
+                data-i18n-placeholder="Ask anything..."
                 aria-label="Message"
+                data-i18n-aria-label="Message"
                 autocomplete="off"
                 spellcheck="true"
               ></textarea>
               <div class="composer-actions">
-                <button class="send-btn" id="send" type="submit" aria-label="Send message" disabled>
+                <button
+                  class="send-btn"
+                  id="send"
+                  type="submit"
+                  aria-label="Send message"
+                  data-i18n-aria-label="Send message"
+                  disabled
+                >
                   <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-send" /></svg>
                 </button>
                 <button class="stop-btn" id="stop" type="button" hidden>
@@ -311,7 +363,14 @@
             </form>
             <p class="fineprint">
               Built-in replies use simple rules and can be wrong. Check important answers.
-              <button class="link-btn" id="clear-data-link" type="button">Clear local data</button>
+              <button
+                class="link-btn"
+                id="clear-data-link"
+                type="button"
+                data-i18n="Clear local data"
+              >
+                Clear local data
+              </button>
             </p>
           </div>
         </footer>
@@ -322,16 +381,22 @@
       <div class="modal-card settings-card">
         <header class="modal-head">
           <div>
-            <h2 id="settings-title">Settings</h2>
+            <h2 id="settings-title" data-i18n="Settings">Settings</h2>
             <p>Everything stays on this device.</p>
           </div>
-          <button class="icon-btn" data-close-dialog type="button" aria-label="Close">
+          <button
+            class="icon-btn"
+            data-close-dialog
+            type="button"
+            aria-label="Close"
+            data-i18n-aria-label="Close"
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x" /></svg>
           </button>
         </header>
         <div class="modal-body">
           <section class="setting-section">
-            <h3>AI model</h3>
+            <h3 data-i18n="AI model">AI model</h3>
             <p class="memory-note">
               Optional: run a real neural model in this tab on your GPU or CPU. Weights download
               once into this browser's private storage and never leave the device. Without it, the
@@ -346,7 +411,7 @@
               <button class="btn subtle" id="device-recommend" type="button" hidden></button>
             </div>
             <div class="field model-picker" id="model-picker">
-              <span class="field-label" id="model-label">Model</span>
+              <span class="field-label" id="model-label" data-i18n="Model">Model</span>
               <button
                 class="model-trigger"
                 id="model-trigger"
@@ -398,22 +463,46 @@
             <div class="model-status" id="model-status" role="status">Checking this device...</div>
             <p class="model-warning" id="model-warning" role="alert" hidden></p>
             <div class="model-controls">
-              <button class="btn subtle" id="model-load" type="button">Download and load</button>
-              <button class="btn subtle" id="model-delete" type="button">Delete download</button>
+              <button
+                class="btn subtle"
+                id="model-load"
+                type="button"
+                data-i18n="Download and load"
+              >
+                Download and load
+              </button>
+              <button
+                class="btn subtle"
+                id="model-delete"
+                type="button"
+                data-i18n="Delete download"
+              >
+                Delete download
+              </button>
             </div>
             <progress id="model-progress" max="1" value="0" hidden></progress>
+            <p class="safety-warning" id="model-safety-warning" hidden>
+              This model was published with its refusal behaviour removed, so it will not decline
+              harmful requests. Its output is the model's, not this app's. See
+              <a href="./docs/content-safety.md">content safety</a> for what LocalMind does and does
+              not filter.
+            </p>
             <p class="memory-note" id="model-note"></p>
           </section>
 
           <section class="setting-section">
-            <h3>Assistant</h3>
+            <h3 data-i18n="Assistant">Assistant</h3>
             <label class="field">
-              <span class="field-label">Mode</span>
-              <select id="mode-select" aria-label="Assistant mode">
-                <option value="general">General</option>
-                <option value="tutor">Tutor</option>
-                <option value="coder">Coder</option>
-                <option value="summarizer">Summarizer</option>
+              <span class="field-label" data-i18n="Mode">Mode</span>
+              <select
+                id="mode-select"
+                aria-label="Assistant mode"
+                data-i18n-aria-label="Assistant mode"
+              >
+                <option value="general" data-i18n="General">General</option>
+                <option value="tutor" data-i18n="Tutor">Tutor</option>
+                <option value="coder" data-i18n="Coder">Coder</option>
+                <option value="summarizer" data-i18n="Summarizer">Summarizer</option>
               </select>
             </label>
             <p class="memory-note">
@@ -423,9 +512,11 @@
           </section>
 
           <section class="setting-section">
-            <h3>Custom instructions</h3>
+            <h3 data-i18n="Custom instructions">Custom instructions</h3>
             <label class="field">
-              <span class="field-label">Added to every conversation</span>
+              <span class="field-label" data-i18n="Added to every conversation"
+                >Added to every conversation</span
+              >
               <textarea
                 id="custom-instructions"
                 rows="3"
@@ -435,7 +526,7 @@
           </section>
 
           <section class="setting-section">
-            <h3>Memory</h3>
+            <h3 data-i18n="Memory">Memory</h3>
             <p class="memory-note">
               Facts the assistant carries into every chat, stored only on this device. Say "remember
               ..." or "forget ..." in chat, or edit the list here.
@@ -448,13 +539,14 @@
                 maxlength="200"
                 placeholder="Example: I prefer metric units."
                 aria-label="New memory note"
+                data-i18n-aria-label="New memory note"
               />
-              <button class="btn subtle" id="memory-add" type="button">Add</button>
+              <button class="btn subtle" id="memory-add" type="button" data-i18n="Add">Add</button>
             </div>
           </section>
 
           <section class="setting-section">
-            <h3>Knowledge</h3>
+            <h3 data-i18n="Knowledge">Knowledge</h3>
             <p class="memory-note">
               Add notes, docs, PDFs, or a README and replies can be grounded in them. Files are
               chunked, embedded on this device, and stored in IndexedDB. PDF text is extracted
@@ -462,7 +554,9 @@
             </p>
             <ul class="memory-list" id="knowledge-list"></ul>
             <div class="memory-add">
-              <button class="btn subtle" id="knowledge-add" type="button">Add documents</button>
+              <button class="btn subtle" id="knowledge-add" type="button" data-i18n="Add documents">
+                Add documents
+              </button>
               <input
                 id="knowledge-file"
                 type="file"
@@ -479,6 +573,7 @@
               aria-valuemax="100"
               aria-valuenow="0"
               aria-label="Indexing progress"
+              data-i18n-aria-label="Indexing progress"
               hidden
             >
               <div class="progress-fill" id="knowledge-progress-fill"></div>
@@ -487,43 +582,70 @@
           </section>
 
           <section class="setting-section">
-            <h3>Appearance</h3>
+            <h3 data-i18n="Appearance">Appearance</h3>
             <label class="field">
-              <span class="field-label">Theme</span>
+              <span class="field-label" data-i18n="Theme">Theme</span>
               <select id="theme-select">
-                <option value="system">Match system</option>
-                <option value="dark">Dark</option>
-                <option value="light">Light</option>
+                <option value="system" data-i18n="Match system">Match system</option>
+                <option value="dark" data-i18n="Dark">Dark</option>
+                <option value="light" data-i18n="Light">Light</option>
               </select>
             </label>
+            <label class="field">
+              <span class="field-label" data-i18n="Interface language">Interface language</span>
+              <select id="language-select" data-i18n-aria-label="Interface language"></select>
+            </label>
+            <p
+              class="memory-note small"
+              data-i18n="Replies are not translated: the assistant answers in the language you write in."
+            >
+              Replies are not translated: the assistant answers in the language you write in.
+            </p>
           </section>
 
           <section class="setting-section">
-            <h3>Encryption</h3>
+            <h3 data-i18n="Encryption">Encryption</h3>
             <p class="memory-note">
               Optionally encrypt chats and memory notes at rest with a passphrase (AES-256-GCM,
               PBKDF2-SHA-256). The key stays in this tab and is never stored.
             </p>
             <p class="memory-note" id="vault-status"></p>
             <div class="setting-actions">
-              <button class="btn subtle" id="vault-enable" type="button">Encrypt</button>
-              <button class="btn subtle" id="vault-unlock" type="button">Unlock</button>
-              <button class="btn subtle" id="vault-lock" type="button">Lock now</button>
-              <button class="btn subtle" id="vault-disable" type="button">Remove encryption</button>
+              <button class="btn subtle" id="vault-enable" type="button" data-i18n="Encrypt">
+                Encrypt
+              </button>
+              <button class="btn subtle" id="vault-unlock" type="button" data-i18n="Unlock">
+                Unlock
+              </button>
+              <button class="btn subtle" id="vault-lock" type="button" data-i18n="Lock now">
+                Lock now
+              </button>
+              <button
+                class="btn subtle"
+                id="vault-disable"
+                type="button"
+                data-i18n="Remove encryption"
+              >
+                Remove encryption
+              </button>
             </div>
           </section>
 
           <section class="setting-section">
-            <h3>Your data</h3>
+            <h3 data-i18n="Your data">Your data</h3>
             <p class="muted small">Chats live in IndexedDB. Nothing is uploaded.</p>
             <div class="setting-actions">
-              <button class="btn subtle" id="export-data" type="button">Export chats</button>
-              <button class="btn danger" id="clear-data" type="button">Clear all data</button>
+              <button class="btn subtle" id="export-data" type="button" data-i18n="Export chats">
+                Export chats
+              </button>
+              <button class="btn danger" id="clear-data" type="button" data-i18n="Clear all data">
+                Clear all data
+              </button>
             </div>
           </section>
 
           <section class="setting-section">
-            <h3>Redact before sending</h3>
+            <h3 data-i18n="Redact before sending">Redact before sending</h3>
             <p class="memory-note">
               Masks emails, phone numbers, card numbers, IBANs, US social security numbers, API
               tokens, and IP addresses in the text a model receives, replacing them with
@@ -539,7 +661,7 @@
           </section>
 
           <section class="setting-section">
-            <h3>Offline mode</h3>
+            <h3 data-i18n="Offline mode">Offline mode</h3>
             <p class="memory-note">
               A hard kill switch: while it is on, the service worker refuses every request that
               leaves this page, including uploads, beacons, and model downloads. The app keeps
@@ -553,7 +675,7 @@
           </section>
 
           <section class="setting-section">
-            <h3>Model storage</h3>
+            <h3 data-i18n="Model storage">Model storage</h3>
             <p class="memory-note">
               Model weights are the biggest thing this app keeps. This lists every download on this
               device, not just the one you are using, so you can see and remove them in one place.
@@ -561,12 +683,19 @@
             <p class="memory-note small" id="model-storage-summary">Checking this device...</p>
             <ul class="model-storage-list" id="model-storage-list"></ul>
             <div class="setting-actions">
-              <button class="btn subtle" id="model-storage-refresh" type="button">Refresh</button>
+              <button
+                class="btn subtle"
+                id="model-storage-refresh"
+                type="button"
+                data-i18n="Refresh"
+              >
+                Refresh
+              </button>
             </div>
           </section>
 
           <section class="setting-section">
-            <h3>Diagnostics</h3>
+            <h3 data-i18n="Diagnostics">Diagnostics</h3>
             <p class="memory-note">
               Errors are recorded in this tab only and never uploaded. If a model fails, copy the
               log into a GitHub issue so it can be fixed.
@@ -599,13 +728,25 @@
             </dl>
             <ul class="log-list" id="diagnostic-list"></ul>
             <div class="setting-actions">
-              <button class="btn subtle" id="diagnostics-copy" type="button">
+              <button
+                class="btn subtle"
+                id="diagnostics-copy"
+                type="button"
+                data-i18n="Copy diagnostics"
+              >
                 Copy diagnostics
               </button>
-              <button class="btn subtle" id="diagnostics-export" type="button">
+              <button
+                class="btn subtle"
+                id="diagnostics-export"
+                type="button"
+                data-i18n="Export bundle (.json)"
+              >
                 Export bundle (.json)
               </button>
-              <button class="btn subtle" id="diagnostics-clear" type="button">Clear log</button>
+              <button class="btn subtle" id="diagnostics-clear" type="button" data-i18n="Clear log">
+                Clear log
+              </button>
             </div>
             <p class="memory-note small">
               The bundle holds the values above, your browser's user-agent string, and this log. It
@@ -640,18 +781,22 @@
 
     <dialog class="modal" id="confirm-dialog" aria-labelledby="confirm-title">
       <div class="modal-card confirm-card">
-        <h2 id="confirm-title">Are you sure?</h2>
+        <h2 id="confirm-title" data-i18n="Are you sure?">Are you sure?</h2>
         <p id="confirm-body"></p>
         <div class="confirm-actions">
-          <button class="btn ghost" id="confirm-cancel" type="button">Cancel</button>
-          <button class="btn danger" id="confirm-ok" type="button">Confirm</button>
+          <button class="btn ghost" id="confirm-cancel" type="button" data-i18n="Cancel">
+            Cancel
+          </button>
+          <button class="btn danger" id="confirm-ok" type="button" data-i18n="Confirm">
+            Confirm
+          </button>
         </div>
       </div>
     </dialog>
 
     <dialog class="modal" id="license-dialog" aria-labelledby="license-title">
       <div class="modal-card confirm-card">
-        <h2 id="license-title">Before you download</h2>
+        <h2 id="license-title" data-i18n="Before you download">Before you download</h2>
         <p id="license-model"></p>
         <p id="license-terms" class="memory-note"></p>
         <p class="memory-note small" id="license-link-row" hidden>
@@ -666,8 +811,16 @@
           >
         </label>
         <div class="confirm-actions">
-          <button class="btn ghost" id="license-cancel" type="button">Cancel</button>
-          <button class="btn primary" id="license-ok" type="button" disabled>
+          <button class="btn ghost" id="license-cancel" type="button" data-i18n="Cancel">
+            Cancel
+          </button>
+          <button
+            class="btn primary"
+            id="license-ok"
+            type="button"
+            data-i18n="Agree and download"
+            disabled
+          >
             Agree and download
           </button>
         </div>
@@ -676,17 +829,27 @@
 
     <dialog class="modal welcome-modal" id="welcome-dialog" aria-labelledby="welcome-title">
       <div class="modal-card">
-        <p class="eyebrow">First run</p>
-        <h2 id="welcome-title">Welcome to LocalMind</h2>
+        <p class="eyebrow" data-i18n="First run">First run</p>
+        <h2 id="welcome-title" data-i18n="Welcome to LocalMind">Welcome to LocalMind</h2>
         <div class="welcome-device">
           <strong id="welcome-device-title">Checking this device...</strong>
           <p id="welcome-device-reason"></p>
         </div>
         <div class="setting-actions">
-          <button class="btn primary" id="welcome-start" type="button">
+          <button
+            class="btn primary"
+            id="welcome-start"
+            type="button"
+            data-i18n="Start with the built-in assistant"
+          >
             Start with the built-in assistant
           </button>
-          <button class="btn subtle" id="welcome-model" type="button">
+          <button
+            class="btn subtle"
+            id="welcome-model"
+            type="button"
+            data-i18n="Choose a model instead"
+          >
             Choose a model instead
           </button>
         </div>
@@ -699,20 +862,22 @@
 
     <dialog class="modal" id="vault-dialog" aria-labelledby="vault-title">
       <div class="modal-card confirm-card">
-        <h2 id="vault-title">Unlock chats</h2>
+        <h2 id="vault-title" data-i18n="Unlock chats">Unlock chats</h2>
         <p id="vault-sub"></p>
         <label class="field">
-          <span class="field-label">Passphrase</span>
+          <span class="field-label" data-i18n="Passphrase">Passphrase</span>
           <input id="vault-pass" type="password" autocomplete="current-password" />
         </label>
         <label class="field" id="vault-confirm-field">
-          <span class="field-label">Confirm passphrase</span>
+          <span class="field-label" data-i18n="Confirm passphrase">Confirm passphrase</span>
           <input id="vault-confirm" type="password" autocomplete="new-password" />
         </label>
         <p class="memory-note" id="vault-hint"></p>
         <div class="confirm-actions">
-          <button class="btn ghost" id="vault-cancel" type="button">Not now</button>
-          <button class="btn primary" id="vault-ok" type="button">Unlock</button>
+          <button class="btn ghost" id="vault-cancel" type="button" data-i18n="Not now">
+            Not now
+          </button>
+          <button class="btn primary" id="vault-ok" type="button" data-i18n="Unlock">Unlock</button>
         </div>
       </div>
     </dialog>

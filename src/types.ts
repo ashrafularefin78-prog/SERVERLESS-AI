@@ -67,6 +67,12 @@ export interface MemoryVault {
 
 export interface Settings {
   theme: Theme;
+  /**
+   * Interface language: "system" follows the browser, otherwise a locale this app
+   * ships. Model output is not translated - it answers in whatever language you
+   * write in.
+   */
+  language: "system" | "en" | "es" | "de";
   mode: string;
   customInstructions: string;
   memory: MemoryNote[];

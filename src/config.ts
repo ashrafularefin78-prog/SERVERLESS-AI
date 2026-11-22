@@ -101,6 +101,7 @@ export const SUGGESTIONS: string[] = [
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: "system",
+  language: "system",
   mode: "general",
   customInstructions: "",
   memory: [],

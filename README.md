@@ -12,6 +12,7 @@ A private AI chat that runs entirely in your browser. It ships with a **built-in
 - **On-device models (optional):** one click downloads a quantised 0.3B-1B chat model, verifies and caches it in the browser's private storage (OPFS), and runs inference in a Web Worker on WebGPU. Weights are fetched once from Hugging Face and never leave the device. Integrity comes from WebLLM's pinned `prebuiltAppConfig`: its SRI hashes for the config, WASM, and tokenizer are checked before load, and a mismatch aborts the model. Delete them at any time in Settings.
 - **Knowledge and retrieval (optional):** add text, markdown, or PDF documents in Settings. They are chunked, embedded on-device with all-MiniLM-L6-v2 through Transformers.js, and stored as vectors in IndexedDB. Relevant passages are retrieved with a flat cosine index and injected into the prompt, and replies name the documents they used. Nothing is uploaded.
 - **UI:** vanilla JS + Vite, markdown and code rendering, streaming with stop/regenerate/copy, modes, dark/light theme, mobile layout.
+- **Interface languages:** English, Spanish, and German chrome (navigation, controls, dialogs), following the browser by default and switchable in Settings. Model replies are not translated — they answer in whatever language you write in. [docs/i18n.md](docs/i18n.md) states exactly which surfaces are translated.
 - **Storage:** chats, memory notes, and settings in IndexedDB. Nothing is uploaded.
 - **Encryption (optional):** set a passphrase in Settings to encrypt chats and memory notes at rest with AES-256-GCM. The key is derived with PBKDF2-SHA-256 (600,000 iterations for vaults created now; 310,000-iteration vaults from before 1.0 stay readable and are re-wrapped on unlock), is non-extractable, and lives only in the open tab; locking hides everything until you unlock. There is no recovery if the passphrase is lost.
 - **Memory:** notes you ask it to remember ("remember ...", "forget ..."), kept on-device and carried into every chat. Manage them in Settings.
@@ -52,7 +53,7 @@ The built-in engine is model-free and answers immediately. If you want neural re
 | Qwen2.5 0.5B | 340 MB       | Balanced default                            |
 | Llama 3.2 1B | 690 MB       | Best quality here, needs a more capable GPU |
 
-Settings also lists pinned community GGUF builds that run on the CPU through WebAssembly, grouped under **Community GGUF - CPU/WASM**. Alongside a few featured builds, it includes a generated catalogue of 492 uncensored "abliterated" community models: coding, chat, and roleplay variants of Qwen, DeepSeek, MiMo, Llama, Gemma, and other families. They are labelled **uncensored** because their refusal behaviour was removed; replies can be unsafe or offensive, and the app does not add a content filter. Each URL is pinned to a specific Hugging Face commit, and the size is shown before download. The catalogue is filtered rather than literal: it keeps single-file, text-capable GGUF files under 4 GB and deduplicates by base model. Larger entries use aggressive Q2_K/Q3 quantizations, need several GB of free RAM, and generate slowly on the CPU.
+Settings also lists pinned community GGUF builds that run on the CPU through WebAssembly, grouped under **Community GGUF - CPU/WASM**. Alongside a few featured builds, it includes 529 community GGUF entries (37 curated, 492 generated), of which 504 are uncensored "abliterated" builds: coding, chat, and roleplay variants of Qwen, DeepSeek, MiMo, Llama, Gemma, and other families. They are labelled **uncensored** because their refusal behaviour was removed; replies can be unsafe or offensive, and the app does not add a content filter. Selecting one shows a persistent warning in Settings, and [docs/content-safety.md](docs/content-safety.md) states exactly what the app does instead of filtering, and why it does not ship a classifier. Each URL is pinned to a specific Hugging Face commit, and the size is shown before download. The catalogue is filtered rather than literal: it keeps single-file, text-capable GGUF files under 4 GB and deduplicates by base model. Larger entries use aggressive Q2_K/Q3 quantizations, need several GB of free RAM, and generate slowly on the CPU.
 
 How the model path is built:
 
@@ -133,6 +134,8 @@ SBOM, and deployment pipeline is in [docs/ci.md](docs/ci.md).
 For a deeper tour, see [docs/architecture.md](docs/architecture.md) (with Mermaid
 module and request-sequence diagrams), [docs/whitepaper.md](docs/whitepaper.md),
 [docs/threat-model.md](docs/threat-model.md), [docs/rule-engine.md](docs/rule-engine.md),
+[docs/content-safety.md](docs/content-safety.md),
+[docs/i18n.md](docs/i18n.md),
 and [docs/adding-languages.md](docs/adding-languages.md). If you want to change
 models, retrieval, or the built-in replies, [docs/extending.md](docs/extending.md)
 explains the data-driven extension points and why the app has no runtime plugin
@@ -236,7 +239,18 @@ Only the newest 60 messages are in the DOM. Older turns load a page at a time on
 
 ## Community
 
-Questions and ideas go to [GitHub Discussions](https://github.com/ashrafularefin78-prog/SERVERLESS-AI/discussions); bugs belong in the issue templates. If Discussions is not visible yet, a maintainer needs to enable it once in **Settings → General → Features**.
+- **Questions, ideas, show-and-tell:** [GitHub Discussions](https://github.com/ashrafularefin78-prog/SERVERLESS-AI/discussions) (enabled).
+- **Bugs and feature requests:** the issue templates, including a
+  [good first issue](https://github.com/ashrafularefin78-prog/SERVERLESS-AI/labels/good%20first%20issue)
+  label for work with no prerequisite knowledge.
+- **Security reports:** [SECURITY.md](SECURITY.md), never the public tracker.
+- **Behaviour:** [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+- **Who owns what:** [.github/CODEOWNERS](.github/CODEOWNERS) routes reviews for
+  crypto, storage, the HTML sinks, CI, and the model-licence data; [MAINTAINERS.md](MAINTAINERS.md)
+  explains the invariants a change must not break.
+
+`main` is protected by a ruleset: changes land through a pull request, and the CI,
+CodeQL, and commit-convention checks run on it first.
 
 ## Contributing
 
