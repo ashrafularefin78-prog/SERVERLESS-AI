@@ -87,36 +87,3 @@ export async function loadCatalog(code: LocaleCode): Promise<Catalog> {
     return {};
   }
 }
-
-/** Attributes that hold user-visible text on an otherwise unlabelled control. */
-const ATTRIBUTES = ["aria-label", "placeholder", "title"] as const;
-
-/**
- * Replace every marked string in the document.
- *
- * Only leaf elements are marked in the markup, so `textContent` here never wipes
- * an icon or a nested span. Attributes are translated on the same pass because a
- * screen reader announces them just as loudly.
- */
-export function applyStaticTranslations(root: ParentNode, catalog: Catalog): void {
-  for (const element of root.querySelectorAll<HTMLElement>("[data-i18n]")) {
-    const key = element.dataset.i18n;
-    if (!key) continue;
-    const text = translate(key, catalog);
-    if (element.textContent !== text) element.textContent = text;
-  }
-  for (const attribute of ATTRIBUTES) {
-    const selector = `[data-i18n-${attribute.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())}]`;
-    for (const element of root.querySelectorAll<HTMLElement>(selector)) {
-      const key = element.getAttribute(
-        `data-i18n-${attribute.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())}`,
-      );
-      if (!key) continue;
-      const text = translate(key, catalog);
-      if (element.getAttribute(attribute) !== text) element.setAttribute(attribute, text);
-    }
-  }
-  root.querySelectorAll<HTMLElement>("[data-i18n]").forEach((element) => {
-    if (element.dataset.i18n) element.lang = document.documentElement.lang;
-  });
-}

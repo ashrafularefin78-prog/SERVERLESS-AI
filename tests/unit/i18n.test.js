@@ -105,3 +105,16 @@ describe("locale catalogs", () => {
     await expect(loadCatalog("en")).resolves.toEqual({});
   });
 });
+
+describe("the active catalog", () => {
+  it("routes t() through whatever was loaded, and back to English", async () => {
+    const { t, setActiveCatalog, activeCatalog } = await import("../../src/i18n.js");
+    setActiveCatalog(es);
+    expect(t("Settings")).toBe("Ajustes");
+    expect(t("A string no catalog has")).toBe("A string no catalog has");
+    expect(activeCatalog()).toBe(es);
+
+    setActiveCatalog({});
+    expect(t("Settings")).toBe("Settings");
+  });
+});

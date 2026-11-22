@@ -17,15 +17,17 @@ export default defineConfig({
       include: ["src/**/*.ts"],
       exclude: ["src/**/*.d.ts", "src/types.ts"],
       // Measured with `npm run test:coverage` across the whole src tree, which
-      // includes the browser-only modules: 37.27% statements, 38.98% branches,
-      // 35.29% functions, 38.13% lines. The rest is exercised by the Playwright
+      // includes the browser-only modules: 38.45% statements, 40.24% branches,
+      // 36.53% functions, 39.33% lines. The rest is exercised by the Playwright
       // suite. Raise these as unit coverage improves; never lower them to make a
-      // change pass.
+      // change pass - if a new feature cannot be tested here, test its pure half
+      // (as `model-storage.test.js` does with fake OPFS and Cache Storage) rather
+      // than moving the floor.
       thresholds: {
-        statements: 37,
-        branches: 38,
-        functions: 35,
-        lines: 38,
+        statements: 38,
+        branches: 40,
+        functions: 36,
+        lines: 39,
       },
     },
   },

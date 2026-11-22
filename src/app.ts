@@ -63,14 +63,7 @@ const loadRedactor = () => import("./privacy/redact.js");
 const diagnosticsBundle = () => import("./diagnostics-bundle.js");
 /** Same reasoning: walking OPFS and Cache Storage is only worth it in Settings. */
 const modelStorage = () => import("./model-storage.js");
-import {
-  LOCALES,
-  applyStaticTranslations,
-  loadCatalog,
-  resolveLocale,
-  setActiveCatalog,
-  t,
-} from "./i18n.js";
+import { LOCALES, loadCatalog, resolveLocale, setActiveCatalog, t, translate } from "./i18n.js";
 import { compactHistory, formatCompactionNote } from "./context.js";
 import * as engine from "./engine/manager.js";
 import {
@@ -2133,6 +2126,40 @@ async function deleteSelectedModel() {
 /* ---------------------------------------------------------------
    Interface language
 --------------------------------------------------------------- */
+
+/** Attributes that hold user-visible text on an otherwise unlabelled control. */
+const TRANSLATED_ATTRIBUTES = ["aria-label", "placeholder", "title"] as const;
+
+function dataAttributeFor(attribute: (typeof TRANSLATED_ATTRIBUTES)[number]): string {
+  return `data-i18n-${attribute.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())}`;
+}
+
+/**
+ * Replace every marked string in the document, or put the English back.
+ *
+ * Only leaf elements are marked in the markup, so `textContent` here never wipes an
+ * icon or a nested span. Attributes are translated on the same pass because a screen
+ * reader announces them just as loudly. This lives in `app.ts` rather than in
+ * `i18n.ts` so the translation module stays pure and unit-testable.
+ */
+function applyStaticTranslations(root: ParentNode, catalog: Record<string, string>) {
+  for (const element of root.querySelectorAll<HTMLElement>("[data-i18n]")) {
+    const key = element.dataset.i18n;
+    if (!key) continue;
+    const text = translate(key, catalog);
+    if (element.textContent !== text) element.textContent = text;
+    element.lang = document.documentElement.lang;
+  }
+  for (const attribute of TRANSLATED_ATTRIBUTES) {
+    const name = dataAttributeFor(attribute);
+    for (const element of root.querySelectorAll<HTMLElement>(`[${name}]`)) {
+      const key = element.getAttribute(name);
+      if (!key) continue;
+      const text = translate(key, catalog);
+      if (element.getAttribute(attribute) !== text) element.setAttribute(attribute, text);
+    }
+  }
+}
 
 /**
  * Translate the marked markup, or put the English back.
