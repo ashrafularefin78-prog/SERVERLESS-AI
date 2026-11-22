@@ -23,7 +23,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - name: Install dependencies
+        run: |
+          # onnxruntime-node's postinstall downloads ~100 MB from a CDN the app never
+          # uses. A network timeout there should not fail a pull-request title check.
+          npm ci || npm ci
       # PRs are squash-merged here, so the title becomes the changelog entry.
       - name: Lint pull request title
         env:
