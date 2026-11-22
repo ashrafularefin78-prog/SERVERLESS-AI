@@ -69,3 +69,22 @@ test("the mobile drawer passes an audit while it is open", async ({ page }) => {
   await expect(page.locator("#sidebar")).toBeInViewport();
   await expectNoA11yViolations(page, "mobile drawer");
 });
+
+test("selecting an uncensored model keeps a warning on screen", async ({ page }) => {
+  await open(page);
+  await page.locator("#open-settings").click();
+  const warning = page.locator("#model-safety-warning");
+  await expect(warning).toBeHidden();
+
+  await page.locator("#model-trigger").click();
+  const row = page.locator(
+    '#model-list [data-model-id="gguf:qwen2.5-coder-1.5b-abliterated-q4km"]',
+  );
+  await row.scrollIntoViewIfNeeded();
+  await row.click();
+
+  await expect(warning).toBeVisible();
+  await expect(warning).toContainText("refusal behaviour removed");
+  await expect(warning.locator("a")).toHaveAttribute("href", "./docs/content-safety.md");
+  await expectNoA11yViolations(page, "Settings with a safety warning");
+});

@@ -168,3 +168,124 @@ describe("describeGpuLimits", () => {
     expect(describeGpuLimits(null)).toBe("Not checked.");
   });
 });
+
+/** A directory handle good enough for the OPFS walk in `readModelStorage`. */
+function fakeDirectory(files) {
+  return {
+    async *entries() {
+      for (const [name, size, meta] of files) {
+        if (meta === undefined) {
+          yield [name, { kind: "file", getFile: async () => ({ size }) }];
+        } else {
+          yield [
+            name,
+            { kind: "file", getFile: async () => ({ size: 0, text: async () => meta }) },
+          ];
+        }
+      }
+    },
+  };
+}
+
+function installStorage({ files = [], caches: cacheSpec = {}, estimate } = {}) {
+  const previous = {
+    storage: Object.getOwnPropertyDescriptor(globalThis, "navigator"),
+    caches: Object.getOwnPropertyDescriptor(globalThis, "caches"),
+  };
+  const root = { getDirectoryHandle: async () => fakeDirectory(files) };
+  Object.defineProperty(globalThis, "navigator", {
+    value: { storage: { getDirectory: async () => root, estimate: async () => estimate } },
+    configurable: true,
+  });
+  Object.defineProperty(globalThis, "caches", {
+    value: {
+      keys: async () => Object.keys(cacheSpec),
+      open: async (name) => ({
+        keys: async () => cacheSpec[name].map((entry) => ({ url: entry.url })),
+        match: async (request) => ({
+          headers: {
+            get: () => cacheSpec[name].find((e) => e.url === request.url)?.length ?? null,
+          },
+        }),
+      }),
+    },
+    configurable: true,
+  });
+  return () => {
+    for (const [key, descriptor] of [
+      ["navigator", previous.storage],
+      ["caches", previous.caches],
+    ]) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else delete globalThis[key];
+    }
+  };
+}
+
+describe("readModelStorage", () => {
+  it("identifies models from the OPFS sidecar first", async () => {
+    const { readModelStorage } = await import("../../src/model-storage.js");
+    const restore = installStorage({
+      files: [
+        ["deadbeef.gguf", 986_000_000],
+        ["deadbeef.json", 0, JSON.stringify({ url: gguf.url })],
+        ["incomplete.gguf.part", 5],
+      ],
+      estimate: { usage: 987_000_000, quota: 60_000_000_000 },
+    });
+    try {
+      const report = await readModelStorage(models);
+      expect(report.models).toHaveLength(1);
+      expect(report.models[0].id).toBe(gguf.id);
+      expect(report.models[0].source).toBe("opfs");
+      expect(report.models[0].bytes).toBe(986_000_000);
+      expect(report.knownBytes).toBe(986_000_000);
+      expect(report.usageMB).toBe(987);
+      expect(report.quotaMB).toBe(60_000);
+    } finally {
+      restore();
+    }
+  });
+
+  it("falls back to cache storage and counts a dual-store model once", async () => {
+    const { readModelStorage } = await import("../../src/model-storage.js");
+    const url = "https://huggingface.co/mlc-ai/Llama-3.2-1B-Instruct-q4f32_1-MLC/resolve/main/x";
+    const restore = installStorage({
+      files: [
+        ["deadbeef.gguf", 986_000_000],
+        ["deadbeef.json", 0, JSON.stringify({ url: gguf.url })],
+      ],
+      caches: {
+        "webllm/model": [{ url, length: "700000000" }],
+        // A tokenizer is not a model: it must not become a row.
+        other: [{ url: "https://example.test/tokenizer.json", length: "1000" }],
+      },
+      estimate: { usage: 1_000, quota: 2_000 },
+    });
+    try {
+      const report = await readModelStorage(models);
+      const ids = report.models.map((model) => model.id);
+      expect(ids).toContain(gguf.id);
+      expect(ids).toContain(webllm.id);
+      expect(ids).not.toContain("https://example.test/tokenizer.json");
+      expect(report.models.find((model) => model.id === webllm.id).bytes).toBe(700_000_000);
+      // Largest first, so the thing costing the most is at the top of the list.
+      expect(report.models[0].id).toBe(gguf.id);
+    } finally {
+      restore();
+    }
+  });
+
+  it("survives a browser that exposes neither store", async () => {
+    const { readModelStorage } = await import("../../src/model-storage.js");
+    const restore = installStorage();
+    try {
+      const report = await readModelStorage(models);
+      expect(report.models).toEqual([]);
+      expect(report.usageMB).toBeNull();
+      expect(report.quotaMB).toBeNull();
+    } finally {
+      restore();
+    }
+  });
+});

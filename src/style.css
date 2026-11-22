@@ -3508,6 +3508,21 @@ select optgroup {
   flex: none;
 }
 
+.safety-warning {
+  margin: 0 0 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.safety-warning a {
+  color: inherit;
+}
+
 .log-list {
   display: grid;
   gap: 6px;
