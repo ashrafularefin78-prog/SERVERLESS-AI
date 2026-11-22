@@ -237,6 +237,9 @@ interface State {
   editingId: string | null;
   memoryKey: CryptoKey | null;
   vaultAutoLockTimer: number | null;
+  vaultHideTimer: number | null;
+  /** Guards against a second lock while one is saving and clearing. */
+  lockingVault: boolean;
   modelSupport: Awaited<ReturnType<typeof engine.detectSupport>> | null;
   modelCached: boolean | null;
   deviceProfile: DeviceProfile | null;
@@ -277,6 +280,8 @@ const state: State = {
   editingId: null,
   memoryKey: null,
   vaultAutoLockTimer: null,
+  vaultHideTimer: null,
+  lockingVault: false,
   modelSupport: null,
   modelCached: null,
   deviceProfile: null,
@@ -549,15 +554,22 @@ function bindEvents() {
     );
   }
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden" && state.memoryKey) lockVault();
+    if (document.visibilityState === "hidden") {
+      if (state.memoryKey) scheduleVaultHideLock();
+      return;
+    }
+    // Back before the grace expired: keep the session, restart the idle clock.
+    cancelVaultHideLock();
+    if (state.memoryKey) armVaultAutoLock();
   });
   window.addEventListener("pagehide", () => {
-    if (state.memoryKey) lockVault();
+    cancelVaultHideLock();
+    if (state.memoryKey) void lockVault();
   });
 
   dom["vault-enable"].addEventListener("click", () => openVaultDialog("enable"));
   dom["vault-unlock"].addEventListener("click", () => openVaultDialog("unlock"));
-  dom["vault-lock"].addEventListener("click", () => lockVault());
+  dom["vault-lock"].addEventListener("click", () => void lockVault());
   dom["vault-disable"].addEventListener("click", () => void disableEncryption());
   dom["vault-ok"].addEventListener("click", () => void confirmVault());
   dom["vault-cancel"].addEventListener("click", () => closeDialog(dom["vault-dialog"]));
@@ -740,7 +752,9 @@ function getWelcomeModelRecommendation() {
   const recommendation = state.deviceProfile
     ? recommendDeviceModel(engine.models, state.deviceProfile)
     : null;
-  return recommendation?.kind === "cpu" ? recommendation : null;
+  // The welcome card is for devices that can run something better than the
+  // built-in rules; "stay on the built-in assistant" needs no call to action.
+  return recommendation && recommendation.kind !== "builtin" ? recommendation : null;
 }
 
 /* ---------------------------------------------------------------
@@ -1139,31 +1153,72 @@ async function refreshVaultState() {
   syncSettingsForm();
 }
 
+/**
+ * Hiding the tab is not a request to lock: on a slow on-device model the reply is
+ * still arriving, and a tab switch is the normal case. Lock after a short grace
+ * so a peek at another tab does not throw away the passphrase.
+ */
+const VAULT_HIDE_GRACE_MS = 60_000;
+
+function scheduleVaultHideLock() {
+  cancelVaultHideLock();
+  state.vaultHideTimer = window.setTimeout(() => {
+    state.vaultHideTimer = null;
+    void lockVault();
+  }, VAULT_HIDE_GRACE_MS);
+}
+
+function cancelVaultHideLock() {
+  if (state.vaultHideTimer !== null) {
+    window.clearTimeout(state.vaultHideTimer);
+    state.vaultHideTimer = null;
+  }
+}
+
 function armVaultAutoLock() {
   if (state.vaultAutoLockTimer !== null) {
     window.clearTimeout(state.vaultAutoLockTimer);
   }
   state.vaultAutoLockTimer = window.setTimeout(
     () => {
-      if (state.memoryKey) lockVault();
+      if (state.memoryKey) void lockVault();
     },
     15 * 60 * 1000,
   );
 }
 
-function lockVault() {
-  if (state.vaultAutoLockTimer !== null) {
-    window.clearTimeout(state.vaultAutoLockTimer);
-    state.vaultAutoLockTimer = null;
+async function lockVault() {
+  if (state.lockingVault) return;
+  state.lockingVault = true;
+
+  try {
+    cancelVaultHideLock();
+    if (state.vaultAutoLockTimer !== null) {
+      window.clearTimeout(state.vaultAutoLockTimer);
+      state.vaultAutoLockTimer = null;
+    }
+
+    // A reply that is still streaming saves every couple of seconds. Stop it and
+    // land one final encrypted write before the key goes away, otherwise the
+    // next tick would have no key and the record would be written in the clear.
+    // `saveConversation` refuses that now, but the reply should not be lost
+    // either, so the save happens while the key is still in memory.
+    if (state.generating) await stopAndWait();
+    if (state.memoryKey && state.conversation?.messages.length) {
+      await saveCurrent().catch(() => {});
+    }
+  } finally {
+    setVaultKey(null);
+    state.memoryKey = null;
+    state.settings.memory = [];
+    state.conversations = [];
+    state.conversation = createConversation({ mode: state.settings.mode });
+    closeDialog(dom["vault-dialog"]);
+    renderAll();
+    syncSettingsForm();
+    state.lockingVault = false;
   }
-  setVaultKey(null);
-  state.memoryKey = null;
-  state.settings.memory = [];
-  state.conversations = [];
-  state.conversation = createConversation({ mode: state.settings.mode });
-  closeDialog(dom["vault-dialog"]);
-  renderAll();
-  syncSettingsForm();
+
   if (!state.settings.memoryVault) return;
   toast("Locked. Encrypted chats are hidden until you unlock.");
 }

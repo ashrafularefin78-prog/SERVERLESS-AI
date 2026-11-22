@@ -36,7 +36,8 @@
     "commitlint": "commitlint --edit",
     "changeset": "changeset",
     "version": "changeset version && npm run format",
-    "docs:api": "typedoc"
+    "docs:api": "typedoc",
+    "check:workflows": "node scripts/check-workflows.mjs"
   },
   "engines": {
     "node": ">=22"
@@ -67,6 +68,7 @@
     "typescript": "6.0.3",
     "typescript-eslint": "8.73.0",
     "vite": "8.3.8",
-    "vitest": "5.1.0"
+    "vitest": "5.1.0",
+    "yaml": "^2.9.1"
   }
 }

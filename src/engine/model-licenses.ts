@@ -6,6 +6,8 @@
 // everything else is reported as unverified and asks the user to review the
 // model card before downloading.
 
+import LICENSE_TABLE from "./model-license-table.json" with { type: "json" };
+
 export interface ModelLicense {
   /** Short identifier, or "unknown" when no verified record exists. */
   id: string;
@@ -37,29 +39,10 @@ interface CuratedLicense {
  * Only licenses that are verified and stable are listed. Each entry points at
  * the license or model card it comes from, so a reader can check it.
  */
-const CURATED: CuratedLicense[] = [
-  {
-    pattern: /^smollm2\b/i,
-    id: "apache-2.0",
-    name: "Apache License 2.0",
-    url: "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct",
-    requiresAcceptance: false,
-  },
-  {
-    pattern: /^llama[\s-]?3(\.[123])?\b/i,
-    id: "llama-community",
-    name: "Llama Community License",
-    url: "https://www.llama.com/llama3_2/license/",
-    requiresAcceptance: true,
-  },
-  {
-    pattern: /^gemma\b/i,
-    id: "gemma-terms",
-    name: "Gemma Terms of Use",
-    url: "https://ai.google.dev/gemma/terms",
-    requiresAcceptance: true,
-  },
-];
+const CURATED: CuratedLicense[] = LICENSE_TABLE.map((entry) => ({
+  ...entry,
+  pattern: new RegExp(entry.pattern, entry.flags),
+}));
 
 const UNVERIFIED: ModelLicense = {
   id: "unknown",

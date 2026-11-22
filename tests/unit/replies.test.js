@@ -71,3 +71,39 @@ describe("demoChatReply", () => {
     );
   });
 });
+
+describe("the model upgrade action", () => {
+  const marker = "[[LOAD_ON_DEVICE_MODEL]]";
+
+  it.each([
+    "why is the sky blue?",
+    "who invented the telephone?",
+    "what is a firewall?",
+    "who was Napoleon?",
+    "how do vaccines work?",
+  ])("is offered at the end of the rule chain for %s", (prompt) => {
+    // These are ordinary questions the rules do not cover. The reply must offer
+    // the on-device model instead of ending in a dead end.
+    expect(reply(prompt)).toContain(marker);
+  });
+
+  it("is still offered for the hand-listed hard topics", () => {
+    expect(reply("explain how the TCP handshake works")).toContain(marker);
+  });
+
+  it("is not attached to questions the rules actually answer", () => {
+    expect(reply("what is 2 + 3")).not.toContain(marker);
+    expect(reply("hello")).not.toContain(marker);
+    expect(reply("summarise this paragraph about whales")).not.toContain(marker);
+  });
+
+  it("is not attached to a statement", () => {
+    expect(reply("I had a long day at work today")).not.toContain(marker);
+  });
+
+  it("keeps the honest refusal text in front of the action", () => {
+    const text = reply("who was Napoleon?");
+    expect(text).toMatch(/don't want to invent|outside what I can answer|rather be straight/);
+    expect(text.trimEnd().endsWith(marker)).toBe(true);
+  });
+});

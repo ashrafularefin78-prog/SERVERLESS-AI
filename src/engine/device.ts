@@ -27,7 +27,7 @@ export interface ModelFit {
 }
 
 export interface DeviceRecommendation {
-  kind: "builtin" | "cpu";
+  kind: "builtin" | "cpu" | "gpu";
   modelId: string | null;
   title: string;
   reason: string;
@@ -49,6 +49,8 @@ const MB = 1_000_000;
  * that would crash the tab is flagged before it is downloaded.
  */
 const IOS_TAB_MEMORY_MB = 1_024;
+/** Ceiling for a GPU model when the browser will not say how much memory there is. */
+const MAX_UNKNOWN_MEMORY_VRAM_MB = 6_000;
 const MIB = 1_048_576;
 
 export function formatSizeMB(mb: number): string {
@@ -167,6 +169,30 @@ export function lightestCpuModel(models: LocalModel[]): LocalModel | null {
 }
 
 /**
+ * The lightest WebGPU model that this device can actually run. These are the
+ * fastest option on a capable machine, so a device with a working GPU should be
+ * told so instead of getting no advice at all.
+ */
+export function lightestGpuModel(models: LocalModel[], profile: DeviceProfile): LocalModel | null {
+  let lightest: LocalModel | null = null;
+  for (const model of models) {
+    if (model.runtime !== "webllm") continue;
+    if (model.vramMB !== null && model.vramMB < 256) continue;
+    // `deviceMemory` reports 8 for "8 GB or more", so a capable-looking device may
+    // still have 8 GB. Recommending a model that wants 12 GB would fail on load.
+    if (usableMemoryMB(profile) === null && model.vramMB !== null) {
+      if (model.vramMB > MAX_UNKNOWN_MEMORY_VRAM_MB) continue;
+    }
+    if (assessModelFit(model, profile).level === "too-large") continue;
+    const current = lightest?.runtime === "webllm" ? (lightest.vramMB ?? Infinity) : Infinity;
+    if (!lightest || current > (model.vramMB ?? Infinity)) {
+      lightest = model;
+    }
+  }
+  return lightest;
+}
+
+/**
  * Judge a model against the device. GGUF downloads are known exactly, so both
  * free storage and RAM are checked. WebLLM reports GPU memory rather than a
  * download size, so only its memory estimate is compared.
@@ -241,7 +267,27 @@ export function recommendDeviceModel(
   profile: DeviceProfile,
 ): DeviceRecommendation | null {
   const lowMemory = profile.memoryGB !== null && profile.memoryGB <= 4;
-  if (profile.webgpu && !lowMemory) return null;
+
+  if (profile.webgpu && !lowMemory) {
+    const gpu = lightestGpuModel(models, profile);
+    if (gpu) {
+      const downloadMB = gpu.runtime === "gguf" ? Math.ceil(gpu.downloadBytes / MB) : null;
+      const memory =
+        gpu.runtime === "webllm" && gpu.vramMB !== null
+          ? ` about ${formatSizeMB(gpu.vramMB * 1.1)} of GPU memory`
+          : "";
+      const size =
+        downloadMB !== null ? `, about ${formatSizeMB(downloadMB)} to download once` : "";
+      return {
+        kind: "gpu",
+        modelId: gpu.id,
+        title: "This device can run a model on its GPU",
+        reason: `WebGPU is available, so ${modelDisplayName(gpu)} runs on the graphics card with${memory}${size}. Replies are far better than the built-in rules and stay on this device.`,
+        actionLabel: `Download and run ${modelDisplayName(gpu)}`,
+      };
+    }
+    return null;
+  }
 
   const lightest = lightestCpuModel(models);
   const fits =

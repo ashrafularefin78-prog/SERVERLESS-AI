@@ -16,6 +16,10 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 let vaultKey: CryptoKey | null = null;
 let vaultVersion: 1 | 2 = 2;
 
+// Whether a vault exists in this database, independent of whether its key is in
+// memory. `null` means "not looked up yet"; the first save resolves it.
+let vaultPresent: boolean | null = null;
+
 interface StoredConversation {
   id: string;
   updatedAt: number;
@@ -35,6 +39,40 @@ export function hasVaultKey(): boolean {
   return vaultKey !== null;
 }
 
+/**
+ * True when the database holds an encrypted vault. Read by the write paths so a
+ * locked vault refuses to store plaintext, rather than trusting every caller to
+ * remember to check.
+ */
+export async function vaultExists(): Promise<boolean> {
+  if (vaultPresent !== null) return vaultPresent;
+
+  if (!(await databaseExists())) {
+    vaultPresent = false;
+    return false;
+  }
+
+  const db = await openDb();
+  const tx = db.transaction("settings", "readonly");
+  const row = await requestToPromise(tx.objectStore("settings").get("memoryVault"));
+  await transactionDone(tx);
+  vaultPresent = Boolean((row as { value?: unknown } | undefined)?.value);
+  return vaultPresent;
+}
+
+/** True when a persisted database exists, so a fresh profile is not created early. */
+async function databaseExists(): Promise<boolean> {
+  if (typeof indexedDB.databases === "function") {
+    try {
+      const databases = await indexedDB.databases();
+      return databases.some((entry) => entry.name === STORAGE.dbName);
+    } catch {
+      // Fall through to opening it.
+    }
+  }
+  return true;
+}
+
 /** Atomically re-wrap legacy chat records and publish the new v2 vault metadata. */
 export async function migrateVaultRecords(
   oldKey: CryptoKey,
@@ -51,16 +89,16 @@ export async function migrateVaultRecords(
 
   const updates: StoredConversation[] = [];
   for (const row of rows) {
-    if (!row.encrypted) {
-      throw new Error(
-        "An encrypted vault contains a plaintext conversation; migration stopped to protect data.",
-      );
-    }
-    const conversation = await decryptJson<Conversation>(
-      oldKey,
-      row.encrypted,
-      oldVersion === 2 ? recordAAD("conversations", row.id) : undefined,
-    );
+    // A plaintext row in a vault database is not a reason to block the upgrade:
+    // refusing here would leave it readable forever. It is re-encrypted with the
+    // new key like everything else.
+    const conversation = row.encrypted
+      ? await decryptJson<Conversation>(
+          oldKey,
+          row.encrypted,
+          oldVersion === 2 ? recordAAD("conversations", row.id) : undefined,
+        )
+      : (row as unknown as Conversation);
     updates.push({
       id: row.id,
       updatedAt: conversation.updatedAt,
@@ -74,6 +112,7 @@ export async function migrateVaultRecords(
   tx.objectStore("settings").put({ key: "memoryVault", value: vault });
   tx.objectStore("settings").put({ key: "memory", value: [] });
   await transactionDone(tx);
+  vaultPresent = true;
   return updates.length;
 }
 
@@ -197,24 +236,27 @@ export async function getConversation(id: string): Promise<Conversation | null> 
 }
 
 export async function saveConversation(conversation: Conversation): Promise<Conversation> {
-  const db = await openDb();
-  const tx = db.transaction("conversations", "readwrite");
-
-  if (vaultKey) {
-    const encrypted = await encryptJson(
-      vaultKey,
-      conversation,
-      recordAAD("conversations", conversation.id),
-    );
-    tx.objectStore("conversations").put({
-      id: conversation.id,
-      updatedAt: conversation.updatedAt,
-      encrypted,
-    });
-  } else {
-    tx.objectStore("conversations").put(conversation);
+  // Fail closed: with a vault present but no key in memory, writing the record
+  // would store the whole chat as plaintext. Callers cannot be trusted to check,
+  // because a streaming reply keeps saving while the tab is hidden.
+  if (!vaultKey && (await vaultExists())) {
+    throw new Error("The vault is locked, so the conversation was not saved.");
   }
 
+  // Encrypt before opening the write transaction: a transaction auto-commits
+  // when the microtask queue drains, and a spec-strict IndexedDB rejects awaits
+  // on WebCrypto inside one.
+  const encrypted = vaultKey
+    ? await encryptJson(vaultKey, conversation, recordAAD("conversations", conversation.id))
+    : null;
+
+  const db = await openDb();
+  const tx = db.transaction("conversations", "readwrite");
+  tx.objectStore("conversations").put(
+    encrypted
+      ? { id: conversation.id, updatedAt: conversation.updatedAt, encrypted }
+      : conversation,
+  );
   await transactionDone(tx);
   return conversation;
 }
@@ -249,6 +291,7 @@ export async function encryptStoredConversations(): Promise<number> {
     await transactionDone(tx);
   }
 
+  vaultPresent = true;
   return updates.length;
 }
 
@@ -285,6 +328,7 @@ export async function decryptStoredConversations(): Promise<number> {
     await transactionDone(tx);
   }
 
+  vaultPresent = false;
   return plaintext.length;
 }
 
@@ -307,10 +351,12 @@ export async function getSettings(): Promise<Settings> {
       (settings as unknown as Record<string, unknown>)[row.key] = row.value;
     }
   }
+  vaultPresent = Boolean(settings.memoryVault);
   return settings;
 }
 
 export async function saveSettings(partial: Partial<Settings>): Promise<void> {
+  if ("memoryVault" in partial) vaultPresent = Boolean(partial.memoryVault);
   const db = await openDb();
   const tx = db.transaction("settings", "readwrite");
   const store = tx.objectStore("settings");
@@ -337,6 +383,8 @@ export async function clearDatabase(): Promise<void> {
     request.onerror = () => reject(request.error);
     request.onblocked = () => resolve();
   });
+
+  vaultPresent = null;
 }
 
 export function newId(): string {

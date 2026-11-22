@@ -187,8 +187,37 @@ describe("recommendDeviceModel", () => {
     expect(recommendation).toMatchObject({ kind: "builtin" });
   });
 
-  it("stays quiet on a capable device", () => {
-    expect(recommendDeviceModel(models, profile({ webgpu: true, memoryGB: 8 }))).toBeNull();
+  it("recommends a GPU model on a capable device", () => {
+    // The best case used to get no advice at all, which is backwards: this is the
+    // device that can run the good model.
+    const recommendation = recommendDeviceModel(models, profile({ webgpu: true, memoryGB: 8 }));
+    expect(recommendation).toMatchObject({ kind: "gpu" });
+    expect(recommendation.modelId).toBeTruthy();
+    expect(recommendation.title).toContain("GPU");
+    expect(recommendation.actionLabel).toMatch(/^Download and run /);
+  });
+
+  it("picks the smallest GPU model that fits", () => {
+    const tiny = gpuModel("gpu-tiny", 400);
+    const large = gpuModel("gpu-large", 4000);
+    const recommendation = recommendDeviceModel(
+      [large, tiny, cpuModel("stub", 63)],
+      profile({ webgpu: true, memoryGB: 8 }),
+    );
+    expect(recommendation.modelId).toBe(tiny.id);
+  });
+
+  it("falls back to nothing when no GPU model fits a small GPU", () => {
+    const fitless = recommendDeviceModel(
+      [gpuModel("gpu-large", 12_000)],
+      profile({ webgpu: true, memoryGB: 8 }),
+    );
+    expect(fitless).toBeNull();
+  });
+
+  it("keeps the CPU recommendation on a low-memory machine with a GPU", () => {
+    const recommendation = recommendDeviceModel(models, profile({ webgpu: true, memoryGB: 4 }));
+    expect(recommendation?.kind).not.toBe("gpu");
   });
 
   it("does not recommend a CPU model when WebAssembly JSPI is missing", () => {

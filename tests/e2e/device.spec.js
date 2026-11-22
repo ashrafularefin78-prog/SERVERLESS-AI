@@ -48,6 +48,14 @@ test.describe("touch laptop", () => {
 
   test("is not treated as a phone", async ({ page }) => {
     await stubDevice(page, { gpu: false, memory: 8 });
+    // A touchscreen laptop still has a trackpad and a mouse, so it reports a fine
+    // pointer. Firefox's touch emulation does not add one, so state it explicitly
+    // instead of testing an emulated device nobody owns.
+    await page.addInitScript(() => {
+      const original = window.matchMedia.bind(window);
+      window.matchMedia = (query) =>
+        query === "(any-pointer: fine)" ? { ...original(query), matches: true } : original(query);
+    });
     await page.goto("/");
     await page.locator("#open-settings").click();
 
@@ -98,14 +106,18 @@ test("recommends and selects the lightest CPU model on a desktop without WebGPU"
   await expect(page.locator("#model-warning")).toBeHidden();
 });
 
-test("stays quiet when WebGPU is available", async ({ page }) => {
+test("recommends a GPU model when WebGPU is available", async ({ page }) => {
   await stubDevice(page, { gpu: true, memory: 8 });
   await page.goto("/");
   await page.locator("#open-settings").click();
 
   await expect(page.locator("#device-check-spec")).toContainText("WebGPU available");
-  await expect(page.locator("#device-check-advice")).toBeHidden();
-  await expect(page.locator("#device-recommend")).toBeHidden();
+  // The capable device is the one that should get advice, not the one that
+  // silently says nothing.
+  await expect(page.locator("#device-check-advice")).toBeVisible();
+  await expect(page.locator("#device-check-advice")).toContainText("GPU");
+  await expect(page.locator("#device-recommend")).toBeVisible();
+  await expect(page.locator("#device-recommend")).toContainText("Download and run");
 });
 
 test("warns and asks before a download that cannot fit", async ({ page }) => {

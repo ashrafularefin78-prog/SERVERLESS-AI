@@ -33,3 +33,15 @@ export async function acceptLicenseIfShown(page) {
   await expect(dialog).toBeHidden();
   return true;
 }
+
+/**
+ * Community GGUF builds run through wllama, which needs WebAssembly JSPI. Only
+ * Chromium ships it, so these specs are skipped on Firefox and WebKit instead of
+ * failing on a documented platform requirement.
+ */
+export async function skipWithoutJspi(page, test) {
+  const jspi = await page.evaluate(
+    () => typeof WebAssembly !== "undefined" && "Suspending" in WebAssembly,
+  );
+  test.skip(!jspi, "Community GGUF downloads require WebAssembly JSPI (Chromium only).");
+}

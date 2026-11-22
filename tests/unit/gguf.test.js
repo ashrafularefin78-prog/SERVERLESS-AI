@@ -635,3 +635,61 @@ describe("resumable community downloads", () => {
     expect(files.size).toBeGreaterThan(0);
   });
 });
+
+async function streamedText() {
+  const parts = await collect(local.streamModel(messages));
+  return parts
+    .filter((part) => "text" in part)
+    .map((part) => part.text)
+    .join("");
+}
+
+describe("thinking filter", () => {
+  it("strips reasoning for any model, not just Qwen3", async () => {
+    // The filter runs on every stream, so a template-local reasoning block cannot
+    // leak into a reply from a model nobody remembered to list.
+    createCompletion.mockReturnValue(
+      chunks(chunk({ content: "A<think>hmm" }), chunk({ content: "</think>B" }, { usage })),
+    );
+    await local.loadModel(model.id);
+    expect(await streamedText()).toBe("AB");
+  });
+
+  it("passes a reply without a reasoning block through untouched", async () => {
+    createCompletion.mockReturnValue(chunks(chunk({ content: "Plain answer." }, { usage })));
+    await local.loadModel(model.id);
+    expect(await streamedText()).toBe("Plain answer.");
+  });
+
+  it("explains a reply that was entirely reasoning", async () => {
+    createCompletion.mockReturnValue(
+      chunks(chunk({ content: "<think>thinking hard</think>" }, { usage })),
+    );
+    await local.loadModel(model.id);
+    const text = await streamedText();
+    expect(text).toContain("internal reasoning");
+    expect(text).toContain("no answer");
+    expect(text).not.toContain("thinking hard");
+  });
+
+  it("does not invent an explanation when there is simply no output", async () => {
+    createCompletion.mockReturnValue(chunks(chunk({}, { usage })));
+    await local.loadModel(model.id);
+    expect(await streamedText()).toBe("");
+  });
+
+  it("explains a stream that never left the reasoning block", async () => {
+    createCompletion.mockReturnValue(chunks(chunk({ content: "<think>Thinking about it..." })));
+    await local.loadModel(model.id);
+    const text = await streamedText();
+    expect(text).not.toContain("Thinking about it");
+    expect(text).toContain("internal reasoning");
+  });
+
+  it("flags an unclosed block and keeps reasoning out of the output", () => {
+    const filter = new local.ThinkTagFilter();
+    expect(filter.push("before <think>still reasoning", true)).toBe("before ");
+    expect(filter.unclosed).toBe(true);
+    expect(filter.sawReasoning).toBe(true);
+  });
+});

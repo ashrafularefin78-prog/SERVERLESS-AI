@@ -1192,6 +1192,15 @@ function statementReply(text: string, lower: string, history: History) {
   return null;
 }
 
+/**
+ * The upgrade action is appended to any question the rules cannot answer, not
+ * just the hand-listed hard topics. "Why is the sky blue?" used to get a refusal
+ * with no way forward; the refusal was honest, the dead end was not.
+ */
+function withUpgradeAction(reply: string) {
+  return [reply, MODEL_UPGRADE_MARKER].join("\n\n");
+}
+
 function fallbackReply(text: string, lower: string, _history: History, seed: number) {
   if (/\b(?:summarize|summarise|summary)\b/.test(lower)) {
     return "Paste the passage you want condensed, and tell me how short you need it. With the text in front of me, I can pull out the key points.";
@@ -1203,13 +1212,15 @@ function fallbackReply(text: string, lower: string, _history: History, seed: num
     /\?$/.test(text) ||
     /^(?:what|why|how|when|where|who|which|can|could|should|would|is|are|do|does)\b/.test(lower)
   ) {
-    return pick(
-      [
-        "I don't want to invent an answer I can't back up. My local rules are strongest on everyday conversation, simple math, planning, and code. Give me the angle that matters to you and I'll take a real run at it.",
-        "That one is outside what I can answer reliably from local rules. If you tell me what you're deciding, fixing, or trying to understand, I can help you work through it.",
-        "I can't look that up from here, so I would rather be straight than guess. What's the context around it?",
-      ],
-      seed,
+    return withUpgradeAction(
+      pick(
+        [
+          "I don't want to invent an answer I can't back up. My local rules are strongest on everyday conversation, simple math, planning, and code. Give me the angle that matters to you and I'll take a real run at it.",
+          "That one is outside what I can answer reliably from local rules. If you tell me what you're deciding, fixing, or trying to understand, I can help you work through it.",
+          "I can't look that up from here, so I would rather be straight than guess. What's the context around it?",
+        ],
+        seed,
+      ),
     );
   }
   if (text.split(/\s+/).length <= 2) {

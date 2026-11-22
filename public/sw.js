@@ -7,7 +7,13 @@
    That marker is written by the page (src/offline.ts), which shares this
    origin's Cache Storage. */
 
-const VERSION = "localmind-v2";
+/* Two caches on purpose. Files under /assets/ carry a content hash in their name,
+   so a new deploy never reuses an old URL: those entries stay valid forever and
+   wiping them on every update only forces a re-download. The shell (index.html,
+   manifest, icons) must be replaced on each update, so it lives in its own cache
+   named after the app version. */
+const SHELL_CACHE = "localmind-shell-v3";
+const ASSET_CACHE = "localmind-assets-v1";
 const OFFLINE_MODE_CACHE = "localmind-offline-mode";
 const OFFLINE_MODE_KEY = "/__localmind-offline-mode__";
 const SHELL = [
@@ -22,9 +28,9 @@ const SHELL = [
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
-      const cache = await caches.open(VERSION);
-      await cache.addAll(SHELL);
-      await cacheAssetLinks(cache);
+      const shell = await caches.open(SHELL_CACHE);
+      await shell.addAll(SHELL);
+      await cacheAssetLinks();
       await self.skipWaiting();
     })(),
   );
@@ -36,7 +42,7 @@ self.addEventListener("activate", (event) => {
       const keys = await caches.keys();
       await Promise.all(
         keys
-          .filter((key) => key !== VERSION && key !== OFFLINE_MODE_CACHE)
+          .filter((key) => key !== SHELL_CACHE && key !== ASSET_CACHE && key !== OFFLINE_MODE_CACHE)
           .map((key) => caches.delete(key)),
       );
       await self.clients.claim();
@@ -89,6 +95,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  if (isImmutableAsset(url)) {
+    event.respondWith(cacheFirstAsset(request));
+    return;
+  }
+
   event.respondWith(staleWhileRevalidate(request));
 });
 
@@ -101,7 +112,7 @@ async function matchCached(cache, request) {
 }
 
 async function networkFirst(request) {
-  const cache = await caches.open(VERSION);
+  const cache = await caches.open(SHELL_CACHE);
   const fallback = async () =>
     (await matchCached(cache, request)) ||
     (await matchCached(cache, "./index.html")) ||
@@ -125,8 +136,31 @@ async function networkFirst(request) {
   }
 }
 
+/** A content-hashed build artifact. Its URL changes whenever its bytes change. */
+function isImmutableAsset(url) {
+  return url.pathname.includes("/assets/") && /-[\w-]{8,}\.(?:js|css|woff2?)$/.test(url.pathname);
+}
+
+async function cacheFirstAsset(request) {
+  const cache = await caches.open(ASSET_CACHE);
+  const cached = await matchCached(cache, request);
+  if (cached) return cached;
+
+  try {
+    const response = await fetch(request);
+    // `await` the write: a service worker can be stopped as soon as it responds.
+    if (response.ok && response.type === "basic") await cache.put(request, response.clone());
+    return response;
+  } catch {
+    return new Response("Asset unavailable offline.", {
+      status: 503,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
+}
+
 async function staleWhileRevalidate(request) {
-  const cache = await caches.open(VERSION);
+  const cache = await caches.open(SHELL_CACHE);
   const cached = await matchCached(cache, request);
 
   const network = fetch(request)
@@ -147,7 +181,9 @@ async function staleWhileRevalidate(request) {
 }
 
 // Read index.html after install and cache the hashed entry script and stylesheet.
-async function cacheAssetLinks(cache) {
+async function cacheAssetLinks() {
+  const shell = await caches.open(SHELL_CACHE);
+  const assets = await caches.open(ASSET_CACHE);
   try {
     const response = await fetch("./index.html", { cache: "reload" });
     if (!response.ok) return;
@@ -165,7 +201,10 @@ async function cacheAssetLinks(cache) {
       [...urls].map(async (url) => {
         try {
           const asset = await fetch(url, { cache: "reload" });
-          if (asset.ok) await cache.put(url, asset);
+          if (!asset.ok) return;
+          // Hashed build output is immutable; everything else belongs to the shell.
+          const target = isImmutableAsset(new URL(url)) ? assets : shell;
+          await target.put(url, asset);
         } catch {
           // Best effort; runtime caching covers the next request.
         }

@@ -339,6 +339,21 @@ export function loadedModel(): string | null {
 export class ThinkTagFilter {
   private pending = "";
   private thinking = false;
+  private hidden = 0;
+
+  /** True when the stream ended while still inside a reasoning block. */
+  get unclosed() {
+    return this.thinking;
+  }
+
+  /**
+   * True when the model wrote reasoning that never reached the reply. A reply can
+   * end up empty because it never opened a block, or because everything it wrote
+   * stayed inside one; the second case needs an explanation.
+   */
+  get sawReasoning() {
+    return this.hidden > 0;
+  }
 
   push(chunk: string, flush = false): string {
     this.pending += chunk;
@@ -350,14 +365,16 @@ export class ThinkTagFilter {
       const tag = this.thinking ? closing : opening;
       const index = this.pending.toLowerCase().indexOf(tag);
       if (index >= 0) {
-        if (!this.thinking) output += this.pending.slice(0, index);
+        if (this.thinking) this.hidden += index;
+        else output += this.pending.slice(0, index);
         this.pending = this.pending.slice(index + tag.length);
         this.thinking = !this.thinking;
         continue;
       }
 
       if (flush) {
-        if (!this.thinking) output += this.pending;
+        if (this.thinking) this.hidden += this.pending.length;
+        else output += this.pending;
         this.pending = "";
         break;
       }
@@ -367,7 +384,11 @@ export class ThinkTagFilter {
         if (this.pending.slice(-size).toLowerCase() === tag.slice(0, size)) carry = size;
       }
       const safeLength = this.pending.length - carry;
-      if (!this.thinking && safeLength > 0) output += this.pending.slice(0, safeLength);
+      // Text inside a reasoning block is dropped here, a chunk at a time. It still
+      // counts as reasoning: otherwise a reply that only ever reasoned looks like
+      // an empty model output instead of a truncated thinking block.
+      if (this.thinking) this.hidden += safeLength;
+      else if (safeLength > 0) output += this.pending.slice(0, safeLength);
       this.pending = this.pending.slice(safeLength);
       break;
     }
@@ -413,41 +434,53 @@ export function interrupt(): void {
   }
 }
 
-/**
- * Stream a completion from the loaded model. The signal is wired to
- * `interruptGenerate()` so the UI's stop button ends the worker-side loop.
- */
-async function* filterQwenThinking(
-  chunks: AsyncIterable<StreamChunk>,
-  modelId: string | null,
-): AsyncGenerator<StreamChunk> {
-  if (!/qwen3(?:[.-]|_|$)/i.test(modelId || "")) {
-    yield* chunks;
-    return;
-  }
-
+async function* filterThinking(chunks: AsyncIterable<StreamChunk>): AsyncGenerator<StreamChunk> {
+  // Applied to every model, not just Qwen3: any template can emit a reasoning
+  // block, and a hand-maintained list of model ids is a bug waiting for the next
+  // model in the catalogue. A reply without the tags passes through untouched.
   const filter = new ThinkTagFilter();
   let usage: { completion_tokens: number; total_tokens: number } | undefined;
+  let emitted = false;
+
   for await (const chunk of chunks) {
     if ("text" in chunk) {
       const text = filter.push(chunk.text);
-      if (text) yield { text };
+      if (text) {
+        emitted = true;
+        yield { text };
+      }
     } else {
       usage = chunk.usage;
     }
   }
+
   const remaining = filter.push("", true);
-  if (remaining) yield { text: remaining };
+  if (remaining) {
+    emitted = true;
+    yield { text: remaining };
+  }
+
+  // A reply that ended inside ` thinking` produced nothing: the model spent its
+  // whole budget reasoning. Say so instead of returning an empty message.
+  if (!emitted && filter.sawReasoning) {
+    yield {
+      text: "The model used its whole reply on internal reasoning and returned no answer. Try a shorter prompt, a lower thinking effort, or a model without a reasoning block.",
+    };
+  }
   if (usage) yield { usage };
 }
 
+/**
+ * Stream a completion from the loaded model. The signal is wired to
+ * `interruptGenerate()` so the UI's stop button ends the worker-side loop.
+ */
 export async function* streamModel(
   messages: ChatMessage[],
   signal?: AbortSignal,
   maxTokens = 1024,
 ): AsyncGenerator<StreamChunk> {
   if (ggufBackend) {
-    yield* filterQwenThinking(ggufBackend.streamModel(messages, signal, maxTokens), loadedModelId);
+    yield* filterThinking(ggufBackend.streamModel(messages, signal, maxTokens));
     return;
   }
   if (!engine) throw new Error("No on-device model is loaded.");
@@ -481,7 +514,7 @@ export async function* streamModel(
         }
       }
     }
-    yield* filterQwenThinking(chunks(), loadedModelId);
+    yield* filterThinking(chunks());
   } finally {
     signal?.removeEventListener("abort", onAbort);
   }

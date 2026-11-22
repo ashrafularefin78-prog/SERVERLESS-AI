@@ -48,6 +48,14 @@ npm run test:e2e:preview
 
 The preview suite exercises the production CSP, service worker, and hashed assets.
 
+Storage and IndexedDB code behaves differently per engine, so run another engine before a release. Firefox is green; WebKit has two known failures recorded in `ROADMAP.md`:
+
+```bash
+npx playwright install firefox webkit
+PLAYWRIGHT_BROWSERS=firefox npm run test:e2e
+PLAYWRIGHT_BROWSERS=webkit npm run test:e2e
+```
+
 If you change model defaults, system prompts, or generation settings, also run the model quality replay:
 
 ```bash

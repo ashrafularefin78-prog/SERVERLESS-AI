@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { GGUF_MODELS, LOCAL_MODELS } from "../../src/engine/models.js";
-import { acceptLicenseIfShown, pickModel } from "./helpers.js";
+import { acceptLicenseIfShown, pickModel, skipWithoutJspi } from "./helpers.js";
 
 test("sends a message and streams a local reply", async ({ page }) => {
   const errors = [];
@@ -502,13 +502,19 @@ test("blocks community downloads when modern WebAssembly is unavailable", async 
 test("keeps built-in chat usable after a failed community model download", async ({
   page,
   context,
+  browserName,
 }) => {
+  // LocalMind fetches the weights itself when OPFS is available (Chromium) and
+  // hands them to a worker; elsewhere wllama downloads from inside its own worker,
+  // and Playwright can only intercept that in Chromium.
+  test.skip(browserName !== "chromium", "The download request is only observable in Chromium.");
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await context.route("https://huggingface.co/**", (route) =>
     route.fulfill({ status: 503, body: "Unavailable" }),
   );
   await page.goto("/");
+  await skipWithoutJspi(page, test);
   await page.locator("#open-settings").click();
   await pickModel(page, GGUF_MODELS[0].id);
   await page.locator("#model-load").click();
@@ -701,6 +707,33 @@ test("shows retrieval scores behind a grounded reply", async ({ page }) => {
   await expect(trace).toContainText("Refunds take five business days from approval.");
 });
 
+test("keeps hashed build assets out of the cache that updates wipe", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => Boolean(navigator.serviceWorker?.controller), null, {
+    timeout: 15_000,
+  });
+
+  const caches = await page.evaluate(async () => {
+    const names = await window.caches.keys();
+    const assets = names.find((name) => name.startsWith("localmind-assets-"));
+    const shell = names.find((name) => name.startsWith("localmind-shell-"));
+    const assetKeys = assets
+      ? (await (await window.caches.open(assets)).keys()).map((r) => r.url)
+      : [];
+    const shellKeys = shell
+      ? (await (await window.caches.open(shell)).keys()).map((r) => r.url)
+      : [];
+    return { names, assets, shell, assetKeys, shellKeys };
+  });
+
+  // Two caches: immutable hashed output survives an update, the shell does not.
+  expect(caches.assets, JSON.stringify(caches.names)).toBeTruthy();
+  expect(caches.shell).toBeTruthy();
+  expect(caches.assetKeys.some((url) => /\/assets\/index-[\w-]{8,}\.js$/.test(url))).toBe(true);
+  // The hashed entry script must not be duplicated into the erasable shell cache.
+  expect(caches.shellKeys.some((url) => url.includes("/assets/"))).toBe(false);
+});
+
 test("offline mode blocks outbound requests from the service worker", async ({ page }) => {
   const MODEL_URL = "https://huggingface.co/org/repo/resolve/abc/model.gguf";
 
@@ -746,7 +779,9 @@ test("offline mode blocks outbound requests from the service worker", async ({ p
   // A model download is refused with a readable message instead of a failed fetch.
   await pickModel(page, GGUF_MODELS[0].id);
   await page.locator("#model-load").click();
-  await expect(page.locator("#toast")).toContainText("Offline mode is on");
+  // The exact wording the app uses; asserting a phrase it never shows only passed
+  // because an older toast was still on screen.
+  await expect(page.locator("#toast")).toContainText("network access is blocked");
 
   // The switch survives a reload and can be turned off again.
   await page.reload();
@@ -760,7 +795,12 @@ test("offline mode blocks outbound requests from the service worker", async ({ p
   expect((await probe()).body).not.toContain("Offline mode is on");
 });
 
-test("asks for license acceptance before a community download", async ({ page, context }) => {
+test("asks for license acceptance before a community download", async ({
+  page,
+  context,
+  browserName,
+}) => {
+  test.skip(browserName !== "chromium", "The download request is only observable in Chromium.");
   const downloads = [];
   await context.route("https://huggingface.co/**", (route) => {
     downloads.push(route.request().url());
@@ -768,6 +808,7 @@ test("asks for license acceptance before a community download", async ({ page, c
   });
 
   await page.goto("/");
+  await skipWithoutJspi(page, test);
   await page.locator("#open-settings").click();
   await pickModel(page, GGUF_MODELS[0].id);
   await page.locator("#model-load").click();
@@ -809,7 +850,12 @@ test("asks for license acceptance before a community download", async ({ page, c
   await expect.poll(() => downloads.length, { timeout: 20_000 }).toBeGreaterThan(0);
 });
 
-test("does not ask again once a license has been accepted", async ({ page, context }) => {
+test("does not ask again once a license has been accepted", async ({
+  page,
+  context,
+  browserName,
+}) => {
+  test.skip(browserName !== "chromium", "The download request is only observable in Chromium.");
   const downloads = [];
   await context.route("https://huggingface.co/**", (route) => {
     downloads.push(route.request().url());
@@ -817,6 +863,7 @@ test("does not ask again once a license has been accepted", async ({ page, conte
   });
 
   await page.goto("/");
+  await skipWithoutJspi(page, test);
   await page.locator("#open-settings").click();
   await pickModel(page, GGUF_MODELS[0].id);
   await page.locator("#model-load").click();
@@ -849,7 +896,8 @@ test("offers a pre-filled bug report without collecting anything", async ({ page
   const body = url.searchParams.get("body");
   expect(body).toContain("App version:** 1.0.0");
   // The browser's own user-agent string, not a guess from the app.
-  expect(body).toMatch(/Chrome\/|Chromium\//);
+  const userAgent = await page.evaluate(() => navigator.userAgent);
+  expect(body).toContain(userAgent);
   // The description is left for the reporter, and no chat text travels along.
   expect(body).toContain("Replace this line");
 
@@ -862,4 +910,104 @@ test("offers a pre-filled bug report without collecting anything", async ({ page
   await page.locator("#open-settings").click();
   const afterChat = new URL(await link.getAttribute("href")).searchParams.get("body");
   expect(afterChat).not.toContain("private notes");
+});
+
+test("locking during a slow reply never writes the reply in the clear", async ({ page }) => {
+  // Reproduces the leak: the vault said "Locked" while the generation loop kept
+  // saving every couple of seconds, and those writes had no key, so the whole
+  // conversation landed in IndexedDB as plaintext.
+  await page.clock.install();
+  await page.goto("/");
+
+  await page.locator("#open-settings").click();
+  await page.locator("#vault-enable").click();
+  await page.locator("#vault-pass").fill("slow reply passphrase");
+  await page.locator("#vault-confirm").fill("slow reply passphrase");
+  await page.locator("#vault-ok").click();
+  await expect(page.locator("#vault-status")).toContainText("Unlocked for this tab");
+  await page.locator("#settings-dialog [data-close-dialog]").click();
+
+  // A reply long enough to still be streaming when the tab is hidden.
+  await page.locator("#input").fill("write a python script that reads a csv and prints totals");
+  await page.locator("#send").click();
+  await page.locator(".msg-text.streaming").waitFor({ state: "visible", timeout: 10_000 });
+  const plaintextMarker = "reads a csv and prints totals";
+
+  // Hide the tab mid-reply. The lock is deferred by a grace period, so fast
+  // forward past it rather than sleeping for a minute.
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.clock.fastForward(61_000);
+
+  await expect(page.locator("#history")).toContainText("Chats are encrypted");
+  await page.locator("#open-settings").click();
+  await expect(page.locator("#vault-status")).toContainText("Locked until you unlock");
+
+  const rows = await page.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("localmind");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const all = await new Promise((resolve, reject) => {
+      const request = db
+        .transaction("conversations", "readonly")
+        .objectStore("conversations")
+        .getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return all.map((row) => ({
+      id: row.id,
+      encrypted: Boolean(row.encrypted),
+      hasMessages: Array.isArray(row.messages),
+    }));
+  });
+
+  expect(rows.length).toBeGreaterThan(0);
+  for (const row of rows) {
+    expect(row.hasMessages).toBe(false);
+    expect(row.encrypted).toBe(true);
+  }
+  expect(JSON.stringify(rows)).not.toContain(plaintextMarker);
+});
+
+test("hiding the tab briefly keeps the vault unlocked", async ({ page }) => {
+  await page.clock.install();
+  await page.goto("/");
+
+  await page.locator("#open-settings").click();
+  await page.locator("#vault-enable").click();
+  await page.locator("#vault-pass").fill("brief hide passphrase");
+  await page.locator("#vault-confirm").fill("brief hide passphrase");
+  await page.locator("#vault-ok").click();
+  await expect(page.locator("#vault-status")).toContainText("Unlocked for this tab");
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.clock.fastForward(30_000);
+
+  // Coming back inside the grace window cancels the pending lock.
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.clock.fastForward(61_000);
+
+  await expect(page.locator("#vault-status")).toContainText("Unlocked for this tab");
+  await expect(page.locator("#history")).not.toContainText("Chats are encrypted");
 });

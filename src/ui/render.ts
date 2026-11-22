@@ -366,7 +366,7 @@ export function renderWelcome({
     title: string;
     reason: string;
     actionLabel: string;
-    kind: "cpu" | "builtin";
+    kind: "cpu" | "gpu" | "builtin";
   } | null;
 }) {
   const welcome = h("section", { class: "welcome" });
@@ -423,7 +423,7 @@ export function renderWelcome({
           ? "The built-in assistant is ready. Ask anything, or pick a suggestion below."
           : "Starting the built-in assistant...";
   welcome.append(renderNotice(notice, false));
-  if (recommendation?.kind === "cpu") {
+  if (recommendation && recommendation.kind !== "builtin") {
     const card = h("aside", { class: "model-recommendation", role: "note" });
     card.append(
       h("strong", { text: recommendation.title }),
