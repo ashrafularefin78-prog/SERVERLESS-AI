@@ -50,6 +50,18 @@ export async function skipWithoutJspi(page, test) {
  * Navigate and get past the first-run introduction. Every spec that is not about
  * onboarding wants a ready app, and a fresh browser profile always sees the modal.
  */
+/**
+ * Some behaviour only exists in the production build: the injected CSP header, the
+ * service worker, and the hashed asset names. `npm run test:e2e` runs against the
+ * dev server for speed, so those tests say why they are skipped instead of failing.
+ */
+export function skipUnlessProductionBuild(test) {
+  test.skip(
+    process.env.PLAYWRIGHT_PREVIEW !== "1",
+    "needs the production build: run npm run test:e2e:preview",
+  );
+}
+
 export async function open(page, path = "/") {
   await page.goto(path);
   const welcome = page.locator("#welcome-dialog");

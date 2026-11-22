@@ -1,7 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { GGUF_MODELS, LOCAL_MODELS } from "../../src/engine/models.js";
-import { acceptLicenseIfShown, pickModel, skipWithoutJspi, open } from "./helpers.js";
+import {
+  acceptLicenseIfShown,
+  pickModel,
+  skipUnlessProductionBuild,
+  skipWithoutJspi,
+  open,
+} from "./helpers.js";
 
 test("sends a message and streams a local reply", async ({ page }) => {
   const errors = [];
@@ -615,7 +621,11 @@ test("reads the environment and exports a scrubbed bundle", async ({ page }) => 
   expect(bundle.schemaVersion).toBe(1);
   expect(bundle.app.app).toContain("LocalMind");
   expect(bundle.environment.userAgent).toContain("Mozilla");
-  expect(bundle.storage.usageMB).toBeGreaterThan(0);
+  // Chromium on Linux can report 0 bytes used immediately after a write, so assert
+  // the shape of the estimate rather than requiring a non-zero reading.
+  expect(typeof bundle.storage.quotaMB).toBe("number");
+  expect(bundle.storage.quotaMB).toBeGreaterThan(0);
+  expect(bundle.storage.usageMB === null || bundle.storage.usageMB >= 0).toBe(true);
   expect(Array.isArray(bundle.diagnostics)).toBe(true);
   // Nothing from the conversation, and no settings, may travel in the file.
   expect(JSON.stringify(bundle)).not.toContain("SECRET-CHAT-MARKER");
@@ -749,6 +759,7 @@ test("shows retrieval scores behind a grounded reply", async ({ page }) => {
 });
 
 test("keeps hashed build assets out of the cache that updates wipe", async ({ page }) => {
+  skipUnlessProductionBuild(test);
   await open(page);
   await page.waitForFunction(() => Boolean(navigator.serviceWorker?.controller), null, {
     timeout: 15_000,
@@ -776,6 +787,7 @@ test("keeps hashed build assets out of the cache that updates wipe", async ({ pa
 });
 
 test("offline mode blocks outbound requests from the service worker", async ({ page }) => {
+  skipUnlessProductionBuild(test);
   const MODEL_URL = "https://huggingface.co/org/repo/resolve/abc/model.gguf";
 
   // The service worker answers a blocked request with a 503 carrying this text,

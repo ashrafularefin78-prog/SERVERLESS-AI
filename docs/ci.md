@@ -25,20 +25,27 @@ startup.
 
 ## `ci.yml` in detail
 
-| Job                 | Steps                                                                                                                                               | Why it exists                                                            |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `quality`           | `check:workflows`, `typecheck`, `lint` (`--max-warnings=0`), `format:check`, `test:coverage`, `evals`, `evals:model`, `build`, `check:size`, `sbom` | the gate; coverage thresholds and the 260 kB budget are hard failures    |
-| `preview` (PR only) | `build`, upload `dist`                                                                                                                              | review the exact bytes that would ship                                   |
-| `osv`               | `google/osv-scanner-action` reusable workflow                                                                                                       | dependency CVEs without enabling Code Scanning                           |
-| `e2e`               | Playwright on Chromium in dev mode **and** against the production build                                                                             | the second run is the one that exercises the real CSP and service worker |
+| Job                 | Steps                                                                                                                                               | Why it exists                                                          |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `quality`           | `check:workflows`, `typecheck`, `lint` (`--max-warnings=0`), `format:check`, `test:coverage`, `evals`, `evals:model`, `build`, `check:size`, `sbom` | the gate; coverage thresholds and the 264 kB budget are hard failures  |
+| `preview` (PR only) | `build`, upload `dist`                                                                                                                              | review the exact bytes that would ship                                 |
+| `osv`               | `google/osv-scanner-action` composite action, `--config=./osv-scanner.toml`                                                                         | dependency CVEs in the whole lockfile, including build tooling         |
+| `e2e`               | `build`, then Playwright on Chromium against `dist/` served by `vite preview`                                                                       | the only run that exercises the real CSP header and the service worker |
 
-The `osv` job must grant `actions: read`, `contents: read`, and
-`security-events: write`: a reusable workflow that declares a permission the
-caller does not grant fails the whole run _at startup_, with no logs. This is the
-failure that `check:workflows` now prevents.
+The `e2e` job used to run the suite twice, once against the dev server. That run
+was testing something users never load: `vite dev` serves unbundled modules
+(measured 4.6 MB of script where the built entry is 260 kB gzip), injects no CSP
+header, and registers no service worker, so the payload budget, Trusted Types, and
+both cache specs failed there and nowhere else. CI now runs the production build
+only. Locally, `npm run test:e2e` still uses the dev server for speed and skips the
+four specs that need the build, with the reason in the skip message.
 
-`npm run test:e2e:preview` is the local equivalent of the second half of `e2e`:
-it builds, serves `dist/` with `vite preview`, and runs the same specs.
+A job that calls a reusable workflow must grant every permission that workflow
+declares: it fails _at startup_, with no logs, otherwise. `check:workflows` now
+catches that before CI does.
+
+`npm run test:e2e:preview` is the local equivalent of the `e2e` job: it builds,
+serves `dist/` with `vite preview`, and runs the same specs.
 
 ## Software bill of materials
 

@@ -89,7 +89,10 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run build
-      - run: npm run test:e2e
+      # Against the production build, not the dev server: the CSP header, the
+      # service worker, and the hashed asset names only exist after `vite build`,
+      # and the dev server ships ~4.6 MB of unbundled modules instead of the
+      # minified entry. Testing the dev server tested something users never run.
       - run: npm run test:e2e:preview
       - if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

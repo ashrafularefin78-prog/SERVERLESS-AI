@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { open } from "./helpers.js";
+import { open, skipUnlessProductionBuild } from "./helpers.js";
 
 // Trusted Types is only meaningful with enforcement switched on, so these tests
 // assert the enforcement itself, then that the sanitizer behind the policy still
@@ -55,6 +55,8 @@ const collectViolations = () => {
 };
 
 test("enforces Trusted Types on string sinks", async ({ page }) => {
+  // The require-trusted-types-for header is injected into the built index.html.
+  skipUnlessProductionBuild(test);
   await page.addInitScript(collectViolations);
   await open(page);
 

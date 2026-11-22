@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { open } from "./helpers.js";
+import { open, skipUnlessProductionBuild } from "./helpers.js";
 
 // A performance guard that runs against the production build. It is not a
 // Lighthouse replacement; it catches the regressions that matter for this app:
@@ -51,6 +51,9 @@ async function paintMetrics(page) {
 }
 
 test("first paint is fast and the initial payload stays small", async ({ page }) => {
+  // The dev server ships unbundled modules, so the byte budget only means
+  // something for the built entry.
+  skipUnlessProductionBuild(test);
   await open(page);
   await expect(page.locator(".welcome")).toBeVisible();
   const metrics = await paintMetrics(page);
