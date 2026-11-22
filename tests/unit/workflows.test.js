@@ -112,15 +112,45 @@ jobs:
       expect(result.checked).toBeGreaterThan(0);
     });
 
-    it("gives the OSV job the permissions its reusable workflow declares", async () => {
-      // The missing grant is what made every run fail at startup.
+    it("keeps the OSV job to the permissions its scan needs", async () => {
+      // It used to call a reusable workflow, which needed `actions: read` granted
+      // explicitly and `security-events: write` for a SARIF upload that then never
+      // happened. Calling the scanner action directly needs to read the repo only.
       const source = await readFile(
         path.join(process.cwd(), ".github", "workflows", "ci.yml"),
         "utf8",
       );
-      const osv = source.slice(source.indexOf("  osv:"));
-      expect(osv).toMatch(/actions: read/);
-      expect(osv).toMatch(/security-events: write/);
+      const job = source.slice(source.indexOf("  osv:"), source.indexOf("  e2e:"));
+      expect(job).toMatch(/contents: read/);
+      expect(job).not.toMatch(/security-events/);
+      expect(job).not.toMatch(/actions: read/);
+      expect(job).toMatch(/google\/osv-scanner-action\/osv-scanner-action@[0-9a-f]{40}/);
     });
+  });
+});
+
+describe("osv-scanner.toml", () => {
+  const source = () => readFile(path.join(process.cwd(), "osv-scanner.toml"), "utf8");
+
+  it("gives every ignored advisory a reason and a future expiry", async () => {
+    const text = await source();
+    const entries = text.split("[[IgnoredVulns]]").slice(1);
+    expect(entries.length).toBeGreaterThan(0);
+    for (const entry of entries) {
+      const id = /id = "([^"]+)"/.exec(entry)?.[1];
+      const reason = /reason = "([^"]+)"/.exec(entry)?.[1] ?? "";
+      const until = /ignoreUntil = (\d{4})-(\d{2})-(\d{2})/.exec(entry);
+      expect(id).toBeTruthy();
+      expect(reason.length).toBeGreaterThan(60);
+      expect(until).toBeTruthy();
+      const expiry = new Date(`${until[1]}-${until[2]}-${until[3]}T00:00:00Z`);
+      expect(Number.isNaN(expiry.getTime())).toBe(false);
+      expect(expiry.getTime()).toBeGreaterThan(Date.now());
+    }
+  });
+
+  it("is passed to the scanner, so an ignore cannot be silently bypassed", async () => {
+    const ci = await readFile(path.join(process.cwd(), ".github", "workflows", "ci.yml"), "utf8");
+    expect(ci).toContain("--config=./osv-scanner.toml");
   });
 });

@@ -1,0 +1,12 @@
+# Read by OSV-Scanner on every CI run (`.github/workflows/ci.yml`, job `osv`).
+#
+# An entry here is a decision with an owner and an expiry date, never a way to
+# silence the scan: the job fails on anything not listed, `ignoreUntil` makes the
+# decision expire, and `reason` has to say why the finding cannot be reached.
+# Re-check the reason before extending a date - if the answer changed, upgrade or
+# remove the dependency instead.
+
+[[IgnoredVulns]]
+id = "GHSA-g3hv-75wg-m249"
+ignoreUntil = 2027-01-31
+reason = "Reachable only through typedoc, a build-time dev dependency that is not shipped in dist/. The advisory is a denial of service in minimatch 10.2.6 when a caller passes an attacker-controlled glob pattern; typedoc's patterns come from this repository's typedoc.json on a CI runner. Fixed in minimatch 11.0.1, but typedoc 0.28.20 calls minimatch's removed `mini.matchOne` helper, so forcing 11 breaks `npm run docs:api` (verified: TypeError mini.matchOne is not a function). Remove this entry as soon as typedoc ships a release that depends on minimatch >= 11."

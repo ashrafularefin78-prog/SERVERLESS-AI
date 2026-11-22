@@ -239,3 +239,16 @@ this project does not claim (no server, no accounts, no multi-user isolation).
 This project has no bounty program and cannot pay for reports. It also does not
 run a bug-bounty platform, because a static app with no server has no
 infrastructure budget to fund one honestly.
+
+### Dependency advisories we have not fixed
+
+`npm audit --omit=dev` covers what ships. OSV additionally scans the whole
+lockfile, including build tooling, and fails the `osv` job on anything new.
+
+When an advisory has no upstream fix, it is recorded in `osv-scanner.toml` with a
+`reason` and an `ignoreUntil` date, never by weakening the scan. There is one
+entry today: GHSA-g3hv-75wg-m249, a denial-of-service in `minimatch` reached only
+through TypeDoc, which is a build-time dependency that is not in `dist/` and only
+ever receives glob patterns from this repository. The fixed `minimatch` release
+removed an API TypeDoc 0.28 still calls, so the choice was an ignore with an
+expiry or a broken `npm run docs:api`; the expiry forces the decision back open.
