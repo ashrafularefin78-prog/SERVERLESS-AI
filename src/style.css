@@ -3385,6 +3385,37 @@ select optgroup {
   accent-color: var(--accent);
 }
 
+.welcome-device {
+  margin: 14px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+}
+.welcome-device strong {
+  display: block;
+  font-size: 14px;
+}
+.welcome-device p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.progress {
+  height: 6px;
+  margin: 8px 0 0;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+.progress-fill {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width 0.25s var(--ease);
+}
+
 .env-grid {
   display: grid;
   gap: 6px;

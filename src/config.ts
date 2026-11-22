@@ -111,6 +111,7 @@ export const DEFAULT_SETTINGS: Settings = {
   offlineMode: false,
   acceptedLicenses: [],
   redactPii: false,
+  onboarded: false,
 };
 
 /** Character-based safeguards for local context (roughly 3 chars per token). */

@@ -33,6 +33,14 @@ Open an issue or a Discussion before starting anything from **Next** or **Later*
 
 ## Next
 
+- **Defer syntax highlighting out of the initial payload.** `highlight.js` (core plus
+  ~30 grammars) costs **72.2 kB gzip** of the entry chunk, measured by stubbing the
+  import and diffing the build; `marked` costs another 14.7 kB. Both are only needed
+  once a reply contains markdown, which is never true on first paint. Deferring them
+  means rendering a code block unhighlighted until the chunk arrives and re-rendering
+  when it does, which is the reason this was not done in a polish pass. Doing it
+  would bring the payload from 260 kB back to roughly 190 kB and let the 264 kB
+  budget shrink rather than grow.
 - **WebKit/Safari pass on the browser suite.** `PLAYWRIGHT_BROWSERS=firefox,webkit npm run test:e2e` runs the suite outside Chromium. Firefox is green (105 passed, 3 skipped because wllama's worker download cannot be intercepted there). WebKit still fails two specs, both unconfirmed as product bugs: `.model-option` never becomes "stable" for Playwright's click, and `#scroll-bottom` stays hidden after a scripted `scrollTop` change. Re-measure on a macOS WebKit build with a real trackpad before changing either behaviour, and note that one WebKit accessibility audit reported `#status-label` at `--text` on a light `--sidebar` background although the same light theme passes in Chromium.
 - **Bring your own model (BYOM).** Paste a Hugging Face URL or a GGUF link. Constraints: the CSP allows only Hugging Face hosts, so the UI must validate the host, pin or warn about the revision, probe the size, and reuse the resumable downloader. The license gate already handles models with no verified metadata, so the missing piece is size probing and revision pinning.
 - **Verified license metadata at sync time.** The curated list in `src/engine/model-licenses.ts` intentionally covers only a few families, because the WebLLM catalogue ships no license fields. The fix is to read license metadata from upstream model cards during `npm run models:sync` and fail the check when a model has none, rather than inferring anything from a name.

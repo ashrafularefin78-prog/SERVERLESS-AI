@@ -1,0 +1,28 @@
+# Review routing. GitHub requests a review from the owner of the last matching
+# pattern, so the most specific rule wins.
+
+# Everything, as the fallback.
+* @ashrafularefin78-prog
+
+# Security-sensitive paths: crypto, the vault, storage, the HTML sinks, and the
+# policies that constrain them. A change here deserves a second look, even a small
+# one.
+/src/crypto.ts @ashrafularefin78-prog
+/src/storage/ @ashrafularefin78-prog
+/src/trusted-types.ts @ashrafularefin78-prog
+/src/offline.ts @ashrafularefin78-prog
+/src/privacy/ @ashrafularefin78-prog
+/public/sw.js @ashrafularefin78-prog
+SECURITY.md @ashrafularefin78-prog
+
+# Supply chain and CI: a pinned action or a permission can change what runs on
+# every push.
+/.github/ @ashrafularefin78-prog
+/scripts/check-workflows.mjs @ashrafularefin78-prog
+/package.json @ashrafularefin78-prog
+/package-lock.json @ashrafularefin78-prog
+
+# Model metadata: licences and downloads are user-facing claims.
+/src/engine/model-license-table.json @ashrafularefin78-prog
+/src/engine/model-licenses.ts @ashrafularefin78-prog
+/scripts/sync-model-catalogue.mjs @ashrafularefin78-prog

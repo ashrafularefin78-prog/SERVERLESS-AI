@@ -1,13 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { GGUF_MODELS, LOCAL_MODELS } from "../../src/engine/models.js";
-import { acceptLicenseIfShown, pickModel, skipWithoutJspi } from "./helpers.js";
+import { acceptLicenseIfShown, pickModel, skipWithoutJspi, open } from "./helpers.js";
 
 test("sends a message and streams a local reply", async ({ page }) => {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
 
-  await page.goto("/");
+  await open(page);
   await expect(page.getByRole("heading", { name: "New chat" })).toBeVisible();
 
   await page.locator("#input").fill("hello");
@@ -22,7 +22,7 @@ test("sends a message and streams a local reply", async ({ page }) => {
 });
 
 test("offers a clickable model upgrade for unsupported knowledge questions", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
   await page.locator("#input").fill("Explain the TCP handshake");
   await page.locator("#send").click();
 
@@ -36,7 +36,7 @@ test("offers a clickable model upgrade for unsupported knowledge questions", asy
 });
 
 test("remembers and forgets a note through chat and settings", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
 
   await page.locator("#input").fill("remember my favorite color is teal");
   await page.locator("#send").click();
@@ -62,7 +62,7 @@ test("remembers and forgets a note through chat and settings", async ({ page }) 
 });
 
 test("encrypts chats at rest and requires the passphrase after reload", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
 
   await page.locator("#input").fill("remember the vault code is amber-42");
   await page.locator("#send").click();
@@ -110,7 +110,7 @@ test("encrypts chats at rest and requires the passphrase after reload", async ({
 });
 
 test("upgrades and unlocks a legacy v1 memory vault", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
   await page.evaluate(async () => {
     const db = await new Promise((resolve, reject) => {
       const request = indexedDB.open("localmind");
@@ -212,7 +212,7 @@ test("upgrades and unlocks a legacy v1 memory vault", async ({ page }) => {
 });
 
 test("clears chats and settings from the browser", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
 
   await page.locator("#input").fill("hello");
   await page.locator("#send").click();
@@ -228,13 +228,17 @@ test("clears chats and settings from the browser", async ({ page }) => {
 
   await expect(page.locator(".msg")).toHaveCount(0);
   await expect(page.locator("#chat-title")).toHaveText("New chat");
+  // A full reset is a first run again, so the introduction comes back.
+  await expect(page.locator("#welcome-dialog")).toBeVisible();
+  await page.locator("#welcome-start").click();
+  await expect(page.locator("#welcome-dialog")).toBeHidden();
 
   await page.locator("#open-settings").click();
   await expect(page.locator("#memory-list")).toContainText("Nothing remembered yet.");
 });
 
 test("warns about sensitive input without blocking, and refuses jailbreaks", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
 
   await page.locator("#input").fill("my email is john@example.com");
   await page.locator("#send").click();
@@ -251,7 +255,7 @@ test("warns about sensitive input without blocking, and refuses jailbreaks", asy
 
 test("compacts a long conversation and recaps dropped topics", async ({ page }) => {
   test.setTimeout(60_000);
-  await page.goto("/");
+  await open(page);
 
   const send = async (text) => {
     await page.locator("#input").fill(text);
@@ -268,7 +272,7 @@ test("compacts a long conversation and recaps dropped topics", async ({ page }) 
 });
 
 test("edits an earlier user message and resends, truncating later turns", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
 
   const send = async (text) => {
     await page.locator("#input").fill(text);
@@ -324,7 +328,7 @@ test("lists models and persists choices without downloading", async ({ page, con
     return route.continue();
   });
 
-  await page.goto("/");
+  await open(page);
   await page.locator("#open-settings").click();
   await expect(page.locator("#model-select")).toHaveValue("");
   await expect(page.locator("#model-load")).toBeHidden();
@@ -379,7 +383,7 @@ test("keeps new models unavailable without WebGPU and retains built-in chat", as
     Object.defineProperty(navigator, "gpu", { configurable: true, value: undefined });
   });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
+  await open(page);
   await page.locator("#open-sidebar").click();
   await page.locator("#open-settings").click();
   const model = LOCAL_MODELS.find((item) => item.id === "Qwen2.5-Coder-1.5B-Instruct-q4f32_1-MLC");
@@ -409,7 +413,7 @@ test("shows incompatible variants but blocks downloads on unsupported GPUs", asy
       },
     });
   });
-  await page.goto("/");
+  await open(page);
   await page.locator("#open-settings").click();
   await page.locator("#model-trigger").click();
   await expect(page.locator("#model-list [data-model-id]")).toHaveCount(LOCAL_MODELS.length + 1);
@@ -445,7 +449,7 @@ test("offers community GGUF models without WebGPU and persists the choice withou
     return route.continue();
   });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
+  await open(page);
   await page.locator("#open-sidebar").click();
   await page.locator("#open-settings").click();
   await page.locator("#model-trigger").click();
@@ -493,7 +497,7 @@ test("blocks community downloads when modern WebAssembly is unavailable", async 
   await page.addInitScript(() => {
     delete WebAssembly.Suspending;
   });
-  await page.goto("/");
+  await open(page);
   await page.locator("#open-settings").click();
   await pickModel(page, GGUF_MODELS[0].id);
   await expect(page.locator("#model-status")).toContainText("WebAssembly JSPI");
@@ -514,7 +518,7 @@ test("keeps built-in chat usable after a failed community model download", async
   await context.route("https://huggingface.co/**", (route) =>
     route.fulfill({ status: 503, body: "Unavailable" }),
   );
-  await page.goto("/");
+  await open(page);
   await skipWithoutJspi(page, test);
   await page.locator("#open-settings").click();
   await pickModel(page, GGUF_MODELS[0].id);
@@ -539,7 +543,7 @@ test("makes no cross-origin requests during a chat", async ({ page }) => {
     if (url.origin !== "http://127.0.0.1:4173") external.push(request.url());
   });
 
-  await page.goto("/");
+  await open(page);
   await page.locator("#input").fill("tell me a joke");
   await page.locator("#send").click();
   await expect(page.locator(".msg.assistant .msg-text").last()).not.toHaveClass(/streaming/);
@@ -548,7 +552,7 @@ test("makes no cross-origin requests during a chat", async ({ page }) => {
 });
 
 test("shows a local diagnostics log in Settings", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
   await page.locator("#open-settings").click();
 
   await expect(page.locator("#diagnostic-list")).toContainText("No local errors recorded.");
@@ -589,7 +593,7 @@ test("shows a local diagnostics log in Settings", async ({ page }) => {
 });
 
 test("reads the environment and exports a scrubbed bundle", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
   // A message with a marker makes any leak into the bundle obvious.
   await page.locator("#input").fill("SECRET-CHAT-MARKER");
   await page.locator("#send").click();
@@ -627,7 +631,7 @@ test("opens diagnostics directly with ?debug=true", async ({ page }) => {
 test("renders a page of a long conversation and loads earlier messages on request", async ({
   page,
 }) => {
-  await page.goto("/");
+  await open(page);
   await page.evaluate(async () => {
     const now = Date.now();
     const messages = Array.from({ length: 150 }, (_, index) => ({
@@ -676,7 +680,7 @@ test("renders a page of a long conversation and loads earlier messages on reques
 });
 
 test("shows retrieval scores behind a grounded reply", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
   await page.evaluate(async () => {
     const now = Date.now();
     const conversation = {
@@ -745,7 +749,7 @@ test("shows retrieval scores behind a grounded reply", async ({ page }) => {
 });
 
 test("keeps hashed build assets out of the cache that updates wipe", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
   await page.waitForFunction(() => Boolean(navigator.serviceWorker?.controller), null, {
     timeout: 15_000,
   });
@@ -787,7 +791,7 @@ test("offline mode blocks outbound requests from the service worker", async ({ p
       }
     }, MODEL_URL);
 
-  await page.goto("/");
+  await open(page);
   // The worker must control the page before it can block anything.
   await page.waitForFunction(() => Boolean(navigator.serviceWorker?.controller), null, {
     timeout: 15_000,
@@ -846,7 +850,7 @@ test("asks for license acceptance before a community download", async ({
     return route.fulfill({ status: 503, body: "Unavailable" });
   });
 
-  await page.goto("/");
+  await open(page);
   await skipWithoutJspi(page, test);
   await page.locator("#open-settings").click();
   await pickModel(page, GGUF_MODELS[0].id);
@@ -901,7 +905,7 @@ test("does not ask again once a license has been accepted", async ({
     return route.fulfill({ status: 503, body: "Unavailable" });
   });
 
-  await page.goto("/");
+  await open(page);
   await skipWithoutJspi(page, test);
   await page.locator("#open-settings").click();
   await pickModel(page, GGUF_MODELS[0].id);
@@ -920,7 +924,7 @@ test("does not ask again once a license has been accepted", async ({
 });
 
 test("offers a pre-filled bug report without collecting anything", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
   await page.locator("#open-settings").click();
 
   const link = page.locator("#report-bug");
@@ -956,7 +960,7 @@ test("locking during a slow reply never writes the reply in the clear", async ({
   // saving every couple of seconds, and those writes had no key, so the whole
   // conversation landed in IndexedDB as plaintext.
   await page.clock.install();
-  await page.goto("/");
+  await open(page);
 
   await page.locator("#open-settings").click();
   await page.locator("#vault-enable").click();
@@ -1019,7 +1023,7 @@ test("locking during a slow reply never writes the reply in the clear", async ({
 
 test("hiding the tab briefly keeps the vault unlocked", async ({ page }) => {
   await page.clock.install();
-  await page.goto("/");
+  await open(page);
 
   await page.locator("#open-settings").click();
   await page.locator("#vault-enable").click();
@@ -1052,7 +1056,7 @@ test("hiding the tab briefly keeps the vault unlocked", async ({ page }) => {
 });
 
 test("redacts identifiers from the prompt but keeps the chat readable", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
   await page.locator("#open-settings").click();
   await expect(page.locator("#redact-pii")).not.toBeChecked();
   await expect(page.locator("#redact-pii-note")).toContainText("exactly as you typed it");

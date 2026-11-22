@@ -1,7 +1,7 @@
 import { expect, test, devices } from "@playwright/test";
 import { GGUF_MODELS } from "../../src/engine/models.js";
 import { lightestCpuModel } from "../../src/engine/device.js";
-import { pickModel } from "./helpers.js";
+import { pickModel, open } from "./helpers.js";
 
 // `defaultBrowserType` may only be set in the config, so copy the device's
 // browser context options explicitly.
@@ -56,7 +56,7 @@ test.describe("touch laptop", () => {
       window.matchMedia = (query) =>
         query === "(any-pointer: fine)" ? { ...original(query), matches: true } : original(query);
     });
-    await page.goto("/");
+    await open(page);
     await page.locator("#open-settings").click();
 
     await expect(page.locator("#device-check-spec")).not.toContainText("phone/tablet");
@@ -70,7 +70,7 @@ test.describe("phone without WebGPU", () => {
 
   test("recommends the built-in assistant", async ({ page }) => {
     await stubDevice(page, { gpu: false, memory: 4 });
-    await page.goto("/");
+    await open(page);
     await page.locator("#open-sidebar").click();
     await page.locator("#open-settings").click();
 
@@ -89,7 +89,7 @@ test("recommends and selects the lightest CPU model on a desktop without WebGPU"
   page,
 }) => {
   await stubDevice(page, { gpu: false, memory: 8 });
-  await page.goto("/");
+  await open(page);
   await page.locator("#open-settings").click();
 
   await expect(page.locator("#device-check-spec")).toContainText("No WebGPU");
@@ -108,7 +108,7 @@ test("recommends and selects the lightest CPU model on a desktop without WebGPU"
 
 test("recommends a GPU model when WebGPU is available", async ({ page }) => {
   await stubDevice(page, { gpu: true, memory: 8 });
-  await page.goto("/");
+  await open(page);
   await page.locator("#open-settings").click();
 
   await expect(page.locator("#device-check-spec")).toContainText("WebGPU available");
@@ -122,7 +122,7 @@ test("recommends a GPU model when WebGPU is available", async ({ page }) => {
 
 test("warns and asks before a download that cannot fit", async ({ page }) => {
   await stubDevice(page, { gpu: false, memory: 2 });
-  await page.goto("/");
+  await open(page);
   await page.locator("#open-settings").click();
 
   await pickModel(page, heaviest.id);
@@ -156,7 +156,7 @@ test.describe("iPhone", () => {
     // iOS reports no deviceMemory at all, which is exactly the case the tab
     // budget has to cover.
     await stubDevice(page, { gpu: false, memory: null });
-    await page.goto("/");
+    await open(page);
     // The phone layout keeps settings behind the history drawer.
     await page.locator("#open-sidebar").click();
     await page.locator("#open-settings").click();

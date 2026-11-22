@@ -93,6 +93,8 @@ export interface Settings {
    * model. The conversation still shows what the user typed.
    */
   redactPii: boolean;
+  /** True once the first-run introduction has been shown and dismissed. */
+  onboarded: boolean;
 }
 
 export interface Mode {
@@ -142,7 +144,8 @@ export interface StoredChunk {
 }
 
 export interface KnowledgeProgress {
-  phase: "download" | "embed";
+  /** Which stage of indexing is running; the order is chunk -> download -> embed -> save. */
+  phase: "chunk" | "download" | "embed" | "save";
   file: string;
   loaded: number;
   total: number;

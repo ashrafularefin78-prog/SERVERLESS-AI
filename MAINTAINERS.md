@@ -51,6 +51,7 @@ npm run build && npm run check:size
 PLAYWRIGHT_PREVIEW=1 npx playwright test          # production CSP + service worker
 PLAYWRIGHT_BROWSERS=firefox PLAYWRIGHT_PREVIEW=1 npx playwright test
 npm run models:licenses      # read the unknown count before you ship a catalogue
+npm run deps:licenses        # shipped dependencies must all be permissive
 ```
 
 Then:
@@ -60,9 +61,13 @@ Then:
    `npm run version`, writes `CHANGELOG.md`, and bumps `package.json`.
 3. Tag: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`.
 4. Create the GitHub Release from that tag and paste the matching
-   `CHANGELOG.md` section. Attach nothing that is already in the repo.
+   `CHANGELOG.md` section (`docs/release-notes-v1.0.0.md` is the 1.0.0 body).
+   Pushing the tag also runs the `artifacts` job, which attaches
+   `localmind-vX.Y.Z.zip` and `sbom.cdx.json` to that release, so nothing has to
+   be built by hand.
 5. Confirm the deploy: `.github/workflows/deploy.yml` publishes `dist/` to
-   GitHub Pages, and `Source maps`/SBOM artifacts land on the run page.
+   GitHub Pages, and the SBOM artifact lands on the run page. Check that the
+   release shows both attached assets.
 
 `docs/release-notes-v1.0.0.md` is the body used for the 1.0.0 release; copy the
 pattern from it for later versions.

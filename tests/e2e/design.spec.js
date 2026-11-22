@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { GGUF_MODELS, WEBLLM_MODELS } from "../../src/engine/models.js";
-import { pickModel } from "./helpers.js";
+import { pickModel, open } from "./helpers.js";
 
 const DESKTOP = { width: 1440, height: 900 };
 const PHONE = { width: 390, height: 844 };
@@ -26,7 +26,7 @@ test("desktop shell renders the hero welcome without overflow or clipped content
   page,
 }) => {
   await page.setViewportSize(DESKTOP);
-  await page.goto("/");
+  await open(page);
 
   await expect(page.getByRole("heading", { name: "New chat" })).toBeVisible();
   await expect(page.locator(".welcome .eyebrow")).toBeVisible();
@@ -49,7 +49,7 @@ test("phone welcome starts at the top and the drawer opens and closes cleanly", 
   page,
 }) => {
   await page.setViewportSize(PHONE);
-  await page.goto("/");
+  await open(page);
 
   await expect(page.locator(".hero-orb")).toBeHidden();
   await expect(page.locator(".welcome .eyebrow")).toBeVisible();
@@ -70,7 +70,7 @@ test("phone welcome starts at the top and the drawer opens and closes cleanly", 
 });
 
 test("theme toggle swaps palettes and the choice survives a reload", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
 
   if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== "dark") {
     await page.locator("#theme-toggle").click();
@@ -92,7 +92,7 @@ test("theme toggle swaps palettes and the choice survives a reload", async ({ pa
 });
 
 test("red palettes and ambient interface animations are active", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
   if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== "dark") {
     await page.locator("#theme-toggle").click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -126,7 +126,7 @@ test("red palettes and ambient interface animations are active", async ({ page }
 
 test("light theme faint text meets AA contrast", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
-  await page.goto("/");
+  await open(page);
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 
   const contrast = await page.evaluate(() => {
@@ -168,7 +168,7 @@ test("model picker options are readable in both themes", async ({ page }) => {
       return (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05);
     });
 
-  await page.goto("/");
+  await open(page);
   if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== "dark") {
     await page.locator("#theme-toggle").click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -186,7 +186,7 @@ test("model picker options are readable in both themes", async ({ page }) => {
 });
 
 test("model picker filters by search and groups by family", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
   await page.locator("#open-settings").click();
   await page.locator("#model-trigger").click();
   await expect(page.locator("#model-search")).toBeVisible();
@@ -231,7 +231,7 @@ test("model picker filters by search and groups by family", async ({ page }) => 
 });
 
 test("model picker family list is exhaustive", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
   await page.locator("#open-settings").click();
   await page.locator("#model-trigger").click();
   const families = await page
@@ -255,7 +255,7 @@ test.describe("reduced motion", () => {
   test.use({ reducedMotion: "reduce" });
 
   test("disables decorative animation", async ({ page }) => {
-    await page.goto("/");
+    await open(page);
     expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(
       true,
     );
@@ -276,7 +276,7 @@ test.describe("reduced motion", () => {
 
 test("conversation keeps messages aligned and the composer pinned", async ({ page }) => {
   await page.setViewportSize(DESKTOP);
-  await page.goto("/");
+  await open(page);
 
   await page.locator("#input").fill("hello");
   await page.locator("#send").click();

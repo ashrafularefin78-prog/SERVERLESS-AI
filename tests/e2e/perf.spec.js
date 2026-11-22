@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { open } from "./helpers.js";
 
 // A performance guard that runs against the production build. It is not a
 // Lighthouse replacement; it catches the regressions that matter for this app:
@@ -50,7 +51,7 @@ async function paintMetrics(page) {
 }
 
 test("first paint is fast and the initial payload stays small", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
   await expect(page.locator(".welcome")).toBeVisible();
   const metrics = await paintMetrics(page);
 
@@ -65,7 +66,7 @@ test("first paint is fast and the initial payload stays small", async ({ page })
 });
 
 test("a long conversation renders a bounded number of nodes", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
   await page.evaluate(async () => {
     const request = indexedDB.open("localmind");
     const db = await new Promise((resolve, reject) => {
@@ -112,7 +113,7 @@ test("stays responsive while a reply streams on a throttled CPU", async ({ page,
   // streaming and markdown rendering, so slow the CPU down and check that a user
   // can still stop the reply instead of waiting for it to finish.
   test.skip(browserName !== "chromium", "CPU throttling is driven through CDP.");
-  await page.goto("/");
+  await open(page);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: 6 });
 

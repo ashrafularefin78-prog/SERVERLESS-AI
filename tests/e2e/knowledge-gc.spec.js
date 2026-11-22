@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
+import { open } from "./helpers.js";
 
 // Deleting a document has to remove its vectors, not just the document row.
 // A row that stays behind keeps every Float32Array alive in IndexedDB, which is
 // how a browser profile fills up with data the app can no longer see.
 
 test("removing a document deletes its stored vectors", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
 
   const seeded = await page.evaluate(async () => {
     const open = () =>

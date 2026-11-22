@@ -45,3 +45,19 @@ export async function skipWithoutJspi(page, test) {
   );
   test.skip(!jspi, "Community GGUF downloads require WebAssembly JSPI (Chromium only).");
 }
+
+/**
+ * Navigate and get past the first-run introduction. Every spec that is not about
+ * onboarding wants a ready app, and a fresh browser profile always sees the modal.
+ */
+export async function open(page, path = "/") {
+  await page.goto(path);
+  const welcome = page.locator("#welcome-dialog");
+  // The dialog appears after boot finishes, which can be later than the load event,
+  // so give it a moment before deciding it is absent.
+  await welcome.waitFor({ state: "visible", timeout: 3_000 }).catch(() => {});
+  if (await welcome.isVisible()) {
+    await page.locator("#welcome-start").click();
+    await expect(welcome).toBeHidden();
+  }
+}

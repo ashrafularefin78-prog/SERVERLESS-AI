@@ -1,16 +1,17 @@
 import { expect, test } from "@playwright/test";
+import { open } from "./helpers.js";
 
 // Trusted Types is only meaningful with enforcement switched on, so these tests
 // assert the enforcement itself, then that the sanitizer behind the policy still
 // removes executable markup, then that the app's own inline SVG survives.
 
 async function seedChatWithMarkup(page, content) {
-  await page.goto("/");
+  await open(page);
   return seedAndOpen(page, content, "Markup chat");
 }
 
 async function seedAndOpen(page, content, title) {
-  if (!page.url().includes("localhost")) await page.goto("/");
+  if (!page.url().includes("localhost")) await open(page);
   await page.evaluate(
     async ([text, title]) => {
       const db = await new Promise((resolve, reject) => {
@@ -55,7 +56,7 @@ const collectViolations = () => {
 
 test("enforces Trusted Types on string sinks", async ({ page }) => {
   await page.addInitScript(collectViolations);
-  await page.goto("/");
+  await open(page);
 
   const enforced = await page.evaluate(() => {
     const node = document.createElement("div");
@@ -74,7 +75,7 @@ test("enforces Trusted Types on string sinks", async ({ page }) => {
 
 test("raises no policy violations while the app renders and chats", async ({ page }) => {
   await page.addInitScript(collectViolations);
-  await page.goto("/");
+  await open(page);
   await expect(page.locator(".hero-stat")).toHaveCount(3);
 
   await page.locator("#input").fill("hello");
@@ -119,7 +120,7 @@ test("sanitizes injected markup into text", async ({ page }) => {
 });
 
 test("keeps inline SVG icons and code blocks working under the policy", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
 
   // Welcome view icons are inline SVG inserted through the policy.
   await expect(page.locator(".hero-stat svg use").first()).toHaveCount(1);

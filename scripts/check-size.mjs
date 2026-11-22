@@ -7,7 +7,12 @@ import { gzipSync } from "node:zlib";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.join(root, "dist");
-const BUDGET_BYTES = 260 * 1024;
+// Raised from 260 kB to 264 kB when the first-run introduction and the indexing
+// progress bar landed: those are UI the app needs on load, not optional extras.
+// The measured next saving is large and known - highlight.js costs ~72 kB gzip of
+// this payload and is only needed once a reply contains a code block - so the
+// budget should come back down when that is deferred, not creep up again.
+const BUDGET_BYTES = 264 * 1024;
 
 let html;
 try {

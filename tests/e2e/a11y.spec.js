@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { open } from "./helpers.js";
 
 // Contrast is measured on whatever is painted at that instant, so a mid-fade
 // element can fail an audit it would pass a frame later. The app honours the
@@ -15,13 +16,13 @@ async function expectNoA11yViolations(page, name) {
 }
 
 test("welcome screen meets automated WCAG accessibility checks", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
   await expect(page.getByRole("heading", { name: "New chat" })).toBeVisible();
   await expectNoA11yViolations(page, "welcome screen");
 });
 
 test("conversation and Settings meet automated WCAG accessibility checks", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
   await page.locator("#input").fill("hello");
   await page.locator("#send").click();
   await expect(page.locator(".msg.assistant .msg-text").last()).toContainText("Hey");
@@ -37,7 +38,7 @@ test("conversation and Settings meet automated WCAG accessibility checks", async
 });
 
 test("model picker is operable from the keyboard and restores trigger focus", async ({ page }) => {
-  await page.goto("/");
+  await open(page);
   const trigger = page.locator("#composer-model-trigger");
   await trigger.focus();
   await page.keyboard.press("Enter");

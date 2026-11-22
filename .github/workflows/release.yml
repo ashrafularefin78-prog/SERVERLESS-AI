@@ -6,6 +6,7 @@ name: Release
 on:
   push:
     branches: [main]
+    tags: ["v*"]
 
 permissions:
   contents: write
@@ -18,6 +19,8 @@ concurrency:
 jobs:
   version:
     name: Open or update the version pull request
+    # Only on branch pushes: a tag is a finished version, not a new changeset.
+    if: startsWith(github.ref, 'refs/heads/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -35,3 +38,32 @@ jobs:
           title: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # A pushed tag is a published version, so the release it points at should carry
+  # the exact bytes and the bill of materials. `gh` is preinstalled on runners, so
+  # this needs no third-party action.
+  artifacts:
+    name: Attach build artifacts to the release
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run check:size
+      - run: npm run sbom > sbom.cdx.json
+      - name: Package the build
+        run: |
+          cd dist
+          zip -qr ../localmind-${{ github.ref_name }}.zip .
+      - name: Attach to the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}"             "localmind-${{ github.ref_name }}.zip" sbom.cdx.json --clobber

@@ -470,6 +470,18 @@
                 hidden
               />
             </div>
+            <div
+              class="progress"
+              id="knowledge-progress"
+              role="progressbar"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+              aria-label="Indexing progress"
+              hidden
+            >
+              <div class="progress-fill" id="knowledge-progress-fill"></div>
+            </div>
             <p class="memory-note" id="knowledge-status"></p>
           </section>
 
@@ -641,6 +653,29 @@
             Agree and download
           </button>
         </div>
+      </div>
+    </dialog>
+
+    <dialog class="modal welcome-modal" id="welcome-dialog" aria-labelledby="welcome-title">
+      <div class="modal-card">
+        <p class="eyebrow">First run</p>
+        <h2 id="welcome-title">Welcome to LocalMind</h2>
+        <div class="welcome-device">
+          <strong id="welcome-device-title">Checking this device...</strong>
+          <p id="welcome-device-reason"></p>
+        </div>
+        <div class="setting-actions">
+          <button class="btn primary" id="welcome-start" type="button">
+            Start with the built-in assistant
+          </button>
+          <button class="btn subtle" id="welcome-model" type="button">
+            Choose a model instead
+          </button>
+        </div>
+        <p class="memory-note small">
+          The built-in assistant answers instantly, offline, with no download. A model gives neural
+          replies and needs a one-time download of a few hundred megabytes.
+        </p>
       </div>
     </dialog>
 

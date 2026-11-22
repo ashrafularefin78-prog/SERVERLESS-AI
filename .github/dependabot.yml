@@ -10,6 +10,12 @@ updates:
         dependency-type: production
       development-dependencies:
         dependency-type: development
+      # Security advisories arrive as their own group, so a week with several
+      # advisories is one reviewable pull request instead of a queue.
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
     labels:
       - dependencies
 

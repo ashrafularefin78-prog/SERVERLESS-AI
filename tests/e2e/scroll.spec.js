@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
+import { open } from "./helpers.js";
 
 // Auto-scroll has one rule with two halves: follow the reply while the reader is
 // at the end, and stop the moment they scroll away. These tests drive both.
 
 async function seedLongChat(page, messages = 24) {
-  await page.goto("/");
+  await open(page);
   await page.evaluate(async (count) => {
     const db = await new Promise((resolve, reject) => {
       const request = indexedDB.open("localmind");

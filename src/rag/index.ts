@@ -51,6 +51,7 @@ export async function addDocument(
     throw new Error(`The knowledge base holds at most ${RAG.maxDocuments} documents.`);
   }
 
+  onProgress?.({ phase: "chunk", file: cleanTitle, loaded: 0, total: 1 });
   const pieces = chunkText(content, {
     maxChars: RAG.chunkChars,
     overlapChars: RAG.overlapChars,
@@ -86,6 +87,7 @@ export async function addDocument(
     vector: Float32Array.from(vectors[index] ?? []),
   }));
 
+  onProgress?.({ phase: "save", file: cleanTitle, loaded: pieces.length, total: pieces.length });
   await saveKnowledgeDoc(doc, chunks);
   return doc;
 }

@@ -2,6 +2,58 @@
 
 LocalMind is a static single-page app. All code runs in the browser tab; there is no backend, API, database server, or account system.
 
+## Module map
+
+```mermaid
+graph TD
+  main["main.ts<br/>boot, service worker"] --> app["app.ts<br/>state, DOM events"]
+  app --> storage["storage/db.ts<br/>IndexedDB"]
+  app --> render["ui/render.ts<br/>safe DOM"]
+  render --> markdown["markdown.ts<br/>marked + DOMPurify"]
+  markdown --> hl["coder/highlight.ts<br/>highlight.js"]
+  app --> engine["engine/manager.ts<br/>generation lifecycle"]
+  engine --> demo["engine/demo.ts<br/>built-in rules"]
+  engine --> local["engine/local.ts<br/>WebGPU session"]
+  local --> worker["engine/model-worker.ts<br/>WebLLM in a Worker"]
+  engine --> gguf["engine/gguf.ts<br/>wllama on CPU"]
+  gguf --> download["engine/resumable-download.ts<br/>OPFS resume"]
+  app --> rag["rag/index.ts<br/>retrieval"]
+  rag --> embed["rag/embed-worker.ts<br/>MiniLM"]
+  rag --> vectors["rag/store.ts<br/>documents + chunks"]
+  app --> privacy["privacy/redact.ts<br/>optional masking"]
+  app --> diagnostics["diagnostics.ts<br/>local log only"]
+```
+
+Everything above runs in one browser tab. Two Workers exist: one owns the neural
+engine, one owns the embedding model; the page never shares a GPU allocation with
+a Worker it does not own.
+
+## A reply, end to end
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant A as app.ts
+  participant P as privacy/redact
+  participant R as rag/
+  participant M as engine
+  participant D as IndexedDB
+  U->>A: send
+  A->>D: persist the typed message (as typed)
+  A->>R: retrieve(latest user turn)
+  R-->>A: passages + scores (may abstain)
+  A->>P: mask identifiers (only if enabled)
+  P-->>A: prompt text with [EMAIL_1] placeholders
+  A->>M: generate(messages)
+  M-->>A: chunks (stream)
+  A->>A: paint once per frame, announce start
+  A->>D: save every ~2.5 s, encrypted if a vault is unlocked
+  A->>A: announce "Response complete."
+```
+
+The message the user typed is what gets stored; only the text handed to the model
+is redacted. A locked vault refuses the write rather than storing plaintext.
+
 ## Runtime at a glance
 
 ```

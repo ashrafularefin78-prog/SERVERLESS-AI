@@ -45,6 +45,10 @@ import {
 } from "./diagnostics.js";
 import type { GpuAdapterInfo, StorageUsage } from "./diagnostics-bundle.js";
 import type { RedactionResult } from "./privacy/redact.js";
+import type { IndexProgressView } from "./rag/progress.js";
+
+/** Loaded when indexing starts: a reader who never adds a document never needs it. */
+const loadIndexProgress = () => import("./rag/progress.js");
 
 /**
  * The redaction module is a lazy dependency: a user who never turns the setting on
@@ -186,6 +190,13 @@ interface Dom {
   "knowledge-add": HTMLButtonElement;
   "knowledge-file": HTMLInputElement;
   "knowledge-status": HTMLElement;
+  "welcome-dialog": HTMLDialogElement;
+  "welcome-device-title": HTMLElement;
+  "welcome-device-reason": HTMLElement;
+  "welcome-start": HTMLButtonElement;
+  "welcome-model": HTMLButtonElement;
+  "knowledge-progress": HTMLElement;
+  "knowledge-progress-fill": HTMLElement;
   "vault-status": HTMLElement;
   "vault-enable": HTMLButtonElement;
   "vault-unlock": HTMLButtonElement;
@@ -357,6 +368,8 @@ export async function boot() {
     // `?debug=true` is the link a maintainer can hand to a user: it lands on the
     // diagnostics panel instead of asking them to find it.
     openSettings({ scrollToDiagnostics: true });
+  } else if (!maybeShowWelcome()) {
+    void settleWelcome();
   }
 }
 
@@ -438,6 +451,13 @@ function cacheDom() {
     "knowledge-add",
     "knowledge-file",
     "knowledge-status",
+    "welcome-dialog",
+    "welcome-device-title",
+    "welcome-device-reason",
+    "welcome-start",
+    "welcome-model",
+    "knowledge-progress",
+    "knowledge-progress-fill",
     "vault-status",
     "vault-enable",
     "vault-unlock",
@@ -666,6 +686,11 @@ function bindEvents() {
   });
   dom["hardware-stats"].addEventListener("change", () => {
     void saveSettingsPatch({ hardwareStats: dom["hardware-stats"].checked });
+  });
+  dom["welcome-start"].addEventListener("click", () => closeWelcome());
+  dom["welcome-model"].addEventListener("click", () => {
+    closeWelcome();
+    openSettings();
   });
   dom["diagnostics-copy"].addEventListener("click", () => void copyDiagnostics());
   dom["diagnostics-export"].addEventListener("click", () => void exportDiagnosticsBundle());
@@ -1428,19 +1453,17 @@ async function addKnowledgeFiles(files: File[]) {
   state.knowledgeBusy = true;
   renderKnowledgePanel();
 
+  const describeIndexProgress = await loadIndexProgress()
+    .then((module) => module.describeIndexProgress)
+    .catch(() => null);
   setEmbeddingProgressListener((progress) => {
-    const status = dom["knowledge-status"];
-    if (progress.phase === "download") {
-      const percent = progress.total ? Math.round((progress.loaded / progress.total) * 100) : 0;
-      status.textContent = `Preparing the embedding model... ${percent}%`;
-      return;
-    }
-    status.textContent = `Indexing ${progress.file}: ${progress.loaded}/${progress.total} chunks...`;
+    if (describeIndexProgress) setIndexProgress(describeIndexProgress(progress));
+    else setIndexProgress({ percent: 0, label: `Indexing ${progress.file}...`, busy: true });
   });
 
   try {
     for (const file of files) {
-      dom["knowledge-status"].textContent = `Indexing ${file.name}...`;
+      setIndexProgress({ percent: 2, label: `Reading ${file.name}...`, busy: true });
       await addDocumentFile(file);
     }
     toast(
@@ -1453,8 +1476,24 @@ async function addKnowledgeFiles(files: File[]) {
   } finally {
     setEmbeddingProgressListener(null);
     state.knowledgeBusy = false;
+    setIndexProgress(null);
     await refreshKnowledge();
   }
+}
+
+function setIndexProgress(view: IndexProgressView | null) {
+  const bar = dom["knowledge-progress"];
+  if (!view) {
+    bar.hidden = true;
+    bar.setAttribute("aria-valuenow", "0");
+    dom["knowledge-progress-fill"].style.width = "0%";
+    return;
+  }
+  bar.hidden = false;
+  bar.setAttribute("aria-valuenow", String(view.percent));
+  bar.setAttribute("aria-valuetext", view.label);
+  dom["knowledge-progress-fill"].style.width = `${view.percent}%`;
+  dom["knowledge-status"].textContent = view.label;
 }
 
 async function deleteKnowledge(id: string) {
@@ -3007,6 +3046,37 @@ function toast(message: string) {
 
 function offlineModeActive(): boolean {
   return Boolean(state.settings.offlineMode);
+}
+
+/**
+ * The first-run introduction. It states what this device can actually run instead
+ * of guessing, and the primary action is the zero-download path, because that is
+ * the honest recommendation for most people.
+ */
+function maybeShowWelcome() {
+  if (state.settings.onboarded) return false;
+  const recommendation = getWelcomeModelRecommendation();
+  dom["welcome-device-title"].textContent = recommendation
+    ? recommendation.title
+    : "The built-in assistant is the right place to start";
+  dom["welcome-device-reason"].textContent = recommendation
+    ? recommendation.reason
+    : "This device does not report a usable GPU, so a neural model would be slow or would not fit. The built-in assistant needs no download and works offline.";
+  dom["welcome-model"].hidden = !recommendation;
+  if (!dom["welcome-dialog"].open) dom["welcome-dialog"].showModal();
+  return true;
+}
+
+function closeWelcome() {
+  // Persist before closing: a reload straight after dismissing must not greet the
+  // same person again, and the write is what makes that true.
+  void settleWelcome().finally(() => closeDialog(dom["welcome-dialog"]));
+}
+
+/** Escape and backdrop clicks count as a choice too, so it never shows twice. */
+async function settleWelcome() {
+  if (state.settings.onboarded) return;
+  await saveSettingsPatch({ onboarded: true });
 }
 
 function renderRedactionSetting() {
