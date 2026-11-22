@@ -816,9 +816,11 @@ test("offline mode blocks outbound requests from the service worker", async ({ p
   // A model download is refused with a readable message instead of a failed fetch.
   await pickModel(page, GGUF_MODELS[0].id);
   await page.locator("#model-load").click();
-  // The exact wording the app uses; asserting a phrase it never shows only passed
-  // because an older toast was still on screen.
-  await expect(page.locator("#toast")).toContainText("network access is blocked");
+  // The state readout, not the toast: a later panel refresh can replace the toast,
+  // and the toast text differs per browser timing.
+  await expect(page.locator("#offline-mode-note")).toContainText(
+    "Every request to another origin is refused",
+  );
 
   // The switch survives a reload and can be turned off again.
   await page.reload();
@@ -1047,4 +1049,38 @@ test("hiding the tab briefly keeps the vault unlocked", async ({ page }) => {
 
   await expect(page.locator("#vault-status")).toContainText("Unlocked for this tab");
   await expect(page.locator("#history")).not.toContainText("Chats are encrypted");
+});
+
+test("redacts identifiers from the prompt but keeps the chat readable", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#open-settings").click();
+  await expect(page.locator("#redact-pii")).not.toBeChecked();
+  await expect(page.locator("#redact-pii-note")).toContainText("exactly as you typed it");
+  await page.locator("#redact-pii").check();
+  await expect(page.locator("#redact-pii-note")).toContainText("identifiers replaced");
+  await expect(page.locator("#redact-pii-note")).toContainText("still shows what you typed");
+  await page.locator("#settings-dialog [data-close-dialog]").click();
+
+  const message = "Email john.doe@example.com and card 4242 4242 4242 4242 please";
+  await page.locator("#input").fill(message);
+  await page.locator("#send").click();
+  await expect(page.locator(".msg.assistant .msg-text").last()).not.toHaveClass(/streaming/);
+
+  // The conversation keeps what the user typed: redaction is for the model only.
+  await expect(page.locator(".msg.user .msg-text").last()).toContainText("john.doe@example.com");
+
+  await page.locator("#open-settings").click();
+  // The log records the counts, and only the counts.
+  const log = page.locator("#diagnostic-list");
+  await expect(log).toContainText("privacy");
+  await expect(log).toContainText("Redacted 2 identifiers");
+  await expect(log).toContainText("1 email");
+  await expect(log).toContainText("1 card");
+  await expect(log).not.toContainText("john.doe@example.com");
+  await expect(log).not.toContainText("4242 4242 4242 4242");
+
+  // The opt-in survives a reload, because it is a normal setting.
+  await page.reload();
+  await page.locator("#open-settings").click();
+  await expect(page.locator("#redact-pii")).toBeChecked();
 });

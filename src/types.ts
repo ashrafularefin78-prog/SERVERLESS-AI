@@ -87,6 +87,12 @@ export interface Settings {
   offlineMode: boolean;
   /** License keys the user has accepted, so a download is not re-gated. */
   acceptedLicenses: string[];
+  /**
+   * Opt-in, off by default. Masks structured identifiers (emails, phone numbers,
+   * card numbers, IBANs, SSNs, API tokens, IP addresses) in the text handed to a
+   * model. The conversation still shows what the user typed.
+   */
+  redactPii: boolean;
 }
 
 export interface Mode {
@@ -100,6 +106,8 @@ export interface MessageStats {
   tokens: number;
   seconds: number;
   tokensPerSecond: number;
+  /** Time from asking to the first painted character, in milliseconds. */
+  ttftMs?: number;
 }
 
 export interface Message {

@@ -44,6 +44,13 @@ import {
   type DiagnosticEntry,
 } from "./diagnostics.js";
 import type { GpuAdapterInfo, StorageUsage } from "./diagnostics-bundle.js";
+import type { RedactionResult } from "./privacy/redact.js";
+
+/**
+ * The redaction module is a lazy dependency: a user who never turns the setting on
+ * never downloads or parses it.
+ */
+const loadRedactor = () => import("./privacy/redact.js");
 
 /**
  * Loaded on demand. The probes touch WebGPU and OPFS, and a reader who never opens
@@ -199,6 +206,8 @@ interface Dom {
   "hardware-stats": HTMLInputElement;
   "offline-mode": HTMLInputElement;
   "offline-mode-note": HTMLElement;
+  "redact-pii": HTMLInputElement;
+  "redact-pii-note": HTMLElement;
   "offline-badge": HTMLElement;
   "diagnostic-list": HTMLUListElement;
   "diagnostic-env": HTMLElement;
@@ -449,6 +458,8 @@ function cacheDom() {
     "hardware-stats",
     "offline-mode",
     "offline-mode-note",
+    "redact-pii",
+    "redact-pii-note",
     "offline-badge",
     "diagnostic-list",
     "diagnostic-env",
@@ -649,6 +660,10 @@ function bindEvents() {
     resolve?.(false);
   });
 
+  dom["redact-pii"].addEventListener("change", () => {
+    void saveSettingsPatch({ redactPii: dom["redact-pii"].checked });
+    renderRedactionSetting();
+  });
   dom["hardware-stats"].addEventListener("change", () => {
     void saveSettingsPatch({ hardwareStats: dom["hardware-stats"].checked });
   });
@@ -999,6 +1014,7 @@ function syncSettingsForm() {
   renderMemoryList();
   renderVaultControls();
   dom["hardware-stats"].checked = Boolean(state.settings.hardwareStats);
+  renderRedactionSetting();
   renderOfflineMode();
   renderDiagnostics();
 }
@@ -2433,10 +2449,12 @@ async function runGeneration(assistantId: string) {
     }
   }
 
+  const redactionRun = state.settings.redactPii ? await loadRedactor().catch(() => null) : null;
   const messagesForEngine = buildEngineMessages(
     conversation,
     assistantId,
     knowledge?.block ?? null,
+    redactionRun,
   );
   if (!messagesForEngine) {
     assistant.streaming = false;
@@ -2459,6 +2477,7 @@ async function runGeneration(assistantId: string) {
   updateEngineChrome(engine.getState());
 
   const started = performance.now();
+  let firstTokenAt: number | null = null;
   let accumulated = "";
   let usage: { completion_tokens: number; total_tokens: number } | null = null;
   let aborted = false;
@@ -2479,6 +2498,7 @@ async function runGeneration(assistantId: string) {
       if (runId !== state.runId) return;
 
       if ("text" in chunk && chunk.text) {
+        firstTokenAt ??= performance.now();
         accumulated += chunk.text;
         state.partialText = accumulated;
         const node = dom.messages.querySelector<HTMLElement>(
@@ -2536,6 +2556,7 @@ async function runGeneration(assistantId: string) {
           tokens,
           seconds,
           tokensPerSecond: tokens / seconds,
+          ...(firstTokenAt === null ? {} : { ttftMs: Math.round(firstTokenAt - started) }),
         };
       }
     }
@@ -2574,6 +2595,7 @@ function buildEngineMessages(
   conversation: Conversation,
   excludeId: string,
   knowledgeBlock: string | null = null,
+  redactionRun: typeof import("./privacy/redact.js") | null = null,
 ): ChatMessage[] | null {
   const mode = modeById(state.settings.mode);
   const latestUser =
@@ -2586,13 +2608,33 @@ function buildEngineMessages(
   const effort = effortById(state.settings.effort);
   let systemPrompt = `${mode.prompt}\n\n${CONVERSATION_SKILLS}\n\n${UNDERSTANDING_SKILLS}\n\n${SYSTEM_GUARDRAIL}\n\n${effort.prompt}`;
 
+  // Retrieved passages are the user's own documents, so they are redacted exactly
+  // like the prompt when the setting is on. The counts are reported; values never are.
+  const redaction: RedactionResult = { text: "", counts: {}, total: 0 };
+  const redactor = redactionRun?.redactPII ?? null;
+  // `compactHistory` measures the same text it later returns, so counting there
+  // would report every message twice. Only the final content is counted.
+  const collect = (value: string, count = true) => {
+    if (!redactor) return value;
+    const result = redactor(value);
+    if (count) {
+      redaction.total += result.total;
+      for (const [kind, amount] of Object.entries(result.counts)) {
+        const key = kind as keyof typeof redaction.counts;
+        redaction.counts[key] = (redaction.counts[key] ?? 0) + (amount ?? 0);
+      }
+    }
+    return result.text;
+  };
+
   const memoryPrompt = buildMemoryPrompt(state.settings.memory, latestUser, state.memoryOutcome);
   if (memoryPrompt) systemPrompt += `\n\n${memoryPrompt}`;
 
   const hint = understandingHint(analyzeIntent(latestUser));
   if (hint) systemPrompt += `\n\n${hint}`;
 
-  if (knowledgeBlock) systemPrompt += `\n\n${knowledgeBlock}`;
+  const safeKnowledge = knowledgeBlock ? collect(knowledgeBlock) : null;
+  if (safeKnowledge) systemPrompt += `\n\n${safeKnowledge}`;
 
   if (mode.id === "coder") {
     systemPrompt += `\n\n${buildCodingPrompt({
@@ -2614,8 +2656,11 @@ function buildEngineMessages(
       (message.role === "user" || message.role === "assistant"),
   );
 
-  const measure = (message: ChatMessage) =>
-    message.role === "user" ? expandShorthand(normalizeText(message.content)) : message.content;
+  const measure = (message: ChatMessage, count = true) =>
+    collect(
+      message.role === "user" ? expandShorthand(normalizeText(message.content)) : message.content,
+      count,
+    );
   const activeModelId = engine.getState().modelId;
   const contextWindow = activeModelId
     ? (engine.models.find((model) => model.id === activeModelId)?.contextWindow ?? null)
@@ -2626,7 +2671,9 @@ function buildEngineMessages(
     systemPromptChars: systemPrompt.length + 600,
     outputTokens: effort.maxTokens,
   });
-  const { kept, summary } = compactHistory(history, contextLimits, measure);
+  const { kept, summary } = compactHistory(history, contextLimits, (message) =>
+    measure(message, false),
+  );
   const note = formatCompactionNote(summary);
   if (note) systemPrompt += `\n\n${note}`;
 
@@ -2636,6 +2683,18 @@ function buildEngineMessages(
   }));
 
   if (!trimmed.length) return null;
+  if (redaction.total && redactionRun) {
+    // The counts are recorded; the values never are.
+    recordDiagnostic({
+      level: "info",
+      source: "privacy",
+      message: redactionRun.describeRedaction({
+        text: "",
+        counts: redaction.counts,
+        total: redaction.total,
+      }),
+    });
+  }
   return [{ role: "system", content: systemPrompt }, ...trimmed];
 }
 
@@ -2948,6 +3007,14 @@ function toast(message: string) {
 
 function offlineModeActive(): boolean {
   return Boolean(state.settings.offlineMode);
+}
+
+function renderRedactionSetting() {
+  const enabled = Boolean(state.settings.redactPii);
+  dom["redact-pii"].checked = enabled;
+  dom["redact-pii-note"].textContent = enabled
+    ? "On. The prompt sent to a model has identifiers replaced; the chat still shows what you typed."
+    : "Off. The prompt reaches the model exactly as you typed it.";
 }
 
 function renderOfflineMode() {

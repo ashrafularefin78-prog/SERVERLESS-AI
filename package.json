@@ -37,7 +37,8 @@
     "changeset": "changeset",
     "version": "changeset version && npm run format",
     "docs:api": "typedoc",
-    "check:workflows": "node scripts/check-workflows.mjs"
+    "check:workflows": "node scripts/check-workflows.mjs",
+    "bench": "npm run build && node scripts/bench.mjs"
   },
   "engines": {
     "node": ">=22"

@@ -121,6 +121,11 @@ Community GGUF weights download through `src/engine/resumable-download.ts`, whic
 
 If the inference worker dies, usually from running out of memory, the app aborts the reply, records the error in the local diagnostics log, falls back to the built-in assistant, and explains what happened. An out-of-memory crash during model loading reloads the page once without that model so the GPU context is released.
 
+`npm run bench` reports time to first token and tokens per second for this device
+(see [bench/README.md](bench/README.md)). Design proposals live in
+[rfcs/](rfcs/), and [docs/webml-feedback.md](docs/webml-feedback.md) collects the
+platform gaps this project hit while shipping.
+
 Maintaining the project - releasing, updating the model list, and the decisions
 you can break by accident - is in [MAINTAINERS.md](MAINTAINERS.md); the CI,
 SBOM, and deployment pipeline is in [docs/ci.md](docs/ci.md).

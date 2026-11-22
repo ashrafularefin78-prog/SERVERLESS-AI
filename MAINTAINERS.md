@@ -136,7 +136,20 @@ Fuller background: [docs/whitepaper.md](docs/whitepaper.md) (threat model),
 [docs/architecture.md](docs/architecture.md) (module map),
 [docs/rule-engine.md](docs/rule-engine.md) (fallback behaviour).
 
-## 6. Where to look when something breaks
+## 6. Benchmarking and platform feedback
+
+`npm run bench` measures time to first token and tokens per second on the current
+machine (see `bench/README.md`). It exists so a user can tell whether their device
+is usable before downloading a model, and so a performance regression has a number
+rather than an impression. Results are per-machine and stay out of git.
+
+`docs/webml-feedback.md` is the running list of platform gaps found while building
+this (memory-fit signals, adapter info, artifact caching, model manifests, CSP for
+WASM). Add to it when you hit a new one; it is written to be quoted to the W3C Web
+Machine Learning working group, and every item names the code that had to work
+around it.
+
+## 7. Where to look when something breaks
 
 | Symptom                             | First place to look                                                           |
 | ----------------------------------- | ----------------------------------------------------------------------------- |

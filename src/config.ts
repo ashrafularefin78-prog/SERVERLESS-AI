@@ -110,6 +110,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hardwareStats: false,
   offlineMode: false,
   acceptedLicenses: [],
+  redactPii: false,
 };
 
 /** Character-based safeguards for local context (roughly 3 chars per token). */

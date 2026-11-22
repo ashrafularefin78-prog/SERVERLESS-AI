@@ -71,6 +71,16 @@ export default [
     },
   },
   {
+    // The benchmark script drives a real page: its `page.evaluate` callbacks run in
+    // the browser even though the script itself is Node.
+    files: ["scripts/bench.mjs"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: { ...globals.node, ...globals.browser },
+    },
+  },
+  {
     // Playwright capture script: the callbacks passed to `page.evaluate` and
     // `page.waitForFunction` are serialized and run in the browser, so they use
     // browser globals even though the script itself is Node.

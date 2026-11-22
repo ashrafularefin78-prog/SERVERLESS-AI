@@ -510,6 +510,22 @@
           </section>
 
           <section class="setting-section">
+            <h3>Redact before sending</h3>
+            <p class="memory-note">
+              Masks emails, phone numbers, card numbers, IBANs, US social security numbers, API
+              tokens, and IP addresses in the text a model receives, replacing them with
+              placeholders such as <code>[EMAIL_1]</code>. The chat keeps what you typed. Names and
+              postal addresses are not detected, and this is not a guarantee, only a narrower
+              prompt.
+            </p>
+            <label class="check-row">
+              <input id="redact-pii" type="checkbox" />
+              <span>Mask identifiers in the prompt sent to the model</span>
+            </label>
+            <p class="memory-note small" id="redact-pii-note"></p>
+          </section>
+
+          <section class="setting-section">
             <h3>Offline mode</h3>
             <p class="memory-note">
               A hard kill switch: while it is on, the service worker refuses every request that
