@@ -553,6 +553,19 @@
           </section>
 
           <section class="setting-section">
+            <h3>Model storage</h3>
+            <p class="memory-note">
+              Model weights are the biggest thing this app keeps. This lists every download on this
+              device, not just the one you are using, so you can see and remove them in one place.
+            </p>
+            <p class="memory-note small" id="model-storage-summary">Checking this device...</p>
+            <ul class="model-storage-list" id="model-storage-list"></ul>
+            <div class="setting-actions">
+              <button class="btn subtle" id="model-storage-refresh" type="button">Refresh</button>
+            </div>
+          </section>
+
+          <section class="setting-section">
             <h3>Diagnostics</h3>
             <p class="memory-note">
               Errors are recorded in this tab only and never uploaded. If a model fails, copy the
@@ -578,6 +591,10 @@
               <div>
                 <dt>Storage</dt>
                 <dd id="env-storage">Checking...</dd>
+              </div>
+              <div>
+                <dt>GPU limits</dt>
+                <dd id="env-gpu-limits">Not checked</dd>
               </div>
             </dl>
             <ul class="log-list" id="diagnostic-list"></ul>

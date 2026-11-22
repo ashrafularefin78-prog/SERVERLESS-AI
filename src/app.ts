@@ -61,6 +61,8 @@ const loadRedactor = () => import("./privacy/redact.js");
  * Settings should not download code for them.
  */
 const diagnosticsBundle = () => import("./diagnostics-bundle.js");
+/** Same reasoning: walking OPFS and Cache Storage is only worth it in Settings. */
+const modelStorage = () => import("./model-storage.js");
 import { compactHistory, formatCompactionNote } from "./context.js";
 import * as engine from "./engine/manager.js";
 import {
@@ -228,6 +230,10 @@ interface Dom {
   "env-gpu": HTMLElement;
   "env-memory": HTMLElement;
   "env-storage": HTMLElement;
+  "env-gpu-limits": HTMLElement;
+  "model-storage-summary": HTMLElement;
+  "model-storage-list": HTMLUListElement;
+  "model-storage-refresh": HTMLButtonElement;
   "diagnostics-clear": HTMLButtonElement;
   "license-dialog": HTMLDialogElement;
   "license-model": HTMLElement;
@@ -489,6 +495,10 @@ function cacheDom() {
     "env-gpu",
     "env-memory",
     "env-storage",
+    "env-gpu-limits",
+    "model-storage-summary",
+    "model-storage-list",
+    "model-storage-refresh",
     "diagnostics-clear",
     "license-dialog",
     "license-model",
@@ -2244,6 +2254,7 @@ function openSettings({ scrollToDiagnostics = false }: { scrollToDiagnostics?: b
   void refreshDeviceProfile();
   void refreshModelPanel({ checkCache: true });
   void renderEnvironment();
+  void renderModelStorage();
   if (!dom["settings-dialog"].open) dom["settings-dialog"].showModal();
   if (scrollToDiagnostics) {
     // A bug report starts here: `?debug=true` opens Settings on the diagnostics.
@@ -3253,6 +3264,75 @@ function storageSummary(storage: StorageUsage) {
 }
 
 /**
+ * Every model download on this device, with its size and a delete button. Checks
+ * are sequential on purpose: each one may wake the inference worker, and a burst of
+ * parallel messages would show up as a stall in the UI.
+ */
+async function renderModelStorage() {
+  const summary = dom["model-storage-summary"];
+  const list = dom["model-storage-list"];
+  summary.textContent = "Checking this device...";
+  list.replaceChildren();
+
+  try {
+    const { readModelStorage, summarizeModelStorage } = await modelStorage();
+    const models = engine.models;
+    const report = await readModelStorage(models, { includeGpu: true });
+    summary.textContent = summarizeModelStorage(report);
+    if (report.models.length === 0) return;
+
+    for (const stored of report.models) {
+      const row = document.createElement("li");
+      row.className = "model-storage-row";
+
+      const text = document.createElement("div");
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = stored.label;
+      const meta = document.createElement("span");
+      meta.className = "meta";
+      const size =
+        stored.bytes === null ? "size unknown" : `${(stored.bytes / 1_000_000).toFixed(1)} MB`;
+      const where = stored.source === "opfs" ? "OPFS" : "cache storage";
+      meta.textContent = `${stored.runtime.toUpperCase()} · ${size} · ${where}`;
+      text.append(name, meta);
+
+      const remove = document.createElement("button");
+      remove.className = "btn subtle";
+      remove.type = "button";
+      remove.textContent = "Delete";
+      remove.addEventListener("click", () => void deleteStoredModel(stored.id, stored.label));
+
+      row.append(text, remove);
+      list.append(row);
+    }
+  } catch (error) {
+    console.error("Could not read model storage", error);
+    summary.textContent = "Could not read what this device has stored.";
+  }
+}
+
+/** Delete a download from the storage list, whichever model is currently selected. */
+async function deleteStoredModel(modelId: string, label: string) {
+  const ok = await confirmDialog({
+    title: "Delete this download?",
+    body: `The files for ${label} will be removed from this browser. You can download them again later.`,
+    confirmLabel: "Delete",
+  });
+  if (!ok) return;
+
+  try {
+    await engine.deleteModel(modelId);
+    if (selectedModel()?.id === modelId) state.modelCached = false;
+    toast("Model download deleted.");
+  } catch {
+    toast("Could not delete the model download.");
+  }
+  await refreshModelPanel({ checkCache: true });
+  await renderModelStorage();
+}
+
+/**
  * The readout in Settings: what this device actually offers, so a bug report can
  * start with facts instead of guesses. Values are cached after the first read.
  */
@@ -3263,6 +3343,14 @@ async function renderEnvironment() {
     ? deviceSummary(state.deviceProfile)
     : "Unknown";
   dom["env-storage"].textContent = storageSummary(storage);
+  // The adapter limits someone needs to judge "will this model fit" live next to
+  // the WebGPU verdict, rather than in a separate panel.
+  try {
+    const { describeGpuLimits } = await modelStorage();
+    dom["env-gpu-limits"].textContent = describeGpuLimits(gpu);
+  } catch {
+    dom["env-gpu-limits"].textContent = "Not checked";
+  }
 }
 
 /**

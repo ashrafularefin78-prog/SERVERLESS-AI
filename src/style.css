@@ -922,6 +922,8 @@ svg {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  /* WCAG 2.2 asks for 24x24 at the smallest; the icon alone made this 23px tall. */
+  min-height: 32px;
   padding: 8px 14px;
   border-radius: 999px;
   border: 1px solid var(--border-strong);
@@ -1935,7 +1937,9 @@ svg {
 
 .mode-label select {
   appearance: none;
-  padding: 3px 18px 3px 7px;
+  /* A touch target, not a text label: 24px is the floor, 30px is comfortable. */
+  min-height: 30px;
+  padding: 5px 18px 5px 7px;
   border: 1px solid transparent;
   border-radius: 6px;
   background:
@@ -3468,6 +3472,40 @@ select optgroup {
   color: var(--text);
   text-align: right;
   overflow-wrap: anywhere;
+}
+
+.model-storage-list {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.model-storage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.model-storage-row .name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.model-storage-row .meta {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.model-storage-row .btn {
+  flex: none;
 }
 
 .log-list {
