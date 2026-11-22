@@ -50,3 +50,22 @@ test("model picker is operable from the keyboard and restores trigger focus", as
   await expect(page.locator("#composer-model-pop")).toBeHidden();
   await expect(trigger).toBeFocused();
 });
+
+test("model storage readout is readable and lists what is stored", async ({ page }) => {
+  await open(page);
+  await page.locator("#open-settings").click();
+  const summary = page.locator("#model-storage-summary");
+  await expect(summary).toContainText(/No model weights|model stored|models stored/, {
+    timeout: 15_000,
+  });
+  await expect(page.locator("#env-gpu-limits")).not.toHaveText("Not checked");
+  await expectNoA11yViolations(page, "Settings with the model storage list");
+});
+
+test("the mobile drawer passes an audit while it is open", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await open(page);
+  await page.locator("#open-sidebar").click();
+  await expect(page.locator("#sidebar")).toBeInViewport();
+  await expectNoA11yViolations(page, "mobile drawer");
+});
