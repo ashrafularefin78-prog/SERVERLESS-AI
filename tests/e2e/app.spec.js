@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import { GGUF_MODELS, LOCAL_MODELS } from "../../src/engine/models.js";
 import { acceptLicenseIfShown, pickModel, skipWithoutJspi } from "./helpers.js";
 
@@ -585,6 +586,42 @@ test("shows a local diagnostics log in Settings", async ({ page }) => {
   await page.locator("#open-settings").click();
   await expect(page.locator("#hardware-stats")).toBeChecked();
   await expect(page.locator("#engine-alert")).toBeHidden();
+});
+
+test("reads the environment and exports a scrubbed bundle", async ({ page }) => {
+  await page.goto("/");
+  // A message with a marker makes any leak into the bundle obvious.
+  await page.locator("#input").fill("SECRET-CHAT-MARKER");
+  await page.locator("#send").click();
+  await expect(page.locator(".msg.assistant .msg-text").last()).not.toHaveClass(/streaming/);
+
+  await page.locator("#open-settings").click();
+  // The panel names what the device offers instead of leaving the reader guessing.
+  await expect(page.locator("#env-gpu")).not.toHaveText("Checking...");
+  await expect(page.locator("#env-storage")).toContainText("MB used");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#diagnostics-export").click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^localmind-diagnostics-.*\.json$/);
+
+  const path = await download.path();
+  const bundle = JSON.parse(await readFile(path, "utf8"));
+  expect(bundle.schemaVersion).toBe(1);
+  expect(bundle.app.app).toContain("LocalMind");
+  expect(bundle.environment.userAgent).toContain("Mozilla");
+  expect(bundle.storage.usageMB).toBeGreaterThan(0);
+  expect(Array.isArray(bundle.diagnostics)).toBe(true);
+  // Nothing from the conversation, and no settings, may travel in the file.
+  expect(JSON.stringify(bundle)).not.toContain("SECRET-CHAT-MARKER");
+  expect(JSON.stringify(bundle)).not.toContain("acceptedLicenses");
+});
+
+test("opens diagnostics directly with ?debug=true", async ({ page }) => {
+  await page.goto("/?debug=true");
+  await expect(page.locator("#settings-dialog")).toBeVisible();
+  await expect(page.locator("#diagnostic-env")).toBeInViewport();
 });
 
 test("renders a page of a long conversation and loads earlier messages on request", async ({

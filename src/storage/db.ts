@@ -35,10 +35,6 @@ export function setVaultKey(key: CryptoKey | null, version: 1 | 2 = 2): void {
   vaultVersion = key ? version : 2;
 }
 
-export function hasVaultKey(): boolean {
-  return vaultKey !== null;
-}
-
 /**
  * True when the database holds an encrypted vault. Read by the write paths so a
  * locked vault refuses to store plaintext, rather than trusting every caller to

@@ -45,6 +45,9 @@ export default [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
+      // `any` erases the checking this project relies on; widen a type at the
+      // boundary with `unknown` and narrow it instead.
+      "@typescript-eslint/no-explicit-any": "error",
       "no-console": ["warn", { allow: ["warn", "error"] }],
       eqeqeq: ["error", "smart"],
       "no-var": "error",

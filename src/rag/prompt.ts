@@ -1,6 +1,7 @@
 // Builds the grounding block appended to the system prompt. Pure so the
 // wording, delimiter escaping, truncation and citation list can be unit-tested
 // without a model.
+import { RAG } from "./config.js";
 
 export interface KnowledgeHit {
   title: string;
@@ -47,7 +48,10 @@ export function escapeContextText(text: string): string {
  * Format the top hits as numbered excerpts inside a `<context>` block, within
  * a character budget. Returns null when nothing fits.
  */
-export function buildKnowledgeBlock(hits: KnowledgeHit[], maxChars = 2600): KnowledgeBlock | null {
+export function buildKnowledgeBlock(
+  hits: KnowledgeHit[],
+  maxChars: number = RAG.promptChars,
+): KnowledgeBlock | null {
   if (!hits.length) return null;
 
   let block = `${RULES}\n\n${CONTEXT_OPEN}`;

@@ -537,13 +537,35 @@
               Off by default. Nothing is sent anywhere: this only adds a coarse hardware summary to
               the text you copy yourself.
             </p>
+            <dl class="env-grid" id="diagnostic-env">
+              <div>
+                <dt>WebGPU</dt>
+                <dd id="env-gpu">Checking...</dd>
+              </div>
+              <div>
+                <dt>Memory</dt>
+                <dd id="env-memory">Unknown</dd>
+              </div>
+              <div>
+                <dt>Storage</dt>
+                <dd id="env-storage">Checking...</dd>
+              </div>
+            </dl>
             <ul class="log-list" id="diagnostic-list"></ul>
             <div class="setting-actions">
               <button class="btn subtle" id="diagnostics-copy" type="button">
                 Copy diagnostics
               </button>
+              <button class="btn subtle" id="diagnostics-export" type="button">
+                Export bundle (.json)
+              </button>
               <button class="btn subtle" id="diagnostics-clear" type="button">Clear log</button>
             </div>
+            <p class="memory-note small">
+              The bundle holds the values above, your browser's user-agent string, and this log. It
+              never includes chats, documents, or settings. Open it and read it before attaching it
+              to an issue.
+            </p>
           </section>
 
           <section class="setting-section about-section">

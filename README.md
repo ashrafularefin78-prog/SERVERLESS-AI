@@ -121,6 +121,10 @@ Community GGUF weights download through `src/engine/resumable-download.ts`, whic
 
 If the inference worker dies, usually from running out of memory, the app aborts the reply, records the error in the local diagnostics log, falls back to the built-in assistant, and explains what happened. An out-of-memory crash during model loading reloads the page once without that model so the GPU context is released.
 
+Maintaining the project - releasing, updating the model list, and the decisions
+you can break by accident - is in [MAINTAINERS.md](MAINTAINERS.md); the CI,
+SBOM, and deployment pipeline is in [docs/ci.md](docs/ci.md).
+
 For a deeper tour, see [docs/architecture.md](docs/architecture.md), [docs/whitepaper.md](docs/whitepaper.md), [docs/rule-engine.md](docs/rule-engine.md), and [docs/adding-languages.md](docs/adding-languages.md).
 
 Everything the app stores stays in this browser; [PRIVACY.md](PRIVACY.md) states what is kept, where, and how to erase it, with the code that implements each claim. Release history is in [CHANGELOG.md](CHANGELOG.md), and [docs/launch.md](docs/launch.md) has the v1.0.0 announcement copy and the pre-launch checklist.

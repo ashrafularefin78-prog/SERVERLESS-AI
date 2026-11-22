@@ -27,7 +27,7 @@
     "qa:visual": "node scripts/qa-visual.mjs",
     "sbom": "npm sbom --sbom-format=cyclonedx",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

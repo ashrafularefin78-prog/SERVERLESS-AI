@@ -8,28 +8,16 @@ import { newId } from "../storage/db.js";
 import type { KnowledgeDoc, KnowledgeProgress, StoredChunk } from "../types.js";
 import { recordDiagnostic } from "../diagnostics.js";
 import { chunkText } from "./chunk.js";
-import { assessRetrieval, MIN_TERM_COVERAGE } from "./confidence.js";
-import { embedTexts, setEmbeddingProgressListener } from "./embeddings.js";
+import { assessRetrieval } from "./confidence.js";
+import { RAG } from "./config.js";
+import { disposeEmbeddings, embedTexts, setEmbeddingProgressListener } from "./embeddings.js";
 import { isPdfFile } from "./pdf-text.js";
 import { buildAbstainBlock, buildKnowledgeBlock, type KnowledgeBlock } from "./prompt.js";
 import { rankByHybrid } from "./similarity.js";
 import { buildRetrievalTrace, type RetrievalTrace } from "./trace.js";
 import { deleteKnowledgeDoc, listKnowledgeDocs, loadAllChunks, saveKnowledgeDoc } from "./store.js";
 
-export const RAG = {
-  maxDocuments: 20,
-  maxCharsPerDocument: 200_000,
-  maxBytesPerPdf: 25_000_000,
-  chunkChars: 900,
-  overlapChars: 120,
-  topK: 4,
-  candidateK: 10,
-  minTermCoverage: MIN_TERM_COVERAGE,
-  promptChars: 2600,
-  embedBatch: 8,
-} as const;
-
-export { setEmbeddingProgressListener };
+export { RAG, disposeEmbeddings, setEmbeddingProgressListener };
 export type { KnowledgeBlock, RetrievalTrace };
 
 /** Grounding for the prompt plus the numbers shown by "show your work". */

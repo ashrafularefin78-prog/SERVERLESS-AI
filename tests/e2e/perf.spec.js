@@ -106,3 +106,31 @@ test("a long conversation renders a bounded number of nodes", async ({ page }) =
   expect(rendered.nodes).toBeLessThan(4000);
   await expect(page.locator(".earlier-bar")).toBeVisible();
 });
+
+test("stays responsive while a reply streams on a throttled CPU", async ({ page, browserName }) => {
+  // The "5-year-old laptop" case: the page keeps its main thread busy with
+  // streaming and markdown rendering, so slow the CPU down and check that a user
+  // can still stop the reply instead of waiting for it to finish.
+  test.skip(browserName !== "chromium", "CPU throttling is driven through CDP.");
+  await page.goto("/");
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 6 });
+
+  try {
+    await page.locator("#input").fill("write a python script that reads a csv and prints totals");
+    await page.locator("#send").click();
+    // The reply streams for a couple of seconds; stop it mid-stream.
+    await expect(page.locator("#stop")).toBeVisible({ timeout: 15_000 });
+
+    const startedAt = Date.now();
+    await page.locator("#stop").click();
+    await expect(page.locator("#send")).toBeVisible({ timeout: 5_000 });
+    const stopLatency = Date.now() - startedAt;
+
+    // Generous, because a 6x slowdown is brutal. What this catches is a UI that
+    // blocks until generation ends instead of handling the click immediately.
+    expect(stopLatency).toBeLessThan(4_000);
+  } finally {
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+  }
+});

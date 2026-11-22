@@ -24,5 +24,7 @@ jobs:
           pr-message: >-
             Thanks for your first pull request. CONTRIBUTING.md lists the checks CI runs
             (`npm run lint`, `format:check`, `test`, `build`), the Conventional Commits format the
-            title and commits must follow, and when a changeset is expected. A maintainer will
-            review it soon.
+            title and commits must follow, and when a changeset is expected.
+            <!-- Mentioning the maintainer turns this greeting into the notification, so a
+            first-time pull request is never left waiting on a silent inbox. -->
+            @ashrafularefin78-prog will review it soon.

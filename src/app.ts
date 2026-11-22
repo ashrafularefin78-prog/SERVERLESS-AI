@@ -43,6 +43,13 @@ import {
   subscribeDiagnostics,
   type DiagnosticEntry,
 } from "./diagnostics.js";
+import type { GpuAdapterInfo, StorageUsage } from "./diagnostics-bundle.js";
+
+/**
+ * Loaded on demand. The probes touch WebGPU and OPFS, and a reader who never opens
+ * Settings should not download code for them.
+ */
+const diagnosticsBundle = () => import("./diagnostics-bundle.js");
 import { compactHistory, formatCompactionNote } from "./context.js";
 import * as engine from "./engine/manager.js";
 import {
@@ -85,6 +92,7 @@ import {
   listDocuments,
   removeDocument,
   retrieveKnowledge,
+  disposeEmbeddings,
   setEmbeddingProgressListener,
 } from "./rag/index.js";
 import type {
@@ -193,8 +201,13 @@ interface Dom {
   "offline-mode-note": HTMLElement;
   "offline-badge": HTMLElement;
   "diagnostic-list": HTMLUListElement;
+  "diagnostic-env": HTMLElement;
   "report-bug": HTMLAnchorElement;
   "diagnostics-copy": HTMLButtonElement;
+  "diagnostics-export": HTMLButtonElement;
+  "env-gpu": HTMLElement;
+  "env-memory": HTMLElement;
+  "env-storage": HTMLElement;
   "diagnostics-clear": HTMLButtonElement;
   "license-dialog": HTMLDialogElement;
   "license-model": HTMLElement;
@@ -329,7 +342,21 @@ export async function boot() {
   autoResize();
   updateComposerState();
 
-  if (vaulted) openVaultDialog("unlock");
+  if (vaulted) {
+    openVaultDialog("unlock");
+  } else if (wantsDiagnosticsOnLoad()) {
+    // `?debug=true` is the link a maintainer can hand to a user: it lands on the
+    // diagnostics panel instead of asking them to find it.
+    openSettings({ scrollToDiagnostics: true });
+  }
+}
+
+function wantsDiagnosticsOnLoad() {
+  try {
+    return new URLSearchParams(window.location.search).get("debug") === "true";
+  } catch {
+    return false;
+  }
 }
 
 function cacheDom() {
@@ -424,8 +451,13 @@ function cacheDom() {
     "offline-mode-note",
     "offline-badge",
     "diagnostic-list",
+    "diagnostic-env",
     "report-bug",
     "diagnostics-copy",
+    "diagnostics-export",
+    "env-gpu",
+    "env-memory",
+    "env-storage",
     "diagnostics-clear",
     "license-dialog",
     "license-model",
@@ -467,8 +499,8 @@ function bindEvents() {
   dom.scrim.addEventListener("click", closeSidebar);
 
   dom["theme-toggle"].addEventListener("click", toggleTheme);
-  dom["open-settings"].addEventListener("click", openSettings);
-  dom["open-settings-2"].addEventListener("click", openSettings);
+  dom["open-settings"].addEventListener("click", () => openSettings());
+  dom["open-settings-2"].addEventListener("click", () => openSettings());
 
   for (const button of document.querySelectorAll("[data-close-dialog]")) {
     button.addEventListener("click", () => {
@@ -621,6 +653,7 @@ function bindEvents() {
     void saveSettingsPatch({ hardwareStats: dom["hardware-stats"].checked });
   });
   dom["diagnostics-copy"].addEventListener("click", () => void copyDiagnostics());
+  dom["diagnostics-export"].addEventListener("click", () => void exportDiagnosticsBundle());
   dom["diagnostics-clear"].addEventListener("click", () => {
     clearDiagnostics();
     toast("Diagnostics cleared.");
@@ -2151,11 +2184,16 @@ function upsertSummary(conversation: Conversation) {
    Settings
 --------------------------------------------------------------- */
 
-function openSettings() {
+function openSettings({ scrollToDiagnostics = false }: { scrollToDiagnostics?: boolean } = {}) {
   syncSettingsForm();
   void refreshDeviceProfile();
   void refreshModelPanel({ checkCache: true });
+  void renderEnvironment();
   if (!dom["settings-dialog"].open) dom["settings-dialog"].showModal();
+  if (scrollToDiagnostics) {
+    // A bug report starts here: `?debug=true` opens Settings on the diagnostics.
+    dom["diagnostic-env"].scrollIntoView({ block: "start" });
+  }
 }
 
 async function saveSettingsPatch(patch: Partial<Settings>) {
@@ -2216,6 +2254,9 @@ async function clearAllData() {
   if (!ok) return;
 
   await stopAndWait();
+  // The embedding worker holds the MiniLM weights; without this they stay in
+  // memory after the user asked for everything to be deleted.
+  disposeEmbeddings();
   await clearDatabase();
 
   try {
@@ -3043,6 +3084,83 @@ function diagnosticRow(entry: DiagnosticEntry): HTMLElement {
 async function copyDiagnostics() {
   const text = formatDiagnostics(listDiagnostics(), diagnosticsContext());
   if (await copyText(text)) toast("Diagnostics copied. Review it before sharing.");
+}
+
+// Cached so opening Settings does not ask the adapter for limits on every render.
+let environmentCache: { gpu: GpuAdapterInfo; storage: StorageUsage } | null = null;
+
+async function readEnvironment() {
+  if (environmentCache) return environmentCache;
+  const { readGpuAdapterInfo, readStorageUsage } = await diagnosticsBundle();
+  const [gpu, storage] = await Promise.all([readGpuAdapterInfo(), readStorageUsage()]);
+  environmentCache = { gpu, storage };
+  return environmentCache;
+}
+
+function gpuSummary(gpu: GpuAdapterInfo) {
+  if (!gpu.webgpuExposed) return "Not exposed by this browser";
+  if (!gpu.available) return "Available, no adapter";
+  const model = [gpu.vendor, gpu.architecture, gpu.device].filter(Boolean).join(" ");
+  const buffer = gpu.limits?.maxStorageBufferBindingSize;
+  const size = buffer ? ` - ${Math.round(buffer / 1_000_000)} MB buffers` : "";
+  return `${model || "Adapter ready"}${size}`;
+}
+
+function storageSummary(storage: StorageUsage) {
+  if (storage.usageMB === null) return "Not reported";
+  const quota = storage.quotaMB === null ? "" : ` of ${storage.quotaMB} MB`;
+  const opfs = storage.opfs
+    ? ` - ${storage.opfs.megabytes} MB in ${storage.opfs.entries} files`
+    : "";
+  return `${storage.usageMB} MB used${quota}${opfs}`;
+}
+
+/**
+ * The readout in Settings: what this device actually offers, so a bug report can
+ * start with facts instead of guesses. Values are cached after the first read.
+ */
+async function renderEnvironment() {
+  const { gpu, storage } = await readEnvironment();
+  dom["env-gpu"].textContent = gpuSummary(gpu);
+  dom["env-memory"].textContent = state.deviceProfile
+    ? deviceSummary(state.deviceProfile)
+    : "Unknown";
+  dom["env-storage"].textContent = storageSummary(storage);
+}
+
+/**
+ * Download the bundle as a file. The user hands it over themselves; the app makes
+ * no request, and no chat, document, or settings value is included.
+ */
+async function exportDiagnosticsBundle() {
+  try {
+    const { bundleFileName, bundleToJson, buildDiagnosticsBundle } = await diagnosticsBundle();
+    const { gpu, storage } = await readEnvironment();
+    const bundle = buildDiagnosticsBundle({
+      app: diagnosticsContext(),
+      diagnostics: listDiagnostics(),
+      gpu,
+      storage,
+    });
+    const blob = new Blob([bundleToJson(bundle)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = bundleFileName();
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+    toast("Diagnostics bundle downloaded. Read it before you attach it.");
+    recordDiagnostic({
+      level: "info",
+      source: "diagnostics",
+      message: "Diagnostics bundle exported by the user.",
+    });
+  } catch (error) {
+    console.error("Could not export diagnostics", error);
+    toast("Could not build the diagnostics bundle.");
+  }
 }
 
 function showEngineAlert(title: string, message: string) {

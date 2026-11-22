@@ -1,6 +1,7 @@
 // Text chunking for retrieval. Pure and deterministic: the same document
 // always produces the same chunks, which keeps the stored index stable across
 // reloads and makes this testable in Node.
+import { RAG } from "./config.js";
 
 export interface ChunkOptions {
   /** Soft ceiling for one chunk, in characters. */
@@ -10,8 +11,11 @@ export interface ChunkOptions {
 }
 
 export function chunkText(text: string, options: ChunkOptions = {}): string[] {
-  const maxChars = Math.max(200, options.maxChars ?? 900);
-  const overlapChars = Math.min(Math.max(0, options.overlapChars ?? 120), Math.floor(maxChars / 3));
+  const maxChars = Math.max(200, options.maxChars ?? RAG.chunkChars);
+  const overlapChars = Math.min(
+    Math.max(0, options.overlapChars ?? RAG.overlapChars),
+    Math.floor(maxChars / 3),
+  );
 
   const normalized = String(text ?? "")
     .replace(/\r\n/g, "\n")
