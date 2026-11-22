@@ -125,7 +125,7 @@ The v1 to v2 upgrade is additive: existing conversations and settings are read u
 
 ### Encrypted vault
 
-Encryption is optional and applies to conversations and memory notes. `crypto.ts` derives a non-extractable AES-256-GCM key from the passphrase with PBKDF2-SHA-256 (310,000 iterations) and a random salt; a verifier blob lets the app reject a wrong passphrase without storing it. `storage/db.ts` holds the key in a module-level variable for the tab's lifetime (`setVaultKey`), never in IndexedDB.
+Encryption is optional and applies to conversations and memory notes. `crypto.ts` derives a non-extractable AES-256-GCM key from the passphrase with PBKDF2-SHA-256 (600,000 iterations for a new vault; existing 310,000-iteration vaults are re-wrapped on unlock) and a random salt; a verifier blob lets the app reject a wrong passphrase without storing it. `storage/db.ts` holds the key in a module-level variable for the tab's lifetime (`setVaultKey`), never in IndexedDB.
 
 - When a key is set, `saveConversation()` writes `{ id, updatedAt, encrypted: { iv, data } }`; the encrypted payload is the whole conversation. `listConversations()` and `getConversation()` decrypt on read and return nothing while locked.
 - Enabling encryption rewrites existing plaintext conversations. Removing it decrypts them and clears the vault key. Both paths encrypt/decrypt before opening the write transaction, because an IndexedDB transaction auto-commits if it has no pending requests while WebCrypto is awaited.

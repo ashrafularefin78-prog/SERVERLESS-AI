@@ -87,6 +87,30 @@
   display: none !important;
 }
 
+/* The header is a row of icon buttons; without this, reaching the message box
+   with the keyboard means tabbing past all of them first. */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 60;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: var(--surface-strong, #14181d);
+  color: var(--text, #f4efe9);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(-160%);
+  transition: transform 140ms ease;
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+  outline: 2px solid var(--accent, #ff5a5f);
+  outline-offset: 2px;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

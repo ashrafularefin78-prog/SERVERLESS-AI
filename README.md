@@ -13,7 +13,7 @@ A private AI chat that runs entirely in your browser. It ships with a **built-in
 - **Knowledge and retrieval (optional):** add text, markdown, or PDF documents in Settings. They are chunked, embedded on-device with all-MiniLM-L6-v2 through Transformers.js, and stored as vectors in IndexedDB. Relevant passages are retrieved with a flat cosine index and injected into the prompt, and replies name the documents they used. Nothing is uploaded.
 - **UI:** vanilla JS + Vite, markdown and code rendering, streaming with stop/regenerate/copy, modes, dark/light theme, mobile layout.
 - **Storage:** chats, memory notes, and settings in IndexedDB. Nothing is uploaded.
-- **Encryption (optional):** set a passphrase in Settings to encrypt chats and memory notes at rest with AES-256-GCM. The key is derived with PBKDF2-SHA-256 (310,000 iterations), is non-extractable, and lives only in the open tab; locking hides everything until you unlock. There is no recovery if the passphrase is lost.
+- **Encryption (optional):** set a passphrase in Settings to encrypt chats and memory notes at rest with AES-256-GCM. The key is derived with PBKDF2-SHA-256 (600,000 iterations for vaults created now; 310,000-iteration vaults from before 1.0 stay readable and are re-wrapped on unlock), is non-extractable, and lives only in the open tab; locking hides everything until you unlock. There is no recovery if the passphrase is lost.
 - **Memory:** notes you ask it to remember ("remember ...", "forget ..."), kept on-device and carried into every chat. Manage them in Settings.
 - **Understanding:** cleans up messy input - smart quotes, zero-width characters, and chat shorthand ("pls", "doesnt", "idk") - while your chat history keeps the original wording and code blocks are left untouched. Vague messages ("it doesn't work") prompt one targeted clarifying question instead of a guess.
 - **Offline:** installable PWA. The app shell is cached after the first online visit.
@@ -130,7 +130,13 @@ Maintaining the project - releasing, updating the model list, and the decisions
 you can break by accident - is in [MAINTAINERS.md](MAINTAINERS.md); the CI,
 SBOM, and deployment pipeline is in [docs/ci.md](docs/ci.md).
 
-For a deeper tour, see [docs/architecture.md](docs/architecture.md), [docs/whitepaper.md](docs/whitepaper.md), [docs/rule-engine.md](docs/rule-engine.md), and [docs/adding-languages.md](docs/adding-languages.md).
+For a deeper tour, see [docs/architecture.md](docs/architecture.md) (with Mermaid
+module and request-sequence diagrams), [docs/whitepaper.md](docs/whitepaper.md),
+[docs/threat-model.md](docs/threat-model.md), [docs/rule-engine.md](docs/rule-engine.md),
+and [docs/adding-languages.md](docs/adding-languages.md). If you want to change
+models, retrieval, or the built-in replies, [docs/extending.md](docs/extending.md)
+explains the data-driven extension points and why the app has no runtime plugin
+API.
 
 Everything the app stores stays in this browser; [PRIVACY.md](PRIVACY.md) states what is kept, where, and how to erase it, with the code that implements each claim. Release history is in [CHANGELOG.md](CHANGELOG.md), and [docs/launch.md](docs/launch.md) has the v1.0.0 announcement copy and the pre-launch checklist.
 
